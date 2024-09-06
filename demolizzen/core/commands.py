@@ -2,7 +2,7 @@ import json
 import logging
 
 import discord
-from Core import checks
+from core import checks
 from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands

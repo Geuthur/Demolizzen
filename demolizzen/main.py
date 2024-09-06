@@ -21,7 +21,7 @@ def run_demolizzen():
     print(Green("-------- Loading Modules ---------"))
     for ext in demolizzen.preload_ext:
         try:
-            demolizzen.load_extension(f"Cogs.{ext}")
+            demolizzen.load_extension(f"cogs.{ext}")
             print(Blue(f"- {ext.capitalize()} ✅ "))
         # pylint: disable=broad-except
         except Exception as e:
