@@ -1,0 +1,47 @@
+[MASTER]
+# Add files or directories matching the regex patterns to the ignore-list.
+# The regex matches against paths.
+ignore-paths=
+    tests/,
+    (.*)/tests/,
+    demolizzen/Cogs/test/,
+
+[MESSAGES CONTROL]
+disable=
+    attribute-defined-outside-init,
+    import-error,
+    protected-access,
+    too-few-public-methods,
+
+    # ignore TODOS
+    fixme,
+
+    # ignore docstrings
+    missing-module-docstring,
+    missing-function-docstring,
+    missing-class-docstring,
+
+    # handled by isort
+    wrong-import-position,
+    ungrouped-imports,
+
+    # handled by black
+    format,
+
+    logging-fstring-interpolation,
+    f-string-without-interpolation,
+
+    duplicate-code,
+
+[DESIGN]
+max-attributes=20
+max-args=15
+max-branches=30
+max-locals=30
+max-returns=10
+max-statements=50
+max-nested-blocks=7
+max-parents=7
+
+[REPORTS]
+output-format = colorized

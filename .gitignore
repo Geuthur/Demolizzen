@@ -1,0 +1,11 @@
+demolizzen/Logs/*
+demolizzen/Cache/cache.db-wal
+demolizzen/Cache/cache.db-shm
+demolizzen/Cache/cache.db
+
+*.zip
+.env
+demolizzen/Cogs/test
+.venv/
+
+__pycache__/

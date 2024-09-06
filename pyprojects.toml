@@ -1,0 +1,53 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [
+    "hatchling",
+]
+
+[project]
+name = "demolizzen"
+description = "Eve Online Discord Bot."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Geuthur", email = "devgeuthur@gmail.com" },
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dynamic = [
+    "version",
+]
+dependencies = [
+]
+urls.Changelog = "https://github.com/Geuthur/Demolizzen/blob/master/CHANGELOG.md"
+urls.Homepage = "https://github.com/Geuthur/Demolizzen"
+urls.Source = "https://github.com/Geuthur/Demolizzen"
+urls.Tracker = "https://github.com/Geuthur/Demolizzen/issues"
+
+[tool.hatch.build]
+include = [
+    "demolizzen/",
+]
+
+[tool.hatch.version]
+path = "demolizzen/__init__.py"
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "THIRDPARTY",
+    "FIRSTPARTY",
+    "LOCALFOLDER",
+]
