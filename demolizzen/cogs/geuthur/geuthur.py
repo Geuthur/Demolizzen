@@ -29,6 +29,7 @@ class Geuthur(commands.Cog):
             "warframe": 780199646395498537,  # Rolle für Warframe
             "eveonline": 881537446897123338,  # Rolle für EvE Online
             "demolizzen": 1180120903317725286,  # Rolle für Discord Bot
+            "poe2": 1318250127554646096,  # Rolle für Path of Exile 2
             # Füge weitere benutzerdefinierte Emoji-Rolle-Paare hinzu
         }
         emoji_name = member.emoji.name
@@ -61,6 +62,7 @@ class Geuthur(commands.Cog):
             "warframe": 780199646395498537,  # Rolle für Warframe
             "eveonline": 881537446897123338,  # Rolle für EvE Online
             "demolizzen": 1180120903317725286,  # Rolle für Discord Bot
+            "poe2": 1318250127554646096,  # Rolle für Path of Exile 2
             # Füge weitere benutzerdefinierte Emoji-Rolle-Paare hinzu
         }
 
