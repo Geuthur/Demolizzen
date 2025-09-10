@@ -25,7 +25,7 @@ if os.environ.get("USE_MYSQL", True) is True:
             "NAME": "temp_demolizzen",
             "USER": "root",
             "PASSWORD": "temp_password_tox",
-            "HOST": "localhost",
+            "HOST": "127.0.0.1",
             "PORT": "3306",
             "OPTIONS": {
                 "charset": "utf8mb4",
