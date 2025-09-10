@@ -56,7 +56,7 @@ class Commands(commands.Cog):
     async def get_richest_data(self, ctx: discord.ApplicationContext):
         return [
             account
-            async for account in models.BankAccount.objects.filter(
+            async for account in models.UserBankAccount.objects.filter(
                 user__guild_id=ctx.guild.id
             ).select_related("user")
         ]
@@ -290,7 +290,7 @@ class Commands(commands.Cog):
                 embed.add_field(
                     name=item_name, value=f"Anzahl: {item_quantity}", inline=False
                 )
-        except (models.BagItems.DoesNotExist, models.UserBag.DoesNotExist):
+        except (models.UserBagItems.DoesNotExist, models.UserBag.DoesNotExist):
             em = discord.Embed(
                 description=f"{ctx.author.mention}, Your Bag is empty... Buy something with /buy",
                 color=discord.Color.teal(),
@@ -335,7 +335,7 @@ class Commands(commands.Cog):
 
         # Get User Bag Item
         try:
-            user_bag_items = await models.BagItems.objects.aget(
+            user_bag_items = await models.UserBagItems.objects.aget(
                 user_bag=ctx.user_profile.bags,
                 item_name=item_name,
             )
@@ -347,7 +347,7 @@ class Commands(commands.Cog):
             )
             await ctx.respond(embed=em)
             return
-        except models.BagItems.DoesNotExist:
+        except models.UserBagItems.DoesNotExist:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),

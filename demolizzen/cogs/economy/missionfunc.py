@@ -30,7 +30,7 @@ class MissionEvent(discord.ui.View):
         self,
         ctx: discord.ApplicationContext,
         components,
-        mission_account: models.MiningMission | models.RaidMission,
+        mission_account: models.UserMiningMission | models.UserRaidMission,
     ):
         super().__init__(timeout=20, disable_on_timeout=True)
         if components is None:
@@ -49,7 +49,7 @@ class MissionEvent(discord.ui.View):
         # Mode (Mining, Raiding)
         self.modus = (
             "mining"
-            if isinstance(self.mission_account, models.MiningMission)
+            if isinstance(self.mission_account, models.UserMiningMission)
             else "raiding"
         )
         self.bonus = False

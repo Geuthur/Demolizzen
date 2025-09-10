@@ -253,8 +253,8 @@ class Admin(commands.Cog):
                 user_id=member.id, guild_id=ctx.guild.id
             )
             bank_account = user.bank_account
-        except models.BankAccount.DoesNotExist:
-            bank_account = await models.BankAccount.objects.acreate(
+        except models.UserBankAccount.DoesNotExist:
+            bank_account = await models.UserBankAccount.objects.acreate(
                 user=user,
             )
 
@@ -299,7 +299,7 @@ class Admin(commands.Cog):
                 user_id=member.id, guild_id=server_id
             )
             bank_account = user.bank_account
-        except models.BankAccount.DoesNotExist:
+        except models.UserBankAccount.DoesNotExist:
             await ctx.respond(f"❌ {member.name}, has no bank account.", ephemeral=True)
             return
 
@@ -334,7 +334,7 @@ class Admin(commands.Cog):
                 user_id=member.id, guild_id=ctx.guild.id
             )
             bank_account = user.bank_account
-        except models.BankAccount.DoesNotExist:
+        except models.UserBankAccount.DoesNotExist:
             await ctx.respond(f"❌ {member.name}, has no bank account.", ephemeral=True)
             return
 

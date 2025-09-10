@@ -9,12 +9,12 @@ class Command(BaseCommand):
     help = "Create all default Database entries"
 
     def handle(self, *args, **options):
-        from .create_latest_invtypes import Command as CreateLatestInvtypesCommand
-        from .create_latest_mapsolarsystems import (
+        from .create_eve_invtypes import Command as CreateLatestInvtypesCommand
+        from .create_eve_mapsolarsystems import (
             Command as CreateLatestMapSolarSystemsCommand,
         )
-        from .create_mission_ships import Command as CreateMissionShipsCommand
-        from .create_shop_items import Command as CreateShopItemsCommand
+        from .create_ships import Command as CreateMissionShipsCommand
+        from .create_shop import Command as CreateShopItemsCommand
         from .create_solar_systems import Command as CreateSolarSystemsCommand
 
         CreateMissionShipsCommand().handle(*args, **options)

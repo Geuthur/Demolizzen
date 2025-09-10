@@ -2,7 +2,7 @@
 from django.core.management.base import BaseCommand
 
 # Demolizzen
-from demolizzen.models import ShopItem
+from demolizzen.models import EconomyShop
 
 
 class Command(BaseCommand):
@@ -227,7 +227,7 @@ class Command(BaseCommand):
             )
 
         for sys in systems:
-            obj, created = ShopItem.objects.get_or_create(
+            obj, created = EconomyShop.objects.get_or_create(
                 name=sys["name"], defaults=sys
             )
             if created:

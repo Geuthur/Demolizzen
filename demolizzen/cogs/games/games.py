@@ -15,7 +15,7 @@ from discord.ext import commands
 # Demolizzen
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models import BankAccount
+from demolizzen.models import UserBankAccount
 from demolizzen.utils.functions import application_cooldown
 
 
@@ -86,7 +86,7 @@ class Games(commands.Cog):
         server_id = ctx.guild.id
 
         try:
-            bank_account = await BankAccount.get(
+            bank_account = await UserBankAccount.get(
                 session=self.bot.sessionmaker(),
                 user_id=ctx.author.id,
                 guild_id=server_id,
@@ -181,7 +181,7 @@ class Games(commands.Cog):
         server_id = ctx.guild.id
 
         try:
-            bank_account = await BankAccount.get(
+            bank_account = await UserBankAccount.get(
                 session=self.bot.sessionmaker(),
                 user_id=ctx.author.id,
                 guild_id=server_id,

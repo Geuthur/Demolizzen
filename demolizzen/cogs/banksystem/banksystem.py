@@ -13,7 +13,7 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models import BankAccount, UserProfile
+from demolizzen.models import UserBankAccount, UserProfile
 
 
 class Bank(commands.Cog):
@@ -50,13 +50,13 @@ class Bank(commands.Cog):
     async def process_daily_interest(self):
         try:
             self.bot.logger.debug("Starting bank interest update...")
-            bank_accounts = [r async for r in BankAccount.objects.all()]
+            bank_accounts = [r async for r in UserBankAccount.objects.all()]
             items = []
             for account in bank_accounts:
                 interest = int(account.bank * self.earns)
                 account.bank += interest
                 items.append(account)
-            updated = await BankAccount.objects.abulk_update(items, fields=["bank"])
+            updated = await UserBankAccount.objects.abulk_update(items, fields=["bank"])
             if updated:
                 self.bot.logger.info(
                     f"Payout {len(items)} Accounts with {self.earns * 100}% interest."
@@ -78,7 +78,7 @@ class Bank(commands.Cog):
         )
 
         try:
-            await BankAccount.objects.acreate(user=user)
+            await UserBankAccount.objects.acreate(user=user)
         except IntegrityError as e:
             self.bot.logger.debug(f"IntegrityError: {e}")
             await ctx.respond(
@@ -109,7 +109,7 @@ class Bank(commands.Cog):
                 guild__guild_id=ctx.guild.id,
             )
             bank_account = user.bank_account
-        except BankAccount.DoesNotExist:
+        except UserBankAccount.DoesNotExist:
             await ctx.respond(
                 f"❌ {ctx.author.mention}, You do not have a bank account yet. Please create one using `/bank create`.",
                 ephemeral=True,
@@ -149,7 +149,7 @@ class Bank(commands.Cog):
                 guild__guild_id=ctx.guild.id,
             )
             bank_account = user.bank_account
-        except BankAccount.DoesNotExist:
+        except UserBankAccount.DoesNotExist:
             await ctx.respond(
                 f"❌ {ctx.author.mention}, You do not have a bank account yet. Please create one using `/bank create`.",
                 ephemeral=True,
@@ -188,7 +188,7 @@ class Bank(commands.Cog):
                 guild__guild_id=ctx.guild.id,
             )
             bank_account = user.bank_account
-        except BankAccount.DoesNotExist:
+        except UserBankAccount.DoesNotExist:
             await ctx.respond(
                 f"❌ {ctx.author.mention}, You do not have a bank account yet. Please create one using `/bank create`.",
                 ephemeral=True,
@@ -247,7 +247,7 @@ class Bank(commands.Cog):
                 ephemeral=True,
             )
             return
-        except BankAccount.DoesNotExist:
+        except UserBankAccount.DoesNotExist:
             await ctx.respond(
                 "❌ One of the bank accounts does not exist.",
                 ephemeral=True,

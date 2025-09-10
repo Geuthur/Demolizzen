@@ -79,7 +79,7 @@ class Economy(commands.Cog):
 
         try:
             assert user.bank_account
-        except models.BankAccount.DoesNotExist as exc:
+        except models.UserBankAccount.DoesNotExist as exc:
             raise commands.CheckFailure(
                 "Bank account does not exist. Please create one first. `/bank create`"
             ) from exc
@@ -122,7 +122,7 @@ class Economy(commands.Cog):
         gif_url = "https://hell-rider.de/static/images/discord/work-working.gif"
 
         # Init User Data
-        user_work, __ = await models.Working.objects.select_related(
+        user_work, __ = await models.UserWorkMission.objects.select_related(
             "user"
         ).aget_or_create(user=ctx.user_profile)
 
@@ -215,7 +215,7 @@ class Economy(commands.Cog):
         def sync_save():
             with transaction.atomic():
                 if user_work.salary is not None:
-                    bank_account: models.BankAccount = ctx.user_profile.bank_account
+                    bank_account: models.UserBankAccount = ctx.user_profile.bank_account
                     bank_account.wallet += payout
                     bank_account.save()
                 user_work.cooldown = timezone.now()
@@ -233,7 +233,7 @@ class Economy(commands.Cog):
         Collect your Daily Reward
         """
         try:
-            daily_account, __ = await models.Daily.objects.select_related(
+            daily_account, __ = await models.UserDailyReward.objects.select_related(
                 "user"
             ).aget_or_create(user=ctx.user_profile)
 
@@ -263,7 +263,7 @@ class Economy(commands.Cog):
             daily_account.last_claim = timezone.now()
             daily_reward = random.randrange(30) + (daily_account.streak * 5)
             # Update Bank Account
-            bank_account: models.BankAccount = ctx.user_profile.bank_account
+            bank_account: models.UserBankAccount = ctx.user_profile.bank_account
             bank_account.wallet += daily_reward
             await daily_account.asave()
             await bank_account.asave()
@@ -308,11 +308,11 @@ class Economy(commands.Cog):
             return
 
         if modus == "mining":
-            mission_account, __ = await models.MiningMission.objects.select_related(
+            mission_account, __ = await models.UserMiningMission.objects.select_related(
                 "user", "user__bank_account", "ship"
             ).aget_or_create(user=ctx.user_profile)
         elif modus == "raiding":
-            mission_account, __ = await models.RaidMission.objects.select_related(
+            mission_account, __ = await models.UserRaidMission.objects.select_related(
                 "user", "user__bank_account", "ship"
             ).aget_or_create(user=ctx.user_profile)
         else:
@@ -434,20 +434,20 @@ class Economy(commands.Cog):
         mission_account = None
         if modus == "mining":
             try:
-                mission_account = await models.MiningMission.objects.aget(
+                mission_account = await models.UserMiningMission.objects.aget(
                     user=ctx.user_profile
                 )
-            except models.MiningMission.DoesNotExist:
+            except models.UserMiningMission.DoesNotExist:
                 return await ctx.respond(
                     f"{ctx.author.mention}, You don't have a mining mission account yet. Please start a mining mission first.",
                     ephemeral=True,
                 )
         if modus == "raiding":
             try:
-                mission_account = await models.RaidMission.objects.aget(
+                mission_account = await models.UserRaidMission.objects.aget(
                     user=ctx.user_profile
                 )
-            except models.RaidMission.DoesNotExist:
+            except models.UserRaidMission.DoesNotExist:
                 return await ctx.respond(
                     f"{ctx.author.mention}, You don't have a raid mission account yet. Please start a raid mission first.",
                     ephemeral=True,
@@ -501,20 +501,20 @@ class Economy(commands.Cog):
                     f"{ctx.author.mention}, No Category Selected.",
                     ephemeral=True,
                 )
-        except models.MiningMission.DoesNotExist:
-            mission_account = await models.MiningMission.objects.select_related(
+        except models.UserMiningMission.DoesNotExist:
+            mission_account = await models.UserMiningMission.objects.select_related(
                 "user__bank_account"
             ).acreate(user=ctx.user_profile)
-        except models.RaidMission.DoesNotExist:
-            mission_account = await models.RaidMission.objects.select_related(
+        except models.UserRaidMission.DoesNotExist:
+            mission_account = await models.UserRaidMission.objects.select_related(
                 "user__bank_account"
             ).acreate(user=ctx.user_profile)
 
         async def buy_ship(
             item_name,
             category: str,
-            mission_account: models.MiningMission | models.RaidMission,
-            bank_account: models.BankAccount,
+            mission_account: models.UserMiningMission | models.UserRaidMission,
+            bank_account: models.UserBankAccount,
         ):
             try:
                 ship = await models.EconomyShip.objects.aget(
@@ -739,7 +739,7 @@ class Economy(commands.Cog):
                 "bank_account"
             ).aget(user_id=user.id, guild_id=server_id)
             assert gank_account.bank_account  # Ensure bank_account is loaded
-        except (models.UserProfile.DoesNotExist, models.BankAccount.DoesNotExist):
+        except (models.UserProfile.DoesNotExist, models.UserBankAccount.DoesNotExist):
             gank_account = None
 
         if gank_account is None:
@@ -775,7 +775,7 @@ class Economy(commands.Cog):
             f"notices {user_name} is AFK mining. As they get closer, {user_name} quickly lights a Cyno.",
         ]
 
-        bank_account: models.BankAccount = ctx.user_profile.bank_account
+        bank_account: models.UserBankAccount = ctx.user_profile.bank_account
 
         # Erfolgreicher Raid
         if random_chance <= 25:

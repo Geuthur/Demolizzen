@@ -26,7 +26,7 @@ class Shop(commands.Cog):
         self._shop = []
         self.title = "Shop"
         self.alias = "shop"
-        self._shop: list[models.ShopItem] = []
+        self._shop: list[models.EconomyShop] = []
         self.shop_data.start()
 
     shop = SlashCommandGroup(
@@ -50,7 +50,9 @@ class Shop(commands.Cog):
     async def fetch_shop_data(self):
         """Fetch shop data from the database."""
         self.bot.logger.debug("Fetch new Update shop data...")
-        item_data = [item async for item in models.ShopItem.objects.filter(active=True)]
+        item_data = [
+            item async for item in models.EconomyShop.objects.filter(active=True)
+        ]
         self._shop.clear()
         self._shop.extend(item_data)
 
@@ -212,8 +214,10 @@ class Shop(commands.Cog):
             user_profile: models.UserProfile,
         ):
             try:
-                shop_item = await models.ShopItem.objects.aget(name__iexact=item_name)
-            except models.ShopItem.DoesNotExist:
+                shop_item = await models.EconomyShop.objects.aget(
+                    name__iexact=item_name
+                )
+            except models.EconomyShop.DoesNotExist:
                 return [False, 1]  # Item not found
 
             try:
@@ -226,8 +230,8 @@ class Shop(commands.Cog):
                     user=user_profile
                 )
                 item = user_bag.items.get(item_name=item_name)
-            except models.BagItems.DoesNotExist:
-                item = await models.BagItems.objects.acreate(
+            except models.UserBagItems.DoesNotExist:
+                item = await models.UserBagItems.objects.acreate(
                     user_bag=user_profile.bags,
                     item_name=shop_item.name,
                     item_type=shop_item.shop_type,

@@ -13,5 +13,5 @@ class Command(BaseCommand):
         models.UserProfile.objects.all().delete()
         models.EconomyShip.objects.all().delete()
         models.EconomySolarSystem.objects.all().delete()
-        models.ShopItem.objects.all().delete()
+        models.EconomyShop.objects.all().delete()
         self.stdout.write(self.style.SUCCESS("All User related tables have been reset"))
