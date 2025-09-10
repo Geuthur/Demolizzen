@@ -1,51 +1,41 @@
-import logging
+# Standard Library
 import math
 import random
-from datetime import datetime, timedelta
 
+# Third Party
+from asgiref.sync import sync_to_async
+
+# Discord
 import discord
-from core import checks
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands
+from discord.ext import commands, tasks
 
-# Database
-from settings import db
+# Django
+from django.db import transaction
+from django.utils import timezone
 
-# Set Global Variable for Event Status
-from settings.config import EVENTS_SERVER
-from settings.functions import application_cooldown
-
-# Mission System
-from . import mission, missionfunc
-
-# Economy System
-from .settings import (
-    get_work2_text,
-    get_work_bonus_text,
-    get_work_end_text,
-    get_work_text,
-)
-
-log = logging.getLogger("main")
-log_events = logging.getLogger("events")
+# Demolizzen
+from demolizzen import models
+from demolizzen.config import EVENTS_SERVER
+from demolizzen.core import checks
+from demolizzen.core.bot import Demolizzen
 
 
-class Eco(commands.Cog):
-    """
-    All about economy
-    """
+# pylint: disable=too-many-public-methods
+class Economy(commands.Cog):
+    """All about economy"""
 
-    def __init__(self, bot):
+    # pylint: disable=import-outside-toplevel
+    # Demolizzen
+    from demolizzen.cogs.economy import missionfunc
+
+    def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.alias = "eco"
         self.title = "Economy"
-        self._shop = []
-        self._ship_chance = mission.ship_chance_var
-        self._ship_speed = mission.ship_speed_var
-
-        # Call the fetch_shop_data method when the class is initialized
-        self.shop_data = self.bot.loop.create_task(self.fetch_shop_data())
+        self._shop: list[models.EconomyShip] = []
+        self.shop_data.start()
 
     economy = SlashCommandGroup(
         "economy", "Text Adventure", contexts=[discord.InteractionContextType.guild]
@@ -53,6 +43,16 @@ class Eco(commands.Cog):
     mission = economy.create_subgroup(
         "mission", contexts=[discord.InteractionContextType.guild]
     )
+
+    # Update Shop every 2 Hours
+    @tasks.loop(minutes=120)
+    async def shop_data(self):
+        await self.fetch_ship_data()
+
+    @shop_data.before_loop
+    async def before_shop_data(self):
+        await self.bot.wait_until_ready()
+        self.bot.logger.info("Shop Data Fetcher Ready")
 
     def cog_unload(self):
         self.shop_data.cancel()
@@ -65,16 +65,33 @@ class Eco(commands.Cog):
             guild_id, (False, 0)
         )  # Standardwerte, falls das Event nicht vorhanden ist
 
-    async def fetch_shop_data(self):
-        await self.bot.wait_until_ready()
-        sql = "SELECT * FROM `eve_shop`"
-        shop_data = await db.select(sql, dictlist=True)
-        # Löschen Sie die vorhandenen Daten in self._shop
-        self._shop.clear()
-        # Fügen Sie die neuen Daten aus der Datenbank hinzu
-        self._shop.extend(shop_data)
+    async def cog_before_invoke(self, ctx: discord.ApplicationContext):
+        try:
+            user = await models.UserProfile.objects.select_related(
+                "bank_account", "bags", "raid_mission", "mining_mission"
+            ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
+            ctx.user_profile = user
+            self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
+        except models.UserProfile.DoesNotExist as exc:
+            raise commands.CheckFailure(
+                "UserProfile does not exist. Please register first. `/auth register`"
+            ) from exc
 
-    async def get_shop(self, ctx: discord.AutocompleteContext):
+        try:
+            assert user.bank_account
+        except models.UserBankAccount.DoesNotExist as exc:
+            raise commands.CheckFailure(
+                "Bank account does not exist. Please create one first. `/bank create`"
+            ) from exc
+
+    async def fetch_ship_data(self) -> list[models.EconomyShip]:
+        # Fetch shop data from the database and store it in self._shop.
+        self.bot.logger.debug("Updating ship data...")
+        ship_data = [item async for item in models.EconomyShip.objects.all()]
+        self._shop.clear()
+        self._shop.extend(ship_data)
+
+    async def get_shop(self, ctx: discord.AutocompleteContext) -> list[str]:
         """Returns a list of names that begin with the entered characters."""
         try:
             category = ctx.options["category"].lower()
@@ -85,67 +102,29 @@ class Eco(commands.Cog):
 
         # Filter items that start with the search term
         filtered_items = [
-            item["name"]
+            item.name
             for item in self._shop
-            if item["shop"] == category and search_term in item["name"].lower()
+            if item.category == category and search_term in item.name.lower()
         ]
 
         return filtered_items
 
-    async def db_connection(self, ctx: discord.ApplicationContext):
-        log.error("[Economy Work Command] DB Connection Problem")
-        em = discord.Embed(
-            color=discord.Color.red(),
-            description="❌ An error occurred, please try again later.",
-        )
-        await ctx.respond(embed=em, ephemeral=True, delete_after=10)
-        return
-
+    # pylint: disable=too-many-statements
     @economy.command()
     @checks.is_in_channel()
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 3 Mal alle 10 Minuten pro Benutzer
-    # pylint: disable=too-many-locals, too-many-branches, too-many-statements
     async def work(self, ctx: discord.ApplicationContext):
         """
         Go to work and let the coins flow.
         """
-        # await ctx.defer()
-
-        # Get Server-ID for further process
         server_id = ctx.guild.id
-        user_id = ctx.author.id
-        user = ctx.author
         username = ctx.author.name
         username = username.capitalize()
         gif_url = "https://hell-rider.de/static/images/discord/work-working.gif"
 
         # Init User Data
-        sql = "SELECT * FROM `working` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        val = {"user_id": user_id, "guild_id": server_id}
-        usersdata = await db.select_var(sql, val, single=True, dictlist=True)
-
-        # Init User Bank Data
-        sql = f"SELECT * FROM `bank` WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-        userbank = await db.select(sql, single=True, dictlist=True)
-
-        if usersdata is None:
-            usersdata = await db.create_user(user, server_id, "working")
-        elif usersdata is False:
-            await self.db_connection(ctx)
-            return
-
-        if userbank is None:
-            userbank = await db.create_user(user, server_id, "bank")
-        elif userbank is False:
-            await self.db_connection(ctx)
-            return
-
-        # Set All Database entrys
-        last_coin = int(usersdata["loan"])
-        userchance = usersdata["chance"]
-        usercooldown = usersdata["cooldown"]
+        user_work, __ = await models.UserWorkMission.objects.select_related(
+            "user"
+        ).aget_or_create(user=ctx.user_profile)
 
         if server_id in EVENTS_SERVER:
             events, event_factor = EVENTS_SERVER[server_id]
@@ -153,62 +132,44 @@ class Eco(commands.Cog):
             EVENTS_SERVER[server_id] = (False, 0)
             events, event_factor = EVENTS_SERVER[server_id]
 
-        bonus_text = get_work_bonus_text()
-        worktext = get_work_text()
-        worktext2 = get_work2_text()
-        workend = get_work_end_text()
-
         # Write Coin Reward
-        earnings = random.randrange(25, 75)
-
-        # Bonus Chance Calculator
-        bonus = random.randint(1, 100)
-        bonus_chance = 25
-        # Chance Calculator
+        payout = random.randrange(25, 75)
         chance = random.randint(1, 100)
-
-        # Write Report Bonus Coin Reward
-        reportbonus = random.randrange(10, 25)
+        # Get more if you play Adventure
+        escalation_payout = random.randrange(10, 25)
 
         # Timer Manager
-        cooldown_manager = missionfunc.CooldownManager(server_id)
-        await cooldown_manager.get_cooldown(ctx, "work", usercooldown)
+        remaining_time = await user_work.user.get_cooldown(
+            ctx=ctx,
+            ship_cooldown=timezone.timedelta(seconds=user_work.job_duration),
+            last_cooldown=user_work.cooldown,
+        )
+
+        # Generate Job Story
+        work_text, escalation_text, work_end_text = user_work.get_work_text_combined()
 
         # Set Timer Variables
-        delta = cooldown_manager.delta
-        timer = cooldown_manager.timer
-        cooldown = cooldown_manager.cooldown
+        delta = remaining_time.delta
+        timer = remaining_time.timer
+        remaining_time = remaining_time.cooldown
 
         if delta < timer:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You have already started working, come back in `{cooldown}`",
+                description=f"{ctx.author.mention}, You have already started working, come back in `{remaining_time}`",
             )
             await ctx.respond(embed=em)
             return
 
-        if last_coin == 0:
+        if user_work.salary is None:
             em = discord.Embed(
                 title="",
                 color=discord.Color.teal(),
-                description=f"{ctx.author.mention}, You are starting to work, your earnings are {earnings} :coin: Collect them later.",
+                description=f"{ctx.author.mention}, You are starting to work, come back in `{timer}`.",
             )
-            # Write Earn Coins
-            userwallet = +last_coin
-
         else:
-            # Set Report Bonus
-            if bonus <= bonus_chance:
-                last_coin += reportbonus
-            # Event Bonus Coin
-            if events is True:
-                eventdifference = last_coin
-                last_coin = math.ceil(last_coin * event_factor)
-                eventdifference = last_coin - eventdifference
-            # Summary Value Earn Coins
-            userwallet = +last_coin
-
+            # Generate Text Adventure
             em = discord.Embed(title="", color=discord.Color.teal(), description="")
             em.set_thumbnail(url=gif_url)
             em.add_field(
@@ -217,18 +178,22 @@ class Eco(commands.Cog):
                 inline=False,
             )
             em.add_field(
-                name="", value=f":rocket: {username},\n {worktext}", inline=False
+                name="", value=f":rocket: {username},\n {work_text}", inline=False
             )
-            em.add_field(
-                name="", value=f":rocket: {username},\n {worktext2}", inline=False
-            )
-            if bonus <= bonus_chance:
+            if escalation_text is not None:
                 em.add_field(
                     name="",
-                    value=f":rocket: {username}, 🌟**BONUS**🌟\n{bonus_text}",
+                    value=f":rocket: {username}, 🌟**BONUS**🌟\n{escalation_text}",
                     inline=False,
                 )
-            if events:
+                # Escalation Bonus
+                payout += escalation_payout
+            if events is True:
+                # Event Bonus Payout
+                eventdifference = payout
+                payout = math.ceil(payout * event_factor)
+                eventdifference = payout - eventdifference
+
                 em.add_field(
                     name="",
                     value=f"🎉**EVENT DAY**🎉\nYou notice that there has been an extra payout on your pay slip, and the amount is **`{eventdifference}`**:coin:",
@@ -236,133 +201,87 @@ class Eco(commands.Cog):
                 )
                 em.add_field(
                     name="",
-                    value=f":rocket: {username},\n {workend} **`{last_coin}`**:coin:!!",
+                    value=f":rocket: {username},\n {work_end_text} **`{payout}`**:coin:!!",
                     inline=False,
                 )
             else:
                 em.add_field(
                     name="",
-                    value=f":rocket: {username},\n {workend} {last_coin} :coin:",
+                    value=f":rocket: {username},\n {work_end_text} {payout} :coin:",
                     inline=False,
                 )
 
-        # Cooldown is written after this the Timer begins
-        usercooldown = str(datetime.now())
-        # Set Mining Chance
-        userchance = chance
-        # Set Reward
-        last_coin = earnings
+        # Save Data
+        def sync_save():
+            with transaction.atomic():
+                if user_work.salary is not None:
+                    bank_account: models.UserBankAccount = ctx.user_profile.bank_account
+                    bank_account.wallet += payout
+                    bank_account.save()
+                user_work.cooldown = timezone.now()
+                user_work.chance = chance
+                user_work.salary = payout
+                user_work.save()
 
-        if not last_coin == 0:
-            userbank["wallet"] += userwallet
-            earn = userbank["wallet"]
-            e_query = f"UPDATE bank SET `wallet` = {earn} WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-            await db.execute_sql(e_query)
-
-        l_query = f"UPDATE working SET `loan` = {last_coin}, `chance` = {userchance}, `cooldown` = '{usercooldown}' WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-        update = await db.execute_sql(l_query)
-
-        if update is False:
-            await self.db_connection(ctx)
-            return
-
-        await ctx.respond(embed=em)
-        return
-
-    @work.error
-    async def command_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
+        await sync_to_async(sync_save)()
+        return await ctx.respond(embed=em)
 
     @economy.command()
     @checks.is_in_channel()
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 3 Mal alle 10 Minuten pro Benutzer
     async def daily(self, ctx: discord.ApplicationContext):
         """
         Collect your Daily Reward
         """
-        # await ctx.defer()
+        try:
+            daily_account, __ = await models.UserDailyReward.objects.select_related(
+                "user"
+            ).aget_or_create(user=ctx.user_profile)
 
-        # Get Server-ID for further process
-        server_id = ctx.guild.id
-        user = ctx.author
-        user_id = ctx.author.id
+            # Timer Manager
+            remaining_time = await daily_account.user.get_cooldown(
+                ctx=ctx,
+                ship_cooldown=timezone.timedelta(days=1),
+                last_cooldown=daily_account.last_claim,
+            )
 
-        # Reads and Write the Daily
-        sql = "SELECT * FROM `daily` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        val = {"user_id": user_id, "guild_id": server_id}
-        users = await db.select_var(sql, val, single=True, dictlist=True)
+            delta = remaining_time.delta
+            cooldown = remaining_time.cooldown
 
-        # Init User Bank Data
-        sql = f"SELECT * FROM `bank` WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-        userbank = await db.select(sql, single=True, dictlist=True)
+            if delta < remaining_time.timer:
+                em = discord.Embed(
+                    title="",
+                    color=discord.Color.red(),
+                    description=f"{ctx.author.mention}, You have already collected your daily reward, wait a bit more `{cooldown}`",
+                )
+                await ctx.respond(embed=em)
+                return
 
-        if users is None:
-            users = await db.create_user(user, server_id, "daily")
-        elif users is False:
-            await self.db_connection(ctx)
-            return
+            # Set Daily Reward
+            # Streak: +1 wenn mehr als 24h vergangen, sonst 1
+            streak = daily_account.streak + 1 if delta > remaining_time.timer else 1
+            daily_account.streak = streak
+            daily_account.last_claim = timezone.now()
+            daily_reward = random.randrange(30) + (daily_account.streak * 5)
+            # Update Bank Account
+            bank_account: models.UserBankAccount = ctx.user_profile.bank_account
+            bank_account.wallet += daily_reward
+            await daily_account.asave()
+            await bank_account.asave()
 
-        if userbank is None:
-            userbank = await db.create_user(user, server_id, "bank")
-        elif userbank is False:
-            await self.db_connection(ctx)
-            return
-
-        # Get User Streak
-        streak = users["streak"]
-        usercooldown = users["last_claim"]
-
-        # Timer Manager
-        cooldown_manager = missionfunc.CooldownManager(server_id)
-        await cooldown_manager.get_cooldown(ctx, "daily", usercooldown)
-
-        delta = cooldown_manager.delta
-        cooldown = cooldown_manager.cooldown
-
-        if delta < timedelta(hours=24):
+            # Send Response
             em = discord.Embed(
                 title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You have already collected your daily reward, wait a bit more `{cooldown}`",
+                color=discord.Color.teal(),
+                description=f"{ctx.author.mention}, **{streak}** At once. Here is your daily reward of {daily_reward}:coin:",
             )
+
             await ctx.respond(embed=em)
-            return
-
-        streak += 1
-        if delta > timedelta(hours=48):
-            streak = 1
-        daily = random.randrange(30) + (streak * 5)
-
-        userbank["wallet"] += daily
-        earn = userbank["wallet"]
-
-        usercooldown = str(datetime.now())
-
-        # Save Data
-        sql_query = [
-            f"UPDATE daily SET `last_claim` = '{usercooldown}', `streak` = {streak} WHERE `user_id` = {user_id} AND `guild_id` = {server_id}",
-            f"UPDATE bank SET `wallet` = {earn} WHERE `user_id` = {user_id} AND `guild_id` = {server_id}",
-        ]
-        sql_query = [query for query in sql_query if query is not None]
-
-        update = await db.executemany_sql(sql_query)
-        if update is False:
-            await self.db_connection(ctx)
-            return
-
-        em = discord.Embed(
-            title="",
-            color=discord.Color.teal(),
-            description=f"{ctx.author.mention}, **{streak}** At once. Here is your daily reward of {daily}:coin:",
-        )
-        await ctx.respond(embed=em)
+        except Exception as e:
+            self.bot.logger.exception(f"Error in daily command: {e}")
+            await ctx.respond(
+                "An error occurred while processing your command. Please try again later."
+            )
         return
-
-    @daily.error
-    async def daily_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
 
     # ---------------------------- Mission ----------------------------
     # ---------------------------- Mission ----------------------------
@@ -370,25 +289,14 @@ class Eco(commands.Cog):
 
     @mission.command(name="start")
     @checks.is_in_channel()
-    # @commands.cooldown(5, 600, commands.BucketType.user)  # 3 Mal alle 10 Minuten pro Benutzer
     @option("action", description="Choose Mission", choices=["Mining", "Raiding"])
-    # pylint: disable=too-many-statements, too-many-locals
-    async def missionevent(self, ctx: discord.ApplicationContext, action: str):
-        # start = time.time()
+    async def missionevent(
+        self, ctx: discord.ApplicationContext, action: str
+    ):  # pylint: disable=too-many-statements
         """
         Start a Mission - to earn coins
         """
-        # await ctx.defer()
-
-        # Get Server-ID for further process
-        server_id = ctx.guild_id
-        user_id = ctx.author.id
-        user = ctx.author
-        username = ctx.author.name
-        username = username.capitalize()
-
         modus = action.lower()
-        # print(f"task init done - {time.time() - start}")
 
         if modus not in ("mining", "raiding"):
             em = discord.Embed(
@@ -399,165 +307,175 @@ class Eco(commands.Cog):
             await ctx.respond(embed=em)
             return
 
-        # Init all important data
-        sql = f"SELECT * FROM `{modus}` WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-        usersdata = await db.select(sql, single=True, dictlist=True)
-
-        if usersdata is None:
-            usersdata = await db.create_user(user, server_id, f"{modus}")
-        elif usersdata is False:
-            await self.db_connection(ctx)
+        if modus == "mining":
+            mission_account, __ = await models.UserMiningMission.objects.select_related(
+                "user", "user__bank_account", "ship"
+            ).aget_or_create(user=ctx.user_profile)
+        elif modus == "raiding":
+            mission_account, __ = await models.UserRaidMission.objects.select_related(
+                "user", "user__bank_account", "ship"
+            ).aget_or_create(user=ctx.user_profile)
+        else:
+            em = discord.Embed(
+                title="",
+                color=discord.Color.red(),
+                description=f"{ctx.author.mention}, No mission selected.",
+            )
+            await ctx.respond(embed=em)
             return
 
-        # Init User Bank Data
-        sql = f"SELECT * FROM `bank` WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-        userbank = await db.select(sql, single=True, dictlist=True)
-
-        if userbank is None:
-            userbank = await db.create_user(user, server_id, "bank")
-        elif userbank is False:
-            await self.db_connection(ctx)
+        if mission_account.ship is None:
+            em = discord.Embed(
+                title="",
+                color=discord.Color.red(),
+                description=f"{ctx.author.mention}, You don't have a ship yet. \nYou can buy a ship with `/mission buy`. \nGet information about available ships with `/price`.",
+            )
+            await ctx.respond(embed=em)
             return
 
-        # print(f"task check user done - {time.time() - start}")
-        # Set All Database entrys
-        last_coin = int(usersdata["loan"])
-        userschiff = usersdata["schiff"]
-        userchance = usersdata["chance"]
-        usercooldown = usersdata["cooldown"]
-        usertype = usersdata["type"]
-
-        # Chance Calculator
-        chance = random.randint(1, 100)
-        # Get Mining Data
-        ship_coin_var = mission.generate_ship_coin_var()
-        # Get User Data
-        mining = ship_coin_var.get(usersdata["type"])
-
+        # Calculate Payout
+        earning = random.randrange(10, 30)
+        payout_bonus = mission_account.ship.payout_bonus
+        payout = earning + payout_bonus
+        # Calculate Success Chance
+        random_chance = random.randint(1, 30)
+        ship_success_bonus = mission_account.ship.success_bonus
+        success_chance = random_chance + ship_success_bonus
         # Timer Manager
-        cooldown_manager = missionfunc.CooldownManager(server_id)
-        await cooldown_manager.get_cooldown(ctx, usertype, usercooldown)
-
-        delta = cooldown_manager.delta
-        timer = cooldown_manager.timer
-        cooldown = cooldown_manager.cooldown
+        cooldown_info = await mission_account.user.get_cooldown(
+            ctx,
+            timezone.timedelta(seconds=mission_account.ship.ship_speed),
+            mission_account.cooldown,
+        )
 
         # Get Adventure Data
-        schiff = mission.get_random_ship(modus)
-        system = mission.get_random_system()
-        story_information = mission.get_story_information(modus)
+        system = await models.EconomySolarSystem.objects.order_by("?").afirst()
+        anomaly_text, story_text, interaction_text = mission_account.get_story()
 
-        # Get Text Adventure
-        anomalie_text = mission.get_anomalie_text()
-        story_text = mission.get_story_text(modus, story_information)
-
-        # Interaction Text
-        event_interction = mission.get_interaction_text_mining(modus)
-
-        # print(f"task init mission data done - {time.time() - start}")
-
-        if delta < timer:
+        if cooldown_info.delta < cooldown_info.timer:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You are still on your way; come back in **`{cooldown}`**",
+                description=f"{ctx.author.mention}, You are still on your way; come back in **`{cooldown_info.cooldown}`**",
             )
-            await ctx.respond(embed=em)
+            await ctx.respond(embed=em, ephemeral=True)
             return
 
-        if userschiff == "0":
-            em = discord.Embed(
-                title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have a ship yet. \nYou can buy a ship with `/buy`. \nGet information about available ships with `/price`.",
-            )
-            await ctx.respond(embed=em)
-            return
-
-        if last_coin == 0:
+        if mission_account.salary is None:
             em = discord.Embed(
                 title="",
                 color=discord.Color.teal(),
                 description=f"{ctx.author.mention}, You are starting your mission. You can view the report once you return from your mission.",
             )
-            # Write Earn Coins
-            userwallet = +last_coin
-            # Cooldown is written after this the Timer begins
-            usercooldown = str(datetime.now())
-            # Set Mining Chance
-            userchance = chance
-            # Set Reward
-            last_coin = mining
 
-            if not last_coin == 0:
-                userbank["wallet"] += userwallet
-                earn = userbank["wallet"]
-                e_query = f"UPDATE bank SET `wallet` = {earn} WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-                await db.execute_sql(e_query)
-
-            l_query = f"UPDATE {modus} SET `loan` = {last_coin}, `chance` = {userchance}, `cooldown` = '{usercooldown}' WHERE `user_id` = {user_id} AND `guild_id` = {server_id}"
-            update = await db.execute_sql(l_query)
-
-            if update is False:
-                await self.db_connection(ctx)
-                return
-
-            await ctx.respond(embed=em)
-            return
+            mission_account.cooldown = timezone.now()
+            mission_account.chance = success_chance
+            mission_account.salary = payout
+            mission_account.active = True
+            await mission_account.asave()
+            return await ctx.respond(embed=em)
 
         if modus == "raiding":
             components = [
-                missionfunc.MissionComponent("Attack", discord.ButtonStyle.danger),
-                missionfunc.MissionComponent("Warp Out", discord.ButtonStyle.green),
+                self.missionfunc.MissionComponent("Attack", discord.ButtonStyle.danger),
+                self.missionfunc.MissionComponent(
+                    "Warp Out", discord.ButtonStyle.green
+                ),
             ]
         else:
             components = [
-                missionfunc.MissionComponent("Attack", discord.ButtonStyle.danger),
-                missionfunc.MissionComponent("Warp Out", discord.ButtonStyle.green),
-                missionfunc.MissionComponent("Cyno", discord.ButtonStyle.blurple),
+                self.missionfunc.MissionComponent("Attack", discord.ButtonStyle.danger),
+                self.missionfunc.MissionComponent(
+                    "Warp Out", discord.ButtonStyle.green
+                ),
+                self.missionfunc.MissionComponent("Cyno", discord.ButtonStyle.blurple),
             ]
 
         em = discord.Embed(title="", color=discord.Color.teal())
         em.add_field(
             name="",
-            value=f":rocket: {username},\n You are flying with your **`{userschiff}`** into the system **`{system}`**.",
+            value=f":rocket: {ctx.author.display_name},\n You are flying with your **`{mission_account.ship.name}`** into the system **`{system if system else 'Unknown'}`**.",
             inline=False,
         )
         em.add_field(
             name="",
-            value=f":rocket: {username},\n {anomalie_text}",
+            value=f":rocket: {ctx.author.display_name},\n {anomaly_text}",
             inline=False,
-        )
-        em.add_field(
-            name="", value=f":rocket: {username},\n {story_text}", inline=False
         )
         em.add_field(
             name="",
-            value=f":rocket: {username},\n {event_interction}",
+            value=f":rocket: {ctx.author.display_name},\n {story_text}",
             inline=False,
         )
+        em.add_field(
+            name="",
+            value=f":rocket: {ctx.author.display_name},\n {interaction_text}",
+            inline=False,
+        )
+        mission_account.active = True
         await ctx.response.send_message(embed=em)
         await ctx.send(
-            view=missionfunc.MissionEvent(
+            view=self.missionfunc.MissionEvent(
                 components=components,
                 ctx=ctx,
-                data=usersdata,
-                modus=modus,
-                story=story_information,
-                schiff=schiff,
+                mission_account=mission_account,
             )
         )
         return
 
-    @missionevent.error
-    async def mission_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
+    @mission.command(name="cancel")
+    @checks.is_in_channel()
+    @option("action", description="Choose Mission", choices=["Mining", "Raiding"])
+    async def mission_cancel(self, ctx: discord.ApplicationContext, action: str):
+        """
+        Cancel an active Mission
+        """
+        modus = action.lower()
+        mission_account = None
+        if modus == "mining":
+            try:
+                mission_account = await models.UserMiningMission.objects.aget(
+                    user=ctx.user_profile
+                )
+            except models.UserMiningMission.DoesNotExist:
+                return await ctx.respond(
+                    f"{ctx.author.mention}, You don't have a mining mission account yet. Please start a mining mission first.",
+                    ephemeral=True,
+                )
+        if modus == "raiding":
+            try:
+                mission_account = await models.UserRaidMission.objects.aget(
+                    user=ctx.user_profile
+                )
+            except models.UserRaidMission.DoesNotExist:
+                return await ctx.respond(
+                    f"{ctx.author.mention}, You don't have a raid mission account yet. Please start a raid mission first.",
+                    ephemeral=True,
+                )
+        if modus not in ("mining", "raiding"):
+            return await ctx.respond(
+                f"{ctx.author.mention}, You haven't selected a `Mission`",
+                ephemeral=True,
+            )
+        if mission_account is None or mission_account.active is False:
+            return await ctx.respond(
+                f"{ctx.author.mention}, You don't have an active mission to cancel.",
+                ephemeral=True,
+            )
+
+        # Cancel the active mission
+        mission_account.active = False
+        mission_account.cooldown = None
+        mission_account.chance = None
+        mission_account.salary = None
+        await mission_account.asave()
+
+        return await ctx.respond(
+            f"{ctx.author.mention}, Your active mission for **`{modus}`** has been canceled."
+        )
 
     @mission.command()
     @checks.is_in_channel()
-    @commands.cooldown(
-        10, 600, commands.BucketType.user
-    )  # 10 Mal alle 10 Minuten pro Benutzer
     @option(
         "category",
         description="Shows the items in the store",
@@ -568,80 +486,99 @@ class Eco(commands.Cog):
         description="Get more information about a specific item",
         autocomplete=get_shop,
     )
-    async def buy(self, ctx, category: str, item: str):
+    async def buy(self, ctx: discord.ApplicationContext, category: str, item: str):
         """
         Buy a specific Ship for Mission Event
         """
-        em = discord.Embed(
-            title="",
-            color=discord.Color.teal(),
-            description=f"{ctx.author.mention}, You haven't selected a category",
-        )
-
-        server_id = ctx.guild.id
-        if category in ("Mining", "Raiding"):
-            res_raid = None
+        try:
+            bank_account = ctx.user_profile.bank_account
             if category == "Mining":
-                res_raid = await missionfunc.buy_system(
-                    ctx.author, item, server_id, "mining"
-                )
+                mission_account = ctx.user_profile.mining_mission
             elif category == "Raiding":
-                res_raid = await missionfunc.buy_system(
-                    ctx.author, item, server_id, "raiding"
+                mission_account = ctx.user_profile.raid_mission
+            else:
+                return await ctx.respond(
+                    f"{ctx.author.mention}, No Category Selected.",
+                    ephemeral=True,
                 )
+        except models.UserMiningMission.DoesNotExist:
+            mission_account = await models.UserMiningMission.objects.select_related(
+                "user__bank_account"
+            ).acreate(user=ctx.user_profile)
+        except models.UserRaidMission.DoesNotExist:
+            mission_account = await models.UserRaidMission.objects.select_related(
+                "user__bank_account"
+            ).acreate(user=ctx.user_profile)
 
-            if res_raid[0]:
+        async def buy_ship(
+            item_name,
+            category: str,
+            mission_account: models.UserMiningMission | models.UserRaidMission,
+            bank_account: models.UserBankAccount,
+        ):
+            try:
+                ship = await models.EconomyShip.objects.aget(
+                    name__iexact=item_name, category=category.lower()
+                )
+            except models.EconomyShip.DoesNotExist:
+                response = [False, 1]  # Item not found
+
+            if mission_account.ship == ship.name:
+                response = [False, 2]  # Item already owned
+
+            def check_bill():
+                with transaction.atomic():
+                    mission_account.ship = ship
+                    if bank_account.wallet >= ship.price:
+                        bank_account.wallet -= ship.price
+                        bank_account.save()
+                        mission_account.save()
+                        return True
+                    return False
+
+            purchased = await sync_to_async(check_bill)()
+            if purchased:
+                response = [True, 0]
+            else:
+                response = [False, 3]  # Benutzer hat nicht genug Geld
+
+            if response[0] is True:
                 em = discord.Embed(
                     title="",
                     color=discord.Color.teal(),
                     description=f"{ctx.author.mention}, Buys a **`{item}`**",
                 )
             else:
-                # pylint disable=duplication-code
-                if res_raid[1] == 1:
+                if response[1] == 1:
                     em = discord.Embed(
                         title="",
                         color=discord.Color.red(),
                         description=f"{ctx.author.mention}, The item `{item}` was not found!",
                     )
-                if res_raid[1] == 2:
+                elif response[1] == 2:
                     em = discord.Embed(
                         title="",
                         color=discord.Color.red(),
                         description=f"{ctx.author.mention}, You already own the Ship **`{item}`**",
                     )
-                if res_raid[1] == 3:
+                elif response[1] == 3:
                     em = discord.Embed(
                         title="",
                         color=discord.Color.red(),
                         description=f"{ctx.author.mention}, You don't have enough :coin: to buy **`{item}`**",
                     )
-                if res_raid[1] == 4:
+                else:
                     em = discord.Embed(
                         title="",
                         color=discord.Color.red(),
-                        description=f"{ctx.author.mention}, The database server seems unresponsive; please try again later.",
-                    )
-                if res_raid[1] == 5:
-                    em = discord.Embed(
-                        title="",
-                        color=discord.Color.red(),
-                        description=f"{ctx.author.mention}, You don't have a bank account to make a purchase.",
+                        description=f"{ctx.author.mention}, An unknown error occurred.",
                     )
             await ctx.respond(embed=em)
-            return
 
-        await ctx.respond(embed=em)
-
-    @buy.error
-    async def buy_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
+        return await buy_ship(item, category, mission_account, bank_account)
 
     @mission.command(name="price")
     @checks.is_in_channel()
-    @commands.cooldown(
-        10, 600, commands.BucketType.user
-    )  # 10 Mal alle 10 Minuten pro Benutzer
     @option(
         "category",
         description="Shows the items in the store",
@@ -653,60 +590,131 @@ class Eco(commands.Cog):
         autocomplete=get_shop,
         required=False,
     )
-    async def shipprice(self, ctx, category: str, item=None):
+    async def shipprice(
+        self, ctx: discord.ApplicationContext, category: str, item=None
+    ):
         """
-        Get price information for specific Ship
+        Get price information for specific Ship (with pagination if needed)
         """
-        # await ctx.defer()
-        # pylint: disable=duplicate-code
-        if category in ("Mining", "Raiding"):
-            if item is None:
-                em = discord.Embed(
-                    title="Shop",
-                    color=discord.Color.teal(),
-                    description="Use `/eve mission price` `schiffname` to learn more about the item. Use. \n Use `/eve buy` `schiffname` to purchase the item. \n\n:money_with_wings: Here are the items:\n\n ",
-                )
-            else:
-                if item.capitalize() not in [item["name"] for item in self._shop]:
-                    em = discord.Embed(
-                        title="",
-                        color=discord.Color.red(),
-                        description=f"{ctx.author.mention}, The ship was not found!",
-                    )
-                    await ctx.respond(embed=em)
-                    return
-                em = discord.Embed(
-                    title="Shop - Item Description",
-                    color=discord.Color.teal(),
-                    description="",
-                )
-            for data in self._shop:
-                if data["shop"] == category.lower():
-                    name = data["name"]
-                    price = data["price"]
-                    desc = data["description"]
+        if category not in ("Mining", "Raiding"):
+            return await ctx.respond(
+                f"{ctx.author.mention}, Invalid category.", ephemeral=True
+            )
 
+        # Einzelnes Item anzeigen
+        if item is not None:
+            if item.capitalize() not in [item.name for item in self._shop]:
+                em = discord.Embed(
+                    title="",
+                    color=discord.Color.red(),
+                    description=f"{ctx.author.mention}, The ship was not found!",
+                )
+                await ctx.respond(embed=em)
+                return
+            em = discord.Embed(
+                title="Shop - Item Description",
+                color=discord.Color.teal(),
+                description="",
+            )
+            for data in self._shop:
+                if data.category == category.lower():
+                    name = data.name
+                    price = data.price
+                    desc = data.description
                     if item and item != name or item == name.lower():
                         continue
-
                     em.add_field(
                         name=f"\n\n {name} - :coin: {price}",
                         value=desc,
                         inline=False,
                     )
-
             await ctx.respond(embed=em)
             return
 
-    @shipprice.error
-    async def shipprice_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
+        # Pagination für alle Schiffe der Kategorie
+        items_per_page = 10
+        fields = []
+        for data in self._shop:
+            if data.category == category.lower():
+                name = data.name
+                price = data.price
+                desc = data.description
+                fields.append((name, price, desc))
+
+        total_pages = (len(fields) + items_per_page - 1) // items_per_page
+
+        def get_embed(page: int):
+            em = discord.Embed(
+                title=f"Shop (Seite {page + 1}/{total_pages})",
+                color=discord.Color.teal(),
+                description="Use `/eve mission price` `schiffname` to learn more about the item. Use. \n Use `/eve buy` `schiffname` to purchase the item. \n\n:money_with_wings: Here are the items:\n\n ",
+            )
+            for name, price, desc in fields[
+                page * items_per_page : (page + 1) * items_per_page
+            ]:
+                em.add_field(
+                    name=f"\n\n {name} - :coin: {price}",
+                    value=desc,
+                    inline=False,
+                )
+            return em
+
+        class ShipPaginator(discord.ui.View):
+            def __init__(self, author_id, timeout=60):
+                super().__init__(timeout=timeout)
+                self.page = 0
+                self.author_id = author_id
+
+            async def interaction_check(self, interaction: discord.Interaction) -> bool:
+                return interaction.user.id == self.author_id
+
+            @discord.ui.button(label="⏮️", style=discord.ButtonStyle.secondary)
+            async def first(self, __, interaction: discord.Interaction):
+                self.page = 0
+                await interaction.response.edit_message(
+                    embed=get_embed(self.page), view=self
+                )
+
+            @discord.ui.button(label="◀️", style=discord.ButtonStyle.primary)
+            async def prev(self, __, interaction: discord.Interaction):
+                if self.page > 0:
+                    self.page -= 1
+                    await interaction.response.edit_message(
+                        embed=get_embed(self.page), view=self
+                    )
+                else:
+                    await interaction.response.defer()
+
+            @discord.ui.button(label="▶️", style=discord.ButtonStyle.primary)
+            async def next(self, __, interaction: discord.Interaction):
+                if self.page < total_pages - 1:
+                    self.page += 1
+                    await interaction.response.edit_message(
+                        embed=get_embed(self.page), view=self
+                    )
+                else:
+                    await interaction.response.defer()
+
+            @discord.ui.button(label="⏭️", style=discord.ButtonStyle.secondary)
+            async def last(self, __, interaction: discord.Interaction):
+                self.page = total_pages - 1
+                await interaction.response.edit_message(
+                    embed=get_embed(self.page), view=self
+                )
+
+            @discord.ui.button(label="❌", style=discord.ButtonStyle.danger)
+            async def close(self, __, interaction: discord.Interaction):
+                await interaction.message.delete()
+
+        view = ShipPaginator(ctx.author.id)
+        await ctx.respond(embed=get_embed(0), view=view)
+        return
 
     @mission.command()
     @checks.is_in_channel()
-    @commands.cooldown(1, 1800, commands.BucketType.user)
+    @commands.cooldown(1, 300, commands.BucketType.user)
     @option("user", description="Wähle User")
-    async def gank(self, ctx, user: discord.Member):
+    async def gank(self, ctx: discord.ApplicationContext, user: discord.Member):
         """
         Engage a target member and attempt to steal their coins.
 
@@ -722,29 +730,27 @@ class Eco(commands.Cog):
         str
             A message indicating the outcome of the attempted theft.
         """
-        # await ctx.defer()
-
         # Get Information for further process
         server_id = ctx.guild.id
         author = ctx.author.name.capitalize()
 
-        # Opfer
-        sql = f"SELECT * FROM `bank` WHERE `user_id` = {user.id} AND `guild_id` = {server_id}"
-        baluser = await db.select(sql, single=True, dictlist=True)
+        try:
+            gank_account = await models.UserProfile.objects.select_related(
+                "bank_account"
+            ).aget(user_id=user.id, guild_id=server_id)
+            assert gank_account.bank_account  # Ensure bank_account is loaded
+        except (models.UserProfile.DoesNotExist, models.UserBankAccount.DoesNotExist):
+            gank_account = None
 
-        # Angreifer
-        sql = f"SELECT * FROM `bank` WHERE `user_id` = {ctx.author.id} AND `guild_id` = {server_id}"
-        balauthor = await db.select(sql, single=True, dictlist=True)
-
-        if not baluser or not balauthor:
-            await ctx.respond("You or He hasn't a Bank Account...", delete_after=10)
+        if gank_account is None:
+            await ctx.respond("He hasn't a Bank Account...", ephemeral=True)
             return
 
         # Embed create
         em = discord.Embed(title="", color=discord.Color.teal(), description="")
         em.add_field(
             name="",
-            value=f":rocket: {ctx.author.mention} versucht gerade {user.mention} zu Ganken!",
+            value=f":rocket: {ctx.author.mention} tries to gank {user.mention}!",
             inline=False,
         )
 
@@ -753,26 +759,28 @@ class Eco(commands.Cog):
         amount = random.randint(1, 10)
 
         user_name = user.display_name.capitalize()
-        # Text Adventure
+        # Text Adventure (English)
         ganktext = [
-            "nähert sich und beginnt erfolgreich zu scramblen!",
-            "warpt heran und eröffnet das Feuer auf sein Ziel.",
-            "wird überrascht, nachdem er aufgeschaltet und gepunktet wurde. Dann verlässt er das Schiff frustriert...",
-            f"entdeckt {user_name}, der AFK beim Minern ist, und schießt auf sein Schiff. Es explodiert...",
+            "approaches and successfully starts scrambling!",
+            "warps in and opens fire on the target.",
+            "is surprised after being locked and pointed. Then leaves the ship frustrated...",
+            f"spots {user_name}, who is AFK mining, and shoots their ship. It explodes...",
         ]
 
-        # Textabenteuer
+        # Text Adventure (English, failed raid)
         ganktext2 = [
-            f"nähert sich und wird sofort von {user_name} beschossen!",
-            f"warpt zu {user_name} und stellt fest, dass der local komplett rot aufblobbt...",
-            f"überrascht {user_name}, ahnt jedoch nicht, dass {user_name} in einem Titan sitzt 💣.",
-            f"bemerkt, dass {user_name} beim Minern AFK ist. Als er näher kommt, zieht {user_name} blitzschnell ein Cyno.",
+            f"approaches and is immediately shot at by {user_name}!",
+            f"warps to {user_name} and realizes local is full of reds...",
+            f"surprises {user_name}, but doesn't realize {user_name} is sitting in a Titan 💣.",
+            f"notices {user_name} is AFK mining. As they get closer, {user_name} quickly lights a Cyno.",
         ]
+
+        bank_account: models.UserBankAccount = ctx.user_profile.bank_account
 
         # Erfolgreicher Raid
         if random_chance <= 25:
             # Überprüfen, ob der Benutzer genug Geld hat
-            if baluser["wallet"] < amount:
+            if gank_account.bank_account.wallet < amount:
                 em.add_field(
                     name="",
                     value=f":rocket: {author} " + random.choice(ganktext) + "",
@@ -780,28 +788,21 @@ class Eco(commands.Cog):
                 )
                 em.add_field(
                     name="",
-                    value=f":rocket: {author} lootet das wrack und stellt fest das es leer ist...",
+                    value=f":rocket: {author} loots the wreck and finds it empty...",
                     inline=False,
                 )
                 await ctx.respond(embed=em)
                 return
 
             # Attempt to update both balances
-            new_user_balance = baluser["wallet"] - amount
-            new_author_balance = balauthor["wallet"] + amount
+            def gank_transaction():
+                with transaction.atomic():
+                    gank_account.bank_account.wallet -= amount
+                    bank_account.wallet += amount
+                    gank_account.bank_account.save()
+                    bank_account.save()
 
-            sql_query = [
-                f"UPDATE bank SET `wallet` = {new_user_balance} WHERE `user_id` = {user.id} AND `guild_id` = {server_id}",
-                f"UPDATE bank SET `wallet` = {new_author_balance} WHERE `user_id` = {ctx.author.id} AND `guild_id` = {server_id}",
-            ]
-            sql_query = [query for query in sql_query if query is not None]
-
-            bank = await db.executemany_sql(sql_query)
-
-            if bank is False:
-                await ctx.respond(
-                    "Es ist ein Fehler aufgetreten bitte versuch es später erneut."
-                )
+            sync_to_async(gank_transaction)()
 
             em.add_field(
                 name="",
@@ -810,40 +811,30 @@ class Eco(commands.Cog):
             )
             em.add_field(
                 name="",
-                value=f":rocket: {author} hat {amount}:coin: erbeutet!",
+                value=f":rocket: {author} has looted {amount}:coin:!",
                 inline=False,
             )
-            await ctx.respond(embed=em)
-            return
+            return await ctx.respond(embed=em)
 
         # Mißlungerner Raid
         if random_chance <= 70:
             # Überprüfen, ob der Benutzer genug Geld hat
-            if balauthor["wallet"] < amount:
+            if bank_account.wallet < amount:
                 em.add_field(
                     name="",
-                    value=f":rocket: {author} du bist pleite... geh wieder arbeiten...",
+                    value=f":rocket: {author} you are broke... go back to work...",
                     inline=False,
                 )
-                await ctx.respond(embed=em)
-                return
+                return await ctx.respond(embed=em)
 
-            # Attempt to update both balances
-            new_user_balance = baluser["wallet"] + amount
-            new_author_balance = balauthor["wallet"] - amount
+            def gank_fail_transaction():
+                with transaction.atomic():
+                    bank_account.wallet -= amount
+                    gank_account.bank_account.wallet += amount
+                    bank_account.save()
+                    gank_account.bank_account.save()
 
-            sql_query = [
-                f"UPDATE bank SET `wallet` = {new_user_balance} WHERE `user_id` = {user.id} AND `guild_id` = {server_id}",
-                f"UPDATE bank SET `wallet` = {new_author_balance} WHERE `user_id` = {ctx.author.id} AND `guild_id` = {server_id}",
-            ]
-            sql_query = [query for query in sql_query if query is not None]
-
-            bank = await db.executemany_sql(sql_query)
-
-            if bank is False:
-                await ctx.respond(
-                    "Es ist ein Fehler aufgetreten bitte versuch es später erneut."
-                )
+            await sync_to_async(gank_fail_transaction)()
 
             em.add_field(
                 name="",
@@ -852,7 +843,7 @@ class Eco(commands.Cog):
             )
             em.add_field(
                 name="",
-                value=f":rocket: {author} hat {amount}:coin: verloren!",
+                value=f":rocket: {author} has lost {amount}:coin:!",
                 inline=False,
             )
             await ctx.respond(embed=em)
@@ -860,15 +851,10 @@ class Eco(commands.Cog):
 
         em.add_field(
             name="",
-            value=f":rocket: {author} es tauchte ein Wurmloch auf und schickte dich in ein anderes System",
+            value=f":rocket: {author} a wormhole appeared and sent you to another system.",
             inline=False,
         )
-        await ctx.respond(embed=em)
-        return
-
-    @gank.error
-    async def gank_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
+        return await ctx.respond(embed=em)
 
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
@@ -878,63 +864,9 @@ class Eco(commands.Cog):
     # pylint: disable=duplicate-code
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
-        sql_daily = "INSERT INTO `daily` (`user_id`, `guild_id`, `user_name`) VALUES (:user_id, :guild_id, :user_name)"
-        sql_working = "INSERT INTO `working` (`user_id`, `guild_id`, `user_name`) VALUES (:user_id, :guild_id, :user_name)"
-        sql_raiding = "INSERT INTO `raiding` (`user_id`, `guild_id`, `user_name`) VALUES (:user_id, :guild_id, :user_name)"
-        sql_mining = "INSERT INTO `mining` (`user_id`, `guild_id`, `user_name`) VALUES (:user_id, :guild_id, :user_name)"
-
-        try:
-            newmembers = []
-            for member in guild.members:
-                if not member.bot:
-                    newmembers.append(
-                        {
-                            "user_id": member.id,
-                            "guild_id": member.guild.id,
-                            "user_name": str(member.display_name.capitalize()),
-                        }
-                    )
-                else:
-                    continue
-            sql_query = [query for query in newmembers if query is not None]
-            await db.executemany_var_sql(sql_daily, sql_query)
-            await db.executemany_var_sql(sql_working, sql_query)
-            await db.executemany_var_sql(sql_raiding, sql_query)
-            await db.executemany_var_sql(sql_mining, sql_query)
-            log_events.info("Create User - Economy - On Guild Join Completed")
-        # pylint: disable=broad-except
-        except Exception as e:
-            log.error(f"[Listener] On Guild Economy Join - {e}")
-            return
+        pass
 
     # on guild leave
     @commands.Cog.listener()
     async def on_guild_remove(self, guild):
-        sql_daily = (
-            "DELETE FROM `daily` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        )
-        sql_working = "DELETE FROM `working` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        sql_raiding = "DELETE FROM `raiding` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        sql_mining = (
-            "DELETE FROM `mining` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        )
-
-        try:
-            removemembers = []
-            for member in guild.members:
-                if not member.bot:
-                    removemembers.append(
-                        {"user_id": member.id, "guild_id": member.guild.id}
-                    )
-                else:
-                    continue
-            sql_query = [query for query in removemembers if query is not None]
-            await db.executemany_var_sql(sql_daily, sql_query)
-            await db.executemany_var_sql(sql_working, sql_query)
-            await db.executemany_var_sql(sql_raiding, sql_query)
-            await db.executemany_var_sql(sql_mining, sql_query)
-            log_events.info("Remove User - Economy - On Guild Remove Completed")
-        # pylint: disable=broad-except
-        except Exception as e:
-            log.error(f"[Listener] On Guild Economy Remove - {e}")
-            return
+        pass

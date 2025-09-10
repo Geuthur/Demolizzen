@@ -1,5 +1,5 @@
-from .economy import Eco
+from .economy import Economy
 
 
 def setup(bot):
-    bot.add_cog(Eco(bot))
+    bot.add_cog(Economy(bot))

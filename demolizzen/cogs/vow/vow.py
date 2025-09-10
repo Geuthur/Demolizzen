@@ -1,11 +1,12 @@
+# Standard Library
 import logging
 
+# Discord
 import discord
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 from discord.ext.pages import Paginator
 from discord.ui import Button, View
-from settings import db
 
 log = logging.getLogger("main")
 
@@ -114,36 +115,25 @@ class Vow(commands.Cog):
         view.add_item(button4)
         await ctx.respond("Was genau möchtest du wissen?", view=view)
 
-    @commands.slash_command(guild_ids=[476405195585355776])
-    @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 3 Mal alle 10 Minuten pro Benutzer
-    async def assets(self, ctx: discord.ApplicationContext):
-        """
-        Get Information about Corporation Sell Service
-        """
-        await ctx.defer()
+    # ---------------------------- Listener ----------------------------
+    # ---------------------------- Listener ----------------------------
+    # ---------------------------- Listener ----------------------------
 
-        vow_db = await db.get_db("vow")
-
-        assets = await db.select_var(
-            """
-            SELECT
-                a.*,
-                e.name AS eve_type_name
-            FROM
-                assets_assets a
-            JOIN
-                eveuniverse_evetype e ON a.eve_type_id = e.id
-            WHERE
-                a.location_flag = :flag
-                AND a.location_id = :location_id
-            """,
-            {"flag": "CorpSAG5", "location_id": 1042478386825},
-            single=False,
-            database=vow_db,
-            dictlist=True,
-        )
-
-        await self.get_assets_data(assets, ctx)
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        if member.guild.id in [self.access]:
+            channel = member.guild.get_channel(714908793351176319)
+            if channel is not None:
+                welcome_text = (
+                    f"**__Willkommen, {member.mention}!__**\n\n"
+                    "Schön, dass du zu uns gefunden hast.\n"
+                    "Um Berechtigung unseres Discord Servers zu erhalten, bitten wir dich um Folgendes:\n\n"
+                    "- Stelle dich kurz vor, damit wir wissen, wer du bist.\n"
+                    "- Logge dich mit deinem Hauptcharakter in unser [Auth-System](https://auth.voices-of-war.de/) ein.\n"
+                    "- Aktiviere anschließend den Discord-Service im Menüpunkt [Services](https://auth.voices-of-war.de/services/) um Berechtigungen zu erhalten.\n"
+                    "**Zusätzlich für Bewerber:**"
+                    "- Linke deinen Main Character im Dashboard über den CharLink damit der Bewerbungsprozess beschleunigt wird.\n\n"
+                    "Vielen Dank und viel Spaß auf unserem Server!\n\n"
+                    "*Hinweis: Nicht verifizierte Nutzer können nach einiger Zeit entfernt werden.*"
+                )
+                await channel.send(welcome_text)

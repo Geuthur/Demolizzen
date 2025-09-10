@@ -1,23 +1,28 @@
-import difflib
+# Standard Library
 import logging
-from datetime import datetime, timedelta
 
-import aiohttp
+# Discord
 import discord
-from core import checks
 from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 from discord.ui import InputText, Modal
-from settings import db
-from settings.functions import application_cooldown, format_number
+
+# Django
+from django.utils import timezone
+
+# Demolizzen
+from demolizzen import models
+from demolizzen.core import checks
+from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.autocomplete import search_items
+from demolizzen.utils.functions import application_cooldown, format_number
+from demolizzen.utils.pricehandler import PriceHandler
 
 log = logging.getLogger("main")
 
-# Load functions & settings
 
-
-class Eve(commands.Cog):
+class EveOnline(commands.Cog):
     """
     All EVE-Online relevant commands.
     """
@@ -27,59 +32,12 @@ class Eve(commands.Cog):
     )
 
     # pylint: disable=too-many-instance-attributes
-    def __init__(self, bot):
+    def __init__(self, bot: Demolizzen):
         self.bot = bot
-        self._eve_item_db = {}
         self.title = "EVEOnline"
         self.alias = "eve"
 
-        # Call the fetch_shop_data method when the class is initialized
-        self.item_db = bot.loop.create_task(self.fetch_item_db())
-
-    def cog_unload(self):
-        self.item_db.cancel()
-
-    async def fetch_item_db(self):
-        await self.bot.wait_until_ready()
-        if not self._eve_item_db:
-            sql = "SELECT typeID, typeName FROM invTypes"
-            results = await db.select(sql)
-            self._eve_item_db = {result[1]: result[0] for result in results}
-
-    async def get_items(self, ctx: discord.AutocompleteContext):
-        """Returns a list of items that begin with the entered characters."""
-        item_names = self._eve_item_db
-        search_term = ctx.value.lower()
-
-        # Filter items that start with the search term
-        filtered_items = [
-            item_name
-            for item_name, _ in item_names.items()
-            if search_term in item_name.lower()
-        ]
-
-        # Sort the filtered items based on similarity to the search term
-        sorted_items = sorted(
-            filtered_items,
-            key=lambda x: difflib.SequenceMatcher(None, x.lower(), search_term).ratio(),
-            reverse=True,
-        )
-
-        return sorted_items
-
-    async def db_connection(self, ctx: discord.ApplicationContext):
-        log.error("[Economy Work Command] DB Connection Problem")
-        em = discord.Embed(
-            color=discord.Color.red(),
-            description="❌ An error occurred, please try again later.",
-        )
-        await ctx.respond(embed=em, ephemeral=True, delete_after=10)
-        return
-
     class PriceListModal(Modal):
-        # pylint: disable=import-outside-toplevel
-        from .functions import PriceHandler
-
         def __init__(self, bot, tradehub, *args, **kwargs) -> None:
             kwargs.setdefault("title", "Enter a Supported Format")
             super().__init__(*args, **kwargs)
@@ -242,7 +200,7 @@ class Eve(commands.Cog):
     @option(
         "item_name",
         description="Get more information about a specific item",
-        autocomplete=get_items,
+        autocomplete=search_items,
     )
     @option(
         "tradehub",
@@ -272,149 +230,75 @@ class Eve(commands.Cog):
         Exception
             If no records are returned, an error is raised.
         """
-        await ctx.defer()
+        await ctx.trigger_typing()
 
-        expire_time_seconds = 600  # 10 Minuten in Sekunden
-        expiration = datetime.now() + timedelta(seconds=expire_time_seconds)
-        item_id = None
+        price_checker = PriceHandler(self.bot, ctx)
 
-        if not tradehub:
-            region = 60003760
-        else:
-            tradehub_dict = {
-                "Jita": 60003760,
-                "Amarr": 60008494,
-                "Dodixie": 60011866,
-                "Rens": 60004588,
-                "Hek": 60005686,
-                "Delve": 10000060,
-            }
-            region = tradehub_dict.get(tradehub)
+        # Map lowercase tradehub input to the correct TradehubChoices value
+        tradehub_map = {
+            "jita": models.EvePricecache.TradehubChoices.JITA,
+            "amarr": models.EvePricecache.TradehubChoices.AMARR,
+            "dodixie": models.EvePricecache.TradehubChoices.DODIXIE,
+            "rens": models.EvePricecache.TradehubChoices.RENS,
+            "hek": models.EvePricecache.TradehubChoices.HEK,
+            "alliance": models.EvePricecache.TradehubChoices.ALLIANCE,
+        }
+        tradehub_key = tradehub.lower() if tradehub else "jita"
+        tradehub_choice = tradehub_map.get(
+            tradehub_key, models.EvePricecache.TradehubChoices.JITA
+        )
 
-        if item_name in self._eve_item_db:
-            item_id = self._eve_item_db[item_name]
+        # Embed erstellen
+        em = discord.Embed(
+            title=f"Tradehub: **{tradehub_choice}**",
+            color=discord.Color.teal(),
+            description=f"**{item_name}**",
+        )
+        max_price = 0
+        buy_price = 0
 
-        async def fuzzwork(region, item_id):
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://market.fuzzwork.co.uk/aggregates/?station={region}&types={item_id}"
-                ) as r:
-                    if r.status == 200:
-                        response = await r.json()
+        # Prüfen, ob der Eintrag in der Datenbank vorhanden ist
+        try:
+            existing_entry = await models.EvePricecache.objects.aget(
+                item_name=item_name, tradehub=tradehub_choice
+            )
+            cached_expiration = existing_entry.expiration
+            if cached_expiration >= timezone.datetime.now():
+                self.bot.logger.debug(f"Cache hit for {item_name} in {tradehub_choice}")
+                # Cache is valid
+                max_price = existing_entry.price
+                buy_price = existing_entry.buy
+            else:
+                # Cache expired, fetch new price
+                item_list = await price_checker.appraisel([item_name], tradehub_choice)
+                if item_list:
+                    item_data = item_list[0]
+                    max_price = item_data.get("price", 0)
+                    buy_price = item_data.get("buy", 0)
+        except models.EvePricecache.DoesNotExist:
+            # No cache entry, fetch new price
+            item_list = await price_checker.appraisel([item_name], tradehub_key)
+            if item_list:
+                item_data = item_list[0]
+                max_price = item_data.get("price", 0)
+                buy_price = item_data.get("buy", 0)
 
-                        price = int(round(float(response[str(item_id)]["sell"]["min"])))
-                        maxprice = int(
-                            round(float(response[str(item_id)]["buy"]["max"]))
-                        )
+        # Preis in ISK umwandeln und formatieren
+        formatted_price = f"{max_price:,.0f} ISK"
+        formatted_buy = f"{buy_price:,.0f} ISK"
 
-                        sql = "REPLACE INTO eve_pricecache (item_name, price, buy, tradehub, expiration) VALUES (:item_name, :price, :buy, :tradehub, :expiration)"
-                        params = {
-                            "item_name": item_name,
-                            "price": price,
-                            "buy": maxprice,
-                            "tradehub": region,
-                            "expiration": expiration,
-                        }
-
-                        await db.execute_sql(sql, params)
-                        return price, maxprice
-                    return 0, 0
-
-        if item_id:
-            try:
-                sql = "SELECT item_name, price, buy, expiration FROM `eve_pricecache` WHERE `tradehub` = :region AND `item_name` = :item_name"
-                params = {"region": region, "item_name": item_name}
-                results = await db.select_var(sql, params, single=True, dictlist=True)
-
-                if results is not None:
-                    price = results["price"]
-                    maxprice = results["buy"]
-                    cached_expiration = results["expiration"]
-                    if cached_expiration < datetime.now():
-                        await fuzzwork(region, item_id)
-                else:
-                    price, maxprice = await fuzzwork(region, item_id)
-
-                # Preis in ISK umwandeln und formatieren
-                formatted_price = f"{price:,.0f} ISK"
-                formatted_maxprice = f"{maxprice:,.0f} ISK"
-
-                # Embed erstellen
-                em = discord.Embed(
-                    title=f"Tradehub: **{tradehub}**",
-                    color=discord.Color.teal(),
-                    description=f"**{item_name}**",
-                )
-                em.set_thumbnail(
-                    url=f"https://images.evetech.net/types/{item_id}/icon"
-                )  # Fügen Sie das Thumbnail als Bild hinzu
-                em.add_field(name="Sell", value=f"`{formatted_price}`", inline=True)
-                em.add_field(name="Buy", value=f"`{formatted_maxprice}`", inline=True)
-                await ctx.respond(embed=em)
-            # pylint: disable=broad-except
-            except Exception as e:
-                log.error(f"[Price Command] • {e}", exc_info=True)
-                await ctx.respond(
-                    "Der Gegenstand wurde nicht gefunden.", ephemeral=True
-                )
-                return
-        else:
-            await ctx.respond("Der Gegenstand wurde nicht gefunden.", delete_after=10)
-
-    @priceinfo.error
-    async def priceinfo_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
-
-    @eve.command(name="price-list")
-    @checks.is_in_channel()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
-    @option(
-        "tradehub",
-        description="Choose Tradehub",
-        choices=["Jita", "Amarr", "Dodixie", "Rens", "Hek"],
-        required=False,
-    )
-    async def pricelist(self, ctx: discord.ApplicationContext, tradehub: str):
-        """
-        Get Tradehub Price Information from a Batch List
-
-        Arguments
-        ----------
-        ctx: `context`
-            The context containing information about the request.
-        input: `message`
-            The message waiting for user interaction to provide results.
-
-        Returns
-        -------
-            A list of items and their corresponding prices based on user input.
-
-        Raises
-        ------
-        Exception
-            If no records are returned, an error is raised.
-        """
-        # Show the modal to the user
-        modal = self.PriceListModal(self.bot, tradehub)
-        await ctx.send_modal(modal)
-
-        return
-
-    @pricelist.error
-    async def pricelist_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
+        em.add_field(name="Sell", value=f"`{formatted_price}`", inline=True)
+        em.add_field(name="Buy", value=f"`{formatted_buy}`", inline=True)
+        await ctx.respond(embed=em)
 
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
 
-    # @commands.Cog.listener()
-    # async def on_guild_join(self, guild):
-    #    pass
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild):  # pylint: disable=unused-argument
+        """Event when a guild is joined."""
 
-    # on guild leave
-    # @commands.Cog.listener()
-    # async def on_guild_remove(self, guild):
-    #    pass
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):  # pylint: disable=unused-argument
+        """Event when a guild is removed."""

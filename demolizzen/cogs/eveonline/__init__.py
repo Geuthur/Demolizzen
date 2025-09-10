@@ -1,5 +1,8 @@
-from .eveonline import Eve
+# Demolizzen
+from demolizzen.core.bot import Demolizzen
+
+from .eveonline import EveOnline
 
 
-def setup(bot):
-    bot.add_cog(Eve(bot))
+def setup(bot: Demolizzen):
+    bot.add_cog(EveOnline(bot))

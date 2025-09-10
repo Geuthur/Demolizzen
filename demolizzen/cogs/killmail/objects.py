@@ -1,434 +1,297 @@
+# Standard Library
 import asyncio
+import datetime
 import logging
-from collections import Counter
-from typing import NamedTuple
+from dataclasses import asdict, dataclass, field
+from typing import Optional
 
+# Discord
 import discord
-from dateutil.parser import parse
-from settings.functions import make_embed
 
-log = logging.getLogger("testing")
+# Django
+from django.utils import timezone
 
+# Demolizzen
+from demolizzen import __package_name__
+from demolizzen.core.esi import ESI
+from demolizzen.utils.functions import make_embed
 
-class Position(NamedTuple):
-    x: float
-    y: float
-    z: float
-
-
-class Item:
-    __slots__ = (
-        "_data",
-        "_esi",
-        "flag",
-        "item_type_id",
-        "qty_dropped",
-        "qty_destroyed",
-        "singleton",
-        "name",
-    )
-
-    def __init__(self, data, esi):
-        self._data = data
-        self._esi = esi
-        self.flag = data.get("flag")
-        self.item_type_id = data.get("item_type_id")
-        self.qty_dropped = data.get("quantity_dropped", 0)
-        self.qty_destroyed = data.get("quantity_destroyed", 0)
-        self.singleton = data.get("singleton")
-        self.name = None
-
-    # Get Item Name from Database - Reduce ESI Fetch
-    async def fetch_name(self):
-        item = await self._esi.item_info_db(self.item_type_id)
-        if item:
-            self.name = item.get("typeName")
+log = logging.getLogger(f"{__package_name__}")
 
 
-class Character:
-    __slots__ = (
-        "_data",
-        "_esi",
-        "id",
-        "corp_id",
+@dataclass
+class _KillmailBase:
+    """Base class for all Killmail."""
+
+    def asdict(self) -> dict:
+        """Return this object as dict."""
+        return asdict(self)
+
+
+@dataclass
+class _KillmailCharacter(_KillmailBase):
+    ENTITY_PROPS = [
+        "character_id",
+        "corporation_id",
         "alliance_id",
+        "faction_id",
         "ship_type_id",
-        "name",
-        "corp",
-        "alliance",
-        "ship",
-    )
+    ]
 
-    def __init__(self, data, esi):
-        self._data = data
-        self._esi = esi
-        self.id = data.get("character_id")
-        self.corp_id = data.get("corporation_id")
-        self.alliance_id = data.get("alliance_id", None)
-        self.ship_type_id = data.get("ship_type_id", None)
-        self.name = None
-        self.corp = None
-        self.alliance = None
-        self.ship = None
+    character_id: int | None = None
+    character_name: str | None = None
+    corporation_id: int | None = None
+    corporation_name: str | None = None
+    alliance_id: int | None = None
+    alliance_name: str | None = None
+    faction_id: int | None = None
+    ship_type_id: int | None = None
+    ship_name: str | None = None
 
-    async def fetch_name(self):
-        if not self.name:
-            self.name = await self._esi.character_name(self.id)
+    async def fetch_name(self, esi: ESI):
+        """Fetch the name from ESI."""
+        if self.character_id and not self.character_name:
+            self.character_name = await esi.get_or_create_character_name(
+                self.character_id
+            )
+        if self.corporation_id and not self.corporation_name:
+            self.corporation_name = await esi.get_or_create_corporation_name(
+                self.corporation_id
+            )
+        if self.alliance_id and not self.alliance_name:
+            self.alliance_name = await esi.get_or_create_alliance_name(self.alliance_id)
 
-    async def fetch_corp(self):
-        if not self.corp:
-            corp = await self._esi.corporation_info(self.corp_id)
-            if corp:
-                self.corp = corp.get("name")
-
-    async def fetch_alliance(self):
-        if not self.alliance and self.alliance_id:
-            alliance = await self._esi.alliance_info(self.alliance_id)
-            if alliance:
-                self.alliance = alliance.get("name")
-
-    # Fetch Ship name from Database
-    async def fetch_ship(self):
-        if not self.ship_type_id:
-            return
-        if not self.ship:
-            ship = await self._esi.item_info_db(self.ship_type_id)
+    async def fetch_ship_name(self, esi: ESI):
+        """Fetch the ship name from ESI."""
+        if self.ship_type_id and not self.ship_name:
+            ship = await esi.item_info_db(self.ship_type_id)
             if ship:
-                self.ship = ship.get("typeName")
-
-    def fetch_all(self):
-        return asyncio.gather(
-            self.fetch_name(),
-            self.fetch_corp(),
-            self.fetch_alliance(),
-            self.fetch_ship(),
-        )
+                self.ship_name = ship.get("typeName")
 
 
-class Attacker(Character):
-    # pylint: disable=redefined-slots-in-subclass
-    __slots__ = (
-        "weapon_type_id",
-        "damage",
-        "final_blow",
-        "security",
-        *Character.__slots__,
+@dataclass
+class KillmailVictim(_KillmailCharacter):
+    """A victim on a killmail."""
+
+    damage_taken: int | None = None
+
+
+@dataclass
+class KillmailAttacker(_KillmailCharacter):
+    """An attacker on a killmail."""
+
+    ENTITY_PROPS = _KillmailCharacter.ENTITY_PROPS + ["weapon_type_id"]
+
+    damage_done: int | None = None
+    is_final_blow: bool | None = None
+    security_status: float | None = None
+    weapon_type_id: int | None = None
+
+
+@dataclass
+class KillmailPosition(_KillmailBase):
+    "A position for a killmail."
+
+    x: float | None = None
+    y: float | None = None
+    z: float | None = None
+
+
+@dataclass
+class KillmailZkb(_KillmailBase):
+    """A ZKB entry for a killmail."""
+
+    location_id: int | None = None
+    hash: str | None = None
+    fitted_value: float | None = None
+    dropped_value: float | None = None
+    destroyed_value: float | None = None
+    total_value: float | None = None
+    points: int | None = None
+    is_npc: bool | None = None
+    is_solo: bool | None = None
+    is_awox: bool | None = None
+
+
+@dataclass
+class KillmailManager(_KillmailBase):
+    """Killmail"""
+
+    id: int
+    time: timezone.datetime
+    victim: KillmailVictim
+    attackers: list[KillmailAttacker]
+    position: KillmailPosition
+    zkb: KillmailZkb
+    final_attacker: KillmailAttacker | None = None
+    solar_system_id: int | None = None
+    solar_system_name: str | None = None
+    region_id: int | None = None
+    region_name: str | None = None
+    celestial: str | None = None
+    _esi: ESI = field(default=None, init=False, repr=False)
+    _celestial_lock: asyncio.Lock = field(
+        default_factory=asyncio.Lock, init=False, repr=False
     )
-
-    def __init__(self, data, esi):
-        super().__init__(data, esi)
-        self.weapon_type_id = data.get("weapon_type_id")
-        self.damage = data.get("damage_done")
-        self.final_blow = data.get("final_blow")
-        self.security = data.get("security_status")
-
-
-class Victim(Character):
-    # pylint: disable=redefined-slots-in-subclass
-    __slots__ = ("damage_taken", "items", "position", *Character.__slots__)
-
-    def __init__(self, data, esi):
-        super().__init__(data, esi)
-        self.damage_taken = data.get("damage_taken")
-        self.items = [Item(i, esi) for i in data.get("items", [])]
-        pos = data.get("position")
-        if pos:
-            self.position = Position(**pos)
-
-
-# pylint: disable=too-many-instance-attributes
-class Mail:
-    __slots__ = (
-        "_data",
-        "_esi",
-        "id",
-        "time",
-        "system_id",
-        "final_attacker",
-        "attackers",
-        "victim",
-        "corp_id",
-        "alliance_id",
-        "location_id",
-        "hash",
-        "fitted_value",
-        "value",
-        "points",
-        "npc",
-        "solo",
-        "awox",
-        "eve_url",
-        "url",
-        "system",
-        "celestial",
-        "constellation",
-        "constellation_id",
-        "region_id",
-        "region",
-    )
-
-    def __init__(self, payload, esi):
-        self._data = payload
-        self._esi = esi
-        self.id = payload.get("killmail_id")
-        self.time = parse(payload.get("killmail_time"))
-        self.system_id = payload.get("solar_system_id")
-
-        self.final_attacker = None
-        self.attackers = {}
-        for attacker_data in payload.get("attackers", []):
-            attacker = Attacker(attacker_data, esi)
-            self.attackers[attacker.id] = attacker
-
-            if attacker.final_blow:
-                self.final_attacker = attacker
-
-        self.victim = Victim(payload.get("victim"), esi)
-        self.corp_id = self.victim.corp_id
-        self.alliance_id = self.victim.alliance_id
-
-        zkb = payload.get("zkb", {})
-        self.location_id = zkb.get("locationID")
-        self.hash = zkb.get("hash")
-        self.fitted_value = zkb.get("fittedValue")
-        self.value = zkb.get("totalValue")
-        self.points = zkb.get("points")
-        self.npc = zkb.get("npc")
-        self.solo = zkb.get("solo")
-        self.awox = zkb.get("awox")
-        self.eve_url = zkb.get("esi")
-        self.url = f"https://zkillboard.com/kill/{self.id}/"
-
-        self.system = None
-        self.celestial = None
-        self.constellation = None
-        self.constellation_id = None
-        self.region_id = None
-        self.region = None
 
     def __repr__(self):
-        sys = self.system_id
-        victim = self.victim.id
-        ship = self.victim.ship
-        value = self.value
-        npc = " NPC" if self.npc else ""
-        return f"<Mail {self.id}{npc} system={sys} victim={victim} ship={ship} value={value}>"
+        return f"<Killmail {self.id} at {self.time} in system {self.solar_system_id}>"
 
-    async def fetch_region(self):
-        if not self.region:
-            if not self.region_id:
-                region_id = await self._esi.region_id_info(self.system_id)
-                if region_id:
-                    self.region_id = region_id.get("regionID")
-            region = await self._esi.region_info(self.region_id)
-            if region:
-                self.region = region.get("name")
+    async def attackers_final_attacker(self):
+        """Get the final attacker from the list of attackers."""
+        if not self.attackers:
+            return None
+        for attacker in self.attackers:
+            if attacker.is_final_blow:
+                self.final_attacker = attacker
+                return attacker
+
+    async def attackers_count(self):
+        """Count the number of unique attackers."""
+        if not self.attackers:
+            return 0
+        return len(
+            {
+                attacker.character_id
+                for attacker in self.attackers
+                if attacker.character_id
+            }
+        )
+
+    async def attackers_corporation_ids(self):
+        """Get a list of unique corporation IDs from the attackers."""
+        corp_ids = set()
+        for attacker in self.attackers:
+            if attacker.corporation_id:
+                corp_ids.add(attacker.corporation_id)
+        return list(corp_ids)
+
+    async def attackers_alliance_ids(self):
+        """Get a list of unique alliance IDs from the attackers."""
+        alliance_ids = set()
+        for attacker in self.attackers:
+            if attacker.alliance_id:
+                alliance_ids.add(attacker.alliance_id)
+        return list(alliance_ids)
+
+    async def attackers_character_ids(self):
+        """Get a list of unique character IDs from the attackers."""
+        char_ids = set()
+        for attacker in self.attackers:
+            if attacker.character_id:
+                char_ids.add(attacker.character_id)
+        return list(char_ids)
+
+    async def fetch_celestial(self):
+        async with self._celestial_lock:
+            if not self.celestial:
+                if not self.zkb.location_id:
+                    return "Unknown"
+                celestial = await self._esi.celestial_info(self.zkb.location_id)
+                if celestial:
+                    self.celestial = celestial.get("name", "Unknown")
+                else:
+                    self.celestial = "Unknown"
+
+    async def fetch_solar_system_name(self):
+        """Fetch the solar system name from ESI."""
+        if not self.solar_system_name:
+
+            if not self.solar_system_id:
+                return "Unknown"
+
+            system = await self._esi.get_or_create_solar_system(self.solar_system_id)
+
+            if system is not None:
+                self.solar_system_name = system.solarSystemName
+            else:
+                self.solar_system_name = "Unknown"
 
     async def fetch_region_id(self):
+        """Fetch the region ID from the solar system ID."""
         if not self.region_id:
-            region = await self._esi.region_id_info(self.system_id)
+            region = await self._esi.get_region_info(self.solar_system_id)
             if region:
-                self.region_id = region.get("regionID")
+                self.region_id = region.regionID
                 return self.region_id
             return None
 
-    # Not Active
-    async def fetch_constellation(self):
-        if not self.constellation:
-            await self.fetch_system()
-            constellation = await self._esi.constellation_info(self.constellation_id)
-            self.constellation = constellation.get("name")
-            self.region_id = constellation.get("region_id")
-
-    # Fetch System name from Database
-    async def fetch_system(self):
-        if not self.system:
-            if not self.system_id:
-                return "Unknown"
-            system = await self._esi.system_info_db(self.system_id)
-            if not system:
-                return "Unknown"
-            self.constellation_id = system.get("constellationID")
-            self.system = system.get("solarSystemName")
-
-    async def fetch_celestial(self):
-        if not self.celestial:
-            if not self.location_id:
-                return "Unknown"
-            celestial = await self._esi.celestial_info(self.location_id)
-            if celestial:
-                self.celestial = celestial.get("name", "Unknown")
-            else:
-                self.celestial = "Unknown"
-
-    def count_attackers(self):
-        try:
-            attacker_count = len(self.attackers)
-            return attacker_count
-        # pylint: disable=broad-except
-        except Exception as e:
-            log.error(f"Fehler beim Zählen der Angreifer: {e}")
-            return 0
-
-    async def most_involved(self):
-        ship = None
-        corp_or_alliance = None
-
-        try:
-            # Count attackers Ship ID, Corp ID, and Alliance ID in a single pass
-            counters = {"ship": Counter(), "corp": Counter(), "alliance": Counter()}
-
-            for attacker in self.attackers.values():
-                counters["ship"][attacker.ship_type_id] += 1
-                counters["corp"][attacker.corp_id] += 1
-                counters["alliance"][attacker.alliance_id] += 1
-
-            most_common_ship = counters["ship"].most_common(1)
-            most_common_corp = counters["corp"].most_common(1)
-            most_common_alliance = counters["alliance"].most_common(1)
-
-            # Get Info from the Most Ship ID
-            if most_common_ship[0][0] and most_common_ship[0][1] > 3:
-                ship = await self._esi.item_info_db(most_common_ship[0][0])
-
-            # Get Info from the Most Corp or Alliance
-            if most_common_corp[0][0] and most_common_alliance[0][0]:
-                # Compare the count of corp_id and alliance_id
-                if most_common_corp[0][1] == most_common_alliance[0][1]:
-                    if most_common_alliance[0][1] > 3:
-                        corp_or_alliance = await self._esi.alliance_info(
-                            most_common_alliance[0][0]
-                        )
-                elif most_common_corp[0][1] >= most_common_alliance[0][1]:
-                    if most_common_corp[0][1] > 3:
-                        corp_or_alliance = await self._esi.corporation_info(
-                            most_common_corp[0][0]
-                        )
-                elif most_common_alliance[0][1] > 3:
-                    corp_or_alliance = await self._esi.alliance_info(
-                        most_common_alliance[0][0]
-                    )
-                else:
-                    if most_common_corp[0][1] > 3:
-                        corp_or_alliance = await self._esi.corporation_info(
-                            most_common_corp[0][0]
-                        )
-            elif most_common_alliance[0][0] and most_common_alliance[0][1] > 3:
-                # Get Info from the Most Alliance ID
-                corp_or_alliance = await self._esi.alliance_info(
-                    most_common_alliance[0][0]
-                )
-            elif most_common_corp[0][0] and most_common_corp[0][1] > 3:
-                # Get Info from the Most Corp ID
-                corp_or_alliance = await self._esi.corporation_info(
-                    most_common_corp[0][0]
-                )
-
-            # Return Ship if more than 1
-            if ship and corp_or_alliance:
-                ship_name = ship.get("typeName")
-                corp_or_alliance_name = corp_or_alliance.get("name")
-                return ship_name, corp_or_alliance_name
-            if corp_or_alliance:
-                ship_name = None
-                corp_or_alliance_name = corp_or_alliance.get("name")
-                return ship_name, corp_or_alliance_name
-            if ship:
-                ship_name = ship.get("typeName")
-                corp_or_alliance_name = None
-                return ship_name, corp_or_alliance_name
-
-            ship_name = None
-            corp_or_alliance_name = None
-            return ship_name, corp_or_alliance_name
-
-        # pylint: disable=broad-except
-        except Exception as e:
-            ship_name = None
-            corp_or_alliance_name = None
-            log.error(f"Fehler beim Most Involved: {e}")
-            return ship_name, corp_or_alliance_name
-
-    def fetch_all(self):
-        return asyncio.gather(
-            self.victim.fetch_all(),
+    async def fetch_esi_data(self):
+        """Fetch all necessary data from ESI."""
+        await asyncio.gather(
+            self.attackers_final_attacker(),
+            self.fetch_region_id(),
+            self.fetch_solar_system_name(),
             self.fetch_celestial(),
-            self.fetch_system(),
-            self.fetch_region(),
+            self.victim.fetch_name(self._esi),
+            self.victim.fetch_ship_name(self._esi),
         )
 
-    # Main Information
-    def info_output(self):
+    def content_info(self):
         info = [
-            f"{self.system} • System: "
-            f"[Map](http://evemaps.dotlan.net/search?q={self.system_id}) | "
-            f"[Killboard](https://zkillboard.com/system/{self.system_id}/)",
+            f"{self.solar_system_name} • System: "
+            f"[Map](http://evemaps.dotlan.net/search?q={self.solar_system_id}) | "
+            f"[Killboard](https://zkillboard.com/system/{self.solar_system_id}/)",
         ]
         if self.celestial:
             info.append(f"Nearest Celestial: `{self.celestial}`")
 
         return "\n".join(info)
 
-    # Collect additional information
     async def info_victim(self):
-        ship, corp = await self.most_involved()
-        count = self.count_attackers()
+        """Collect additional information about the victim."""
         info = [
-            f"**[{self.victim.name}](https://zkillboard.com/character/{self.victim.id}/)** ([{self.victim.corp}](https://zkillboard.com/corporation/{self.victim.corp_id}/)) lost their **`{self.victim.ship}`** in **`{self.system}`** worth **`{self.value:,}`** ISK",
-            f"Final Blow by **[{self.final_attacker.name}](https://zkillboard.com/character/{self.final_attacker.id}/)** ([{self.final_attacker.corp}](https://zkillboard.com/corporation/{self.final_attacker.corp_id}/)) in a `{self.final_attacker.ship}`",
+            f"**[{self.victim.character_name}](https://zkillboard.com/character/{self.victim.character_id}/)** ([{self.victim.corporation_name}](https://zkillboard.com/corporation/{self.victim.corporation_id}/)) lost their **`{self.victim.ship_name}`** in **`{self.solar_system_name}`** worth **`{self.zkb.total_value:,}`** ISK",
         ]
-        if self.solo:
-            info.insert(0, "**SOLO KILL**")
-        if count > 1:
-            if ship is not None and corp is None:
-                info.append(
-                    f"Attackers: **`{self.count_attackers()}`** • Most Involved: `{ship}`"
-                )
-            elif ship is None and corp is not None:
-                info.append(
-                    f"Attackers: **`{self.count_attackers()}`** • Most Involved: `{corp}`"
-                )
-            elif ship is not None and corp is not None:
-                info.append(
-                    f"Attackers: **`{self.count_attackers()}`** • Most Involved: `{ship}` | `{corp}`"
-                )
+        if self.final_attacker:
+            info.append(
+                f"Final Blow by **[{self.final_attacker.character_name}](https://zkillboard.com/character/{self.final_attacker.character_id}/)** ([{self.final_attacker.corporation_name}](https://zkillboard.com/corporation/{self.final_attacker.corporation_id}/)) in a `{self.final_attacker.ship_name}`"
+            )
+        if self.attackers:
+            attackers = await self.attackers_count()
+            if attackers == 1:
+                info.append("**SOLO KILL**")
             else:
-                info.append(f"Attackers: **`{self.count_attackers()}`**")
+                info.append(f"**Attackers: `{attackers}`**")
         return "\n".join(info)
 
-    async def send_embed(self, channel, is_loss=False):
+    async def send_embed(self, channel: discord.TextChannel, is_loss=False):
         try:
-            await asyncio.gather(
-                self.fetch_all(),
-                self.victim.fetch_all(),
-                self.final_attacker.fetch_all(),
-            )
+            await self.fetch_esi_data()
+
+            if self.final_attacker:
+                await asyncio.gather(
+                    self.final_attacker.fetch_name(self._esi),
+                    self.final_attacker.fetch_ship_name(self._esi),
+                )
+
             color = "red" if is_loss else "green"
-            if self.alliance_id:
-                title = self.victim.alliance
+            if self.victim.alliance_id:
+                title = self.victim.alliance_name
                 title_icon = f"https://images.evetech.net/alliances/{self.victim.alliance_id}/logo?size=64"
                 url = f"https://zkillboard.com/alliance/{self.victim.alliance_id}/"
             else:
-                title = self.victim.corp
-                title_icon = f"https://images.evetech.net/corporations/{self.victim.corp_id}/logo?size=64"
-                url = f"https://zkillboard.com/corporation/{self.victim.corp_id}/"
+                title = self.victim.corporation_name
+                title_icon = f"https://images.evetech.net/corporations/{self.victim.corporation_id}/logo?size=64"
+                url = (
+                    f"https://zkillboard.com/corporation/{self.victim.corporation_id}/"
+                )
+
             embed = make_embed(
                 title=f"{title}",
                 msg_colour=color,
                 title_url=url,
-                subtitle=f"{self.victim.ship} destroyed in {self.system} ({self.region})",
-                subtitle_url=self.url,
-                content=self.info_output(),
+                subtitle=f"{self.victim.ship_name} destroyed in {self.solar_system_name}",
+                subtitle_url=f"https://zkillboard.com/kill/{self.id}/",
+                content=self.content_info(),
                 icon=title_icon,
                 fields={"Information": await self.info_victim()},
                 thumbnail=f"https://image.eveonline.com/Type/{self.victim.ship_type_id}_128.png",
                 footer=f"zKillboard • {self.time.strftime('%Y-%m-%d %H:%M EVE')}",
                 footer_icon="https://zkillboard.com/img/wreck.png",
             )
-            # Send Message
             await channel.send(embed=embed)
-        # pylint: disable=broad-except
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             if "Missing Access" in str(e):
                 allowed_channels = [
                     c
@@ -445,13 +308,114 @@ class Mail:
                         )
                         log.info(f"Berechtigungsfehler: {e}", exc_info=True)
                         return
-                    # pylint: disable=broad-except
-                    except Exception as exc:
+                    except Exception as exc:  # pylint: disable=broad-except
                         log.info(
                             f"Berechtigungsfehler Für Alle Channels: {exc}",
                             exc_info=True,
                         )
-            log.error(f"Fehler bei Send Embed: {e}", exc_info=True)
+            else:
+                log.error(f"Failed to send killmail embed: {e}", exc_info=True)
+
+    @classmethod
+    def _extract_victim_and_position(cls, killmail_data: dict):
+        victim = KillmailVictim()
+        position = KillmailPosition()
+        if "victim" in killmail_data:
+            victim_data = killmail_data["victim"]
+            params = {}
+            for prop in KillmailVictim.ENTITY_PROPS + ["damage_taken"]:
+                if prop in victim_data:
+                    params[prop] = victim_data[prop]
+
+            victim = KillmailVictim(**params)
+
+            if "position" in victim_data:
+                position_data = victim_data["position"]
+                params = {}
+                for prop in ["x", "y", "z"]:
+                    if prop in position_data:
+                        params[prop] = position_data[prop]
+
+                position = KillmailPosition(**params)
+
+        return victim, position
+
+    @classmethod
+    def _extract_attackers(cls, killmail_data: dict) -> list[KillmailAttacker]:
+        attackers = []
+        for attacker_data in killmail_data.get("attackers", []):
+            params = {}
+            for prop in KillmailAttacker.ENTITY_PROPS + [
+                "damage_done",
+                "security_status",
+            ]:
+                if prop in attacker_data:
+                    params[prop] = attacker_data[prop]
+
+            if "final_blow" in attacker_data:
+                params["is_final_blow"] = attacker_data["final_blow"]
+
+            attackers.append(KillmailAttacker(**params))
+        return attackers
+
+    @classmethod
+    def _extract_zkb(cls, package_data):
+        if "zkb" not in package_data:
+            return KillmailZkb()
+
+        zkb_data = package_data["zkb"]
+        params = {}
+        for prop, mapping in (
+            ("locationID", "location_id"),
+            ("hash", None),
+            ("fittedValue", "fitted_value"),
+            ("droppedValue", "dropped_value"),
+            ("destroyedValue", "destroyed_value"),
+            ("totalValue", "total_value"),
+            ("points", None),
+            ("npc", "is_npc"),
+            ("solo", "is_solo"),
+            ("awox", "is_awox"),
+        ):
+            if prop in zkb_data:
+                if mapping:
+                    params[mapping] = zkb_data[prop]
+                else:
+                    params[prop] = zkb_data[prop]
+
+        return KillmailZkb(**params)
+
+    @classmethod
+    def _create_from_zkb(
+        cls, zkb_package: dict, esi_data: ESI
+    ) -> Optional["KillmailManager"]:
+        """Create a Killmail from zKillboard data."""
+        if not zkb_package:
+            return None
+
+        killmail = None
+        if "killmail" in zkb_package:
+            killmail_data = zkb_package["killmail"]
+            victim, position = cls._extract_victim_and_position(killmail_data)
+            attackers = cls._extract_attackers(killmail_data)
+            zkb = cls._extract_zkb(zkb_package)
+
+            params = {
+                "id": killmail_data.get("killmail_id"),
+                "time": timezone.datetime.strptime(
+                    killmail_data.get("killmail_time"), "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc),
+                "victim": victim,
+                "attackers": attackers,
+                "position": position,
+                "zkb": zkb,
+            }
+            if "solar_system_id" in killmail_data:
+                params["solar_system_id"] = killmail_data["solar_system_id"]
+
+            killmail = KillmailManager(**params)
+            killmail._esi = esi_data
+        return killmail
 
 
 class Subscription:
@@ -483,14 +447,17 @@ class Subscription:
         grp = f"group_id={self.group_id}" if self.group_id else ""
         return f"<Subscription {id_} channel={chan} threshold={th}{loss}{grp}>"
 
-    async def mail(self, killmail: Mail):
+    async def mail(self, killmail: KillmailManager):
         if await self.valid(killmail):
             if self.group_id:
-                is_loss = self.group_id in [killmail.corp_id, killmail.alliance_id]
+                is_loss = self.group_id in [
+                    killmail.victim.corporation_id,
+                    killmail.victim.alliance_id,
+                ]
             else:
                 is_loss = False
 
-            # Ckeck if Killmail is already sent on current Channel
+            # Check if Killmail is already sent on current Channel
             if self.channel.id not in Subscription.killmail_sent_per_channel:
                 Subscription.killmail_sent_per_channel[self.channel.id] = set()
 
@@ -499,12 +466,11 @@ class Subscription:
                 not in Subscription.killmail_sent_per_channel[self.channel.id]
             ):
                 Subscription.killmail_sent_per_channel[self.channel.id].add(killmail.id)
-
                 asyncio.create_task(killmail.send_embed(self.channel, is_loss))
 
-    async def valid(self, killmail: Mail):
-        if killmail.value:
-            if self.threshold and killmail.value < self.threshold:
+    async def valid(self, killmail: KillmailManager):
+        if killmail.zkb.total_value:
+            if self.threshold and killmail.zkb.total_value < self.threshold:
                 return False
 
         # Get Global Killmail if group ID is none
@@ -512,19 +478,22 @@ class Subscription:
             return True
 
         # Get System ID Killmail
-        if self.group_id == killmail.system_id:
+        if self.group_id == killmail.solar_system_id:
             return True
 
-        # Check if is Loose
-        if self.losses and self.group_id in [killmail.corp_id, killmail.alliance_id]:
+        # Check if is Loss
+        if self.losses and self.group_id in [
+            killmail.victim.corporation_id,
+            killmail.victim.alliance_id,
+        ]:
             return True
 
         # Get Corporation Killmail
-        if any(a.corp_id == self.group_id for a in killmail.attackers.values()):
+        if self.group_id in await killmail.attackers_corporation_ids():
             return True
 
         # Get Alliance Killmail
-        if any(a.alliance_id == self.group_id for a in killmail.attackers.values()):
+        if self.group_id in await killmail.attackers_alliance_ids():
             return True
 
         # Check if Region ID exist otherwise fetch information from System ID
@@ -536,11 +505,8 @@ class Subscription:
         if self.group_id == (killmail.region_id):
             return True
 
-        # Get Character Killmail - Only Kills possible no Loses
-        if any(
-            (hasattr(a, "id") and a.id == self.group_id)
-            for a in killmail.attackers.values()
-        ):
+        # Get Character Killmail - Only Kills possible no Losses
+        if self.group_id in await killmail.attackers_character_ids():
             return True
 
         return False

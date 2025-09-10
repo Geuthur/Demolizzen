@@ -14,7 +14,10 @@ authors = [
 ]
 requires-python = ">=3.10"
 classifiers = [
-    "Intended Audience :: Developers",
+    "Environment :: Console",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
@@ -22,13 +25,36 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
 ]
 dynamic = [
     "version",
 ]
 dependencies = [
+    "asyncmy==0.2.10",
+    "django==5.2.6",
+    "mysqlclient==2.2.7",
+    "oauthlib==3.2.2",
+    "pillow==11.3",
+    "pre-commit==4.2",
+    "py-cord==2.7.0rc1",
+    "pycolorise==1",
+    "python-dotenv==1.1.1",
+    "python-jose==3.3",
+    "pytz==2025.2",
+    "requests==2.32.4",
+    "requests-oauthlib==1.3.1",
+    "typing-extensions==4.14.1",
+    "yarl==1.20.1",
+]
+optional-dependencies.tests-demolizzen-latest = [
+    "coverage",
 ]
 urls.Changelog = "https://github.com/Geuthur/Demolizzen/blob/master/CHANGELOG.md"
+urls.Documentation = "https://github.com/Geuthur/Demolizzen/blob/master/README.md"
+urls.Donations = "https://ko-fi.com/Geuthur"
 urls.Homepage = "https://github.com/Geuthur/Demolizzen"
 urls.Source = "https://github.com/Geuthur/Demolizzen"
 urls.Tracker = "https://github.com/Geuthur/Demolizzen/issues"
@@ -40,14 +66,3 @@ include = [
 
 [tool.hatch.version]
 path = "demolizzen/__init__.py"
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-sections = [
-    "FUTURE",
-    "STDLIB",
-    "THIRDPARTY",
-    "FIRSTPARTY",
-    "LOCALFOLDER",
-]

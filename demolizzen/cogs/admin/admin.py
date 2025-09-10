@@ -1,20 +1,19 @@
-import datetime
-import logging
-import os
-import pkgutil
-
+# Discord
 import discord
-from core import checks
 from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
-from settings import db
 
-# Set Global Variable for Event Status
-from settings.config import EVENTS_SERVER
+# Django
+from django.utils import timezone
 
-log = logging.getLogger("main")
-log_test = logging.getLogger("testing")
+# Demolizzen
+from demolizzen import models
+from demolizzen.cogs.banksystem import Bank
+from demolizzen.cogs.economy import Economy
+from demolizzen.config import EVENTS_SERVER
+from demolizzen.core import checks
+from demolizzen.core.bot import Demolizzen
 
 
 class Admin(commands.Cog):
@@ -22,11 +21,15 @@ class Admin(commands.Cog):
     Secure the Server with automated Moderation Tools
     """
 
-    def __init__(self, bot):
+    def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.title = "Admin"
         self.alias = "admin"
         self.command_ids = {}
+
+    owner = SlashCommandGroup(
+        "owner", "Owner Commands", contexts=[discord.InteractionContextType.guild]
+    )
 
     admin = SlashCommandGroup(
         "admin", "Adminsystem", contexts=[discord.InteractionContextType.guild]
@@ -72,7 +75,7 @@ class Admin(commands.Cog):
         try:
             messages = await ctx.channel.history(
                 limit=limit,
-                after=datetime.datetime.utcnow() - datetime.timedelta(days=14),
+                after=timezone.datetime.now() - timezone.timedelta(days=14),
                 oldest_first=False,
             ).flatten()
         except discord.HTTPException as e:
@@ -80,7 +83,7 @@ class Admin(commands.Cog):
                 pass
                 # embed = discord.Embed(description="❌ I have no permission to see that channel...")
             else:
-                log.error(e, exc_info=True)
+                self.bot.logger.error(e, exc_info=True)
                 embed = discord.Embed(description="❌ Something went wrong try later.")
             return False
 
@@ -101,7 +104,7 @@ class Admin(commands.Cog):
                         description="❌ I have no permission to do that..."
                     )
                 else:
-                    log.error(e, exc_info=True)
+                    self.bot.logger.error(e, exc_info=True)
                     embed = discord.Embed(
                         description="❌ Something went wrong try later."
                     )
@@ -138,7 +141,7 @@ class Admin(commands.Cog):
                     description="❌ I have no permission to do that..."
                 )
             else:
-                log.error(e, exc_info=True)
+                self.bot.logger.error(e, exc_info=True)
                 embed = discord.Embed(description="❌ Something went wrong try later.")
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
@@ -167,7 +170,7 @@ class Admin(commands.Cog):
                     description="❌ I have no permission to do that..."
                 )
             else:
-                log.error(e, exc_info=True)
+                self.bot.logger.error(e, exc_info=True)
                 embed = discord.Embed(description="❌ Something went wrong try later.")
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
@@ -226,57 +229,6 @@ class Admin(commands.Cog):
         )
         return
 
-    # ---------------------------- Extension ----------------------------
-    # ---------------------------- Extension ----------------------------
-    # ---------------------------- Extension ----------------------------
-
-    @commands.slash_command()
-    @checks.is_owner()
-    @option("extension", description="Which extension should be unloaded?")
-    async def unload(self, ctx, extension):
-        """
-        Unload a Extension
-        """
-
-        try:
-            ctx.bot.unload_extension(f"Cogs.{extension.capitalize()}")
-        # pylint: disable=broad-except
-        except Exception:
-            await ctx.respond("Could not unload cog")
-            return
-        await ctx.respond("Cog unloaded")
-
-    @commands.slash_command()
-    @checks.is_owner()
-    @option("extension", description="Which extension should be load or reload?")
-    async def load_cog(self, ctx: discord.ApplicationContext, extension):
-        """
-        Load or Reload a Extension
-        """
-        try:
-            ext_dir = os.path.join(os.path.dirname(__file__), "..")
-            ext_files = [name for _, name, _ in pkgutil.iter_modules([ext_dir])]
-
-            if extension not in ext_files:
-                await ctx.respond(f"{extension} extension not found.")
-                return
-
-            ext_name = f"Cogs.{extension}"
-            was_loaded = ext_name in ctx.bot.extensions
-            try:
-                if was_loaded:
-                    ctx.bot.reload_extension(ext_name)
-                    await ctx.respond(f"{extension} extension reloaded.")
-                else:
-                    ctx.bot.load_extension(ext_name)
-                    await ctx.respond(f"{extension} extension loaded.")
-            # pylint: disable=broad-except
-            except Exception:
-                await ctx.respond(f"Exception on loading {extension}")
-        # pylint: disable=broad-except
-        except Exception:
-            await ctx.respond(f"Exception on loading {extension}")
-
     # ---------------------------- Bank System ----------------------------
     # ---------------------------- Bank System ----------------------------
     # ---------------------------- Bank System ----------------------------
@@ -291,52 +243,42 @@ class Admin(commands.Cog):
         """
         Give money to a specific user
         """
-        # Get Server-ID for further process
-        server_id = ctx.guild_id
-
         amount = int(amount)
         if amount < 0:
             await ctx.respond("Amount must be positive!")
             return
 
-        sql = (
-            "SELECT * FROM `bank` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
+        try:
+            user = await models.UserProfile.objects.select_related("bank_account").aget(
+                user_id=member.id, guild_id=ctx.guild.id
+            )
+            bank_account = user.bank_account
+        except models.UserBankAccount.DoesNotExist:
+            bank_account = await models.UserBankAccount.objects.acreate(
+                user=user,
+            )
+
+        bank_account.wallet += amount
+        # Update the bank account with the new amount
+        await bank_account.asave()
+
+        await ctx.respond(
+            f"You gave {amount}:coin:! to {member.mention}", ephemeral=True
         )
-        params = {"user_id": member.id, "guild_id": server_id}
-        bal = await db.select_var(sql, params, single=True, dictlist=True)
-
-        if bal is False:
-            await ctx.respond(
-                "Es ist ein Fehler aufgetreten versuche es später erneut."
-            )
-
-        if not bal:
-            bal = await db.create_user(member, server_id, "bank")
-
-        if bal:
-            transfer = bal["wallet"] + amount
-            sql = "UPDATE bank SET `wallet` = :wallet WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-            params = {"wallet": transfer, "user_id": member.id, "guild_id": server_id}
-            bank = await db.execute_sql(sql, params)
-
-            if bank:
-                await ctx.respond(
-                    f"You gave {amount}:coin:! to {member.mention}", delete_after=15
-                )
-                return
-            log.error("Verbindung zur Datenbank konnte nicht hergestellt werden.")
-            await ctx.respond(
-                "Es scheint ein fehler aufgetreten zu sein. \nBitte versuch es erneut später."
-            )
-            return
-        await ctx.respond("This User hasn't an Account", delete_after=10)
+        return
 
     @bank.command(name="remove-money")
     @checks.is_botmanager()
     @option("member", description="Choose Member")
     @option("amount", description="Specify the amount of Coins to Remove")
     @option("konto", description="Choose Account", choices=["wallet", "bank"])
-    async def remove_money(self, ctx, member: discord.Member, amount: int, konto: str):
+    async def remove_money(
+        self,
+        ctx: discord.ApplicationContext,
+        member: discord.Member,
+        amount: int,
+        konto: str,
+    ):
         """
         Remove money from a specific user
         """
@@ -347,70 +289,66 @@ class Admin(commands.Cog):
             await ctx.respond("Amount must be positive!")
             return
 
-        sql = f"SELECT * FROM `bank` WHERE `user_id` = {member.id} AND `guild_id` = {server_id}"
-        bal = await db.select(sql, single=True, dictlist=True)
-
-        if bal is False:
-            await ctx.respond(
-                "Es ist ein Fehler aufgetreten versuche es später erneut."
-            )
-
-        if bal:
-            transfer = bal[konto] - amount
-            if amount > bal[konto]:
-                transfer = bal[konto] - bal[konto]
-                amount = bal[konto]
-
-            sql = f"UPDATE bank SET `{konto}` = {transfer} WHERE `user_id` = {member.id} AND `guild_id` = {server_id}"
-            bank = await db.execute_sql(sql)
-
-            if bank:
-                await ctx.respond(
-                    f"You Removed {amount}:coin:! to {member.mention}", delete_after=15
-                )
-                return
-            log.error("Verbindung zur Datenbank konnte nicht hergestellt werden.")
-            await ctx.respond(
-                "Es scheint ein fehler aufgetreten zu sein. \nBitte versuch es erneut später."
-            )
+        if konto not in ["wallet", "bank"]:
+            await ctx.respond("Invalid account type selected.")
             return
 
-        await ctx.respond("This User hasn't an Account", delete_after=10)
+        # Fetch the bank account for the member
+        try:
+            user = await models.UserProfile.objects.select_related("bank_account").aget(
+                user_id=member.id, guild_id=server_id
+            )
+            bank_account = user.bank_account
+        except models.UserBankAccount.DoesNotExist:
+            await ctx.respond(f"❌ {member.name}, has no bank account.", ephemeral=True)
+            return
+
+        # If the account exists, check the account type and adjust the balance accordingly
+        if konto == "wallet":
+            amount = min(amount, bank_account.wallet)
+            bank_account.wallet -= amount
+        elif konto == "bank":
+            amount = min(amount, bank_account.bank)
+            bank_account.bank -= amount
+
+        # Update the account in the database
+        await bank_account.asave()
+
+        await ctx.respond(
+            f"You removed {amount}:coin:! from {member.mention}", ephemeral=True
+        )
+        return
 
     @bank.command(name="remove-bank")
     @checks.is_botmanager()
     @option("member", description="Choose Member")
-    async def reset_money(self, ctx, member: discord.Member):
+    async def reset_money(
+        self, ctx: discord.ApplicationContext, member: discord.Member
+    ):
         """
-        Delete Bankaccount from Member
+        Reset Bankaccount from Member
         """
-        # await ctx.defer(ephemeral=True)
+        # Fetch the bank account for the member
+        try:
+            user = await models.UserProfile.objects.select_related("bank_account").aget(
+                user_id=member.id, guild_id=ctx.guild.id
+            )
+            bank_account = user.bank_account
+        except models.UserBankAccount.DoesNotExist:
+            await ctx.respond(f"❌ {member.name}, has no bank account.", ephemeral=True)
+            return
 
-        # Get Server-ID for further process
-        server_id = ctx.guild.id
-        user_id = member.id
-        sql_query = (
-            "DELETE FROM `bank` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
+        # Reset the bank account from the database
+        bank_account.wallet = 0
+        bank_account.bank = 0
+
+        # Update the account in the database
+        await bank_account.asave()
+
+        await ctx.respond(
+            f"Bankaccount from {member.mention} has been reset.", ephemeral=True
         )
-        val = {"user_id": user_id, "guild_id": server_id}
-        result = await db.execute_sql(sql_query, val)
-        if result:
-            await ctx.respond(f"You deleted {member.mention}", delete_after=10)
-        else:
-            log.error("Verbindung zur Datenbank konnte nicht hergestellt werden.")
-
-    @bank.command(name="force-earns")
-    @checks.is_owner()
-    async def update_earns(self, ctx: discord.ApplicationContext):
-        await self.update_bank()
-        await ctx.respond("Tägliche Aktualisierung abgeschlossen.")
-
-    async def update_bank(self):
-        banksystem_cog = self.bot.get_cog("Bank")
-        earns = banksystem_cog.earns
-
-        sql = f"UPDATE `bank` SET bank = bank + (bank * {earns});"
-        await db.execute_sql(sql)
+        return
 
     # ---------------------------- Bank System ----------------------------
     # ---------------------------- Bank System ----------------------------
@@ -422,7 +360,133 @@ class Admin(commands.Cog):
         """
         Owner Only - Bug Fixing
         """
-        log_test.error("Char Names: %s", self.bot.esi_data._char_name_cache)
-        log_test.error("System Names: %s", self.bot.esi_data._system_id_name_cache)
-        log_test.error("Region Names: %s", self.bot.esi_data._region_id_cache)
+        self.bot.logger.info("Char Names: %s", self.bot.esi_data._entity_name_cache)
+        self.bot.logger.info(
+            "System Names: %s", self.bot.esi_data._system_id_name_cache
+        )
+        self.bot.logger.info("Region Names: %s", self.bot.esi_data._region_id_cache)
         await ctx.respond("Daten gespeichert")
+
+    @owner.command(name="force-deposits-update")
+    @checks.is_owner()
+    async def trigger_deposit_update(self, ctx: discord.ApplicationContext):
+        banksystem_cog: Bank = self.bot.get_cog("Bank")
+        await banksystem_cog.process_daily_interest()
+        await ctx.respond("Deposit Update Triggered.", ephemeral=True)
+
+    @owner.command(name="force-ship-update")
+    @checks.is_owner()
+    async def trigger_ship_update(self, ctx: discord.ApplicationContext):
+        shopsystem_cog: Economy = self.bot.get_cog("Eco")
+        await shopsystem_cog.fetch_ship_data()
+        await ctx.respond("Ship Data Update Triggered.", ephemeral=True)
+
+    @owner.command(
+        name="sync",
+        description="Synchonizes the slash commands.",
+    )
+    @commands.is_owner()
+    @option(
+        "scope",
+        description="The scope of the sync. Can be `global` or `guild`.",
+        choices=["global", "guild"],
+    )
+    async def sync(self, context: discord.ApplicationContext, scope: str) -> None:
+        """
+        Synchonizes the slash commands.
+
+        :param context: The command context.
+        :param scope: The scope of the sync. Can be `global` or `guild`.
+        """
+
+        if scope == "global":
+            await context.bot.sync_commands()
+            embed = discord.Embed(
+                description="Slash commands have been globally synchronized.",
+                color=0xBEBEFE,
+            )
+            await context.respond(embed=embed)
+            return
+        await context.bot.sync_commands(guild_ids=[context.guild.id])
+        embed = discord.Embed(
+            description="Slash commands have been synchronized in this guild.",
+            color=0xBEBEFE,
+        )
+        await context.respond(embed=embed, ephemeral=True)
+        return
+
+    @owner.command(
+        name="load",
+        description="Load a cog",
+    )
+    @commands.is_owner()
+    async def load(self, ctx: discord.ApplicationContext, cog: str) -> None:
+        """
+        The bot will load the given cog.
+
+        :param context: The hybrid command context.
+        :param cog: The name of the cog to load.
+        """
+        try:
+            self.bot.load_extension(f"demolizzen.cogs.{cog}")
+        except Exception:
+            embed = discord.Embed(
+                description=f"Could not load the `{cog}` cog.", color=0xE02B2B
+            )
+            await ctx.respond(embed=embed, ephemeral=True)
+            return
+        embed = discord.Embed(
+            description=f"Successfully loaded the `{cog}` cog.", color=0xBEBEFE
+        )
+        await ctx.respond(embed=embed, ephemeral=True)
+
+    @owner.command(
+        name="unload",
+        description="Unloads a cog.",
+    )
+    @commands.is_owner()
+    async def unload(self, ctx: discord.ApplicationContext, cog: str) -> None:
+        """
+        The bot will unload the given cog.
+
+        :param context: The hybrid command context.
+        :param cog: The name of the cog to unload.
+        """
+        try:
+            self.bot.unload_extension(f"demolizzen.cogs.{cog}")
+        except Exception:
+            embed = discord.Embed(
+                description=f"Could not unload the `{cog}` cog.", color=0xE02B2B
+            )
+            await ctx.respond(embed=embed, ephemeral=True)
+            return
+        embed = discord.Embed(
+            description=f"Successfully unloaded the `{cog}` cog.", color=0xBEBEFE
+        )
+        await ctx.respond(embed=embed, ephemeral=True)
+
+    @owner.command(
+        name="reload",
+        description="Reloads a cog.",
+    )
+    @commands.is_owner()
+    async def reload(self, ctx: discord.ApplicationContext, cog: str) -> None:
+        """
+        The bot will reload the given cog.
+
+        :param context: The hybrid command context.
+        :param cog: The name of the cog to reload.
+        """
+        try:
+            self.bot.reload_extension(f"demolizzen.cogs.{cog}")
+        except Exception as e:
+            self.bot.logger.error(e, exc_info=True)
+            embed = discord.Embed(
+                description=f"Could not reload the `{cog}` cog.", color=0xE02B2B
+            )
+            await ctx.respond(embed=embed, ephemeral=True)
+            return
+        embed = discord.Embed(
+            description=f"Successfully reloaded the `{cog}` cog.", color=0xBEBEFE
+        )
+        await ctx.respond(embed=embed, ephemeral=True)

@@ -1,44 +1,34 @@
-import logging
+# Standard Library
 import random
 
+# Discord
 import discord
 from discord import option
 from discord.ext import commands
 from discord.ext.pages import Paginator
-from settings import db
-from settings.functions import application_cooldown
 
-log = logging.getLogger("main")
+# Demolizzen
+from demolizzen import models
+from demolizzen.core.bot import Demolizzen
 
 
 # Automatische auswahl für Tasche von jeweiligen Discord User
 async def get_bag_data(ctx: discord.AutocompleteContext):
     # SQL-Abfrage, um das ausgewählte Item zu finden
     try:
-        sql_query = (
-            "SELECT * FROM `bag` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
+        user = await models.UserProfile.objects.select_related("bags").aget(
+            user_id=ctx.interaction.user.id, guild_id=ctx.interaction.guild.id
         )
-        val = {"user_id": ctx.interaction.user.id, "guild_id": ctx.interaction.guild.id}
-        users = await db.select_var(sql_query, val, dictlist=True)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        log.error(f"Fehler bei der Verbindung zur Datenbank: {e}", exc_info=True)
-        return None
+    except models.UserProfile.DoesNotExist:
+        return []
+    except models.UserBag.DoesNotExist:
+        return []
 
     return [
-        item["item_name"]
-        for item in users
-        if item["item_name"].lower().startswith(ctx.value.lower())
+        item.item_name
+        async for item in user.bags.items.all()
+        if item.item_name.lower().startswith(ctx.value.lower())
     ]
-
-
-async def get_richest_data(ctx):
-    server_id = ctx.guild.id
-    # Get User Data
-    sql_query = "SELECT * FROM `bank` WHERE `guild_id` = :guild_id"
-    val = {"guild_id": server_id}
-    users = await db.select_var(sql_query, val, dictlist=True)
-    return users
 
 
 class Commands(commands.Cog):
@@ -46,10 +36,30 @@ class Commands(commands.Cog):
     A list of commands that can help you.
     """
 
-    def __init__(self, bot):
+    def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.title = "Commands"
         self.alias = "commands"
+
+    async def cog_before_invoke(self, ctx: discord.ApplicationContext):
+        try:
+            user = await models.UserProfile.objects.select_related(
+                "bank_account", "bags"
+            ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
+            ctx.user_profile = user
+            self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
+        except models.UserProfile.DoesNotExist as exc:
+            raise commands.CheckFailure(
+                "UserProfile does not exist. Please register first. `/auth register`"
+            ) from exc
+
+    async def get_richest_data(self, ctx: discord.ApplicationContext):
+        return [
+            account
+            async for account in models.UserBankAccount.objects.filter(
+                user__guild_id=ctx.guild.id
+            ).select_related("user")
+        ]
 
     @commands.slash_command(
         name="spenden", contexts=[discord.InteractionContextType.guild]
@@ -82,7 +92,7 @@ class Commands(commands.Cog):
         embed.set_thumbnail(url=ctx.bot.user.display_avatar.url)
 
         class HelpSelect(discord.ui.View):
-            def __init__(self, bot):
+            def __init__(self, bot: Demolizzen):
                 super().__init__(timeout=30)
                 self.value = None
                 self.bot = bot
@@ -112,7 +122,7 @@ class Commands(commands.Cog):
                             f"❌ Permission ERROR: The Help Command couldn't edit Help Status in **<#{self.message.channel.id}>**"
                         )
                         return
-                    log.error(e, exc_info=True)
+                    self.bot.logger.error(e, exc_info=True)
 
             async def on_error(self, interaction, error, item):
                 print(str(interaction))
@@ -262,23 +272,25 @@ class Commands(commands.Cog):
         view.message = message
 
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
-    async def bag(self, ctx):
+    async def bag(self, ctx: discord.ApplicationContext):
         """
         Show you items in the bag
         """
-        server_id = ctx.guild.id
-        user_id = ctx.author.id
-        # Get User Data
-        sql = (
-            "SELECT * FROM `bag` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
+        # Erstelle eine Embed-Nachricht, um die Items anzuzeigen
+        embed = discord.Embed(
+            title=f"{ctx.author.display_name}'s Bag", color=discord.Color.teal()
         )
-        val = {"user_id": user_id, "guild_id": server_id}
-        users = await db.select_var(sql, val, dictlist=True)
+        try:
+            bags: models.UserBag = ctx.user_profile.bags
+            user_bag = [item async for item in bags.items.all()]
+            for user_item in user_bag:
+                item_name = user_item.item_name
+                item_quantity = user_item.quantity
 
-        if not users:
+                embed.add_field(
+                    name=item_name, value=f"Anzahl: {item_quantity}", inline=False
+                )
+        except (models.UserBagItems.DoesNotExist, models.UserBag.DoesNotExist):
             em = discord.Embed(
                 description=f"{ctx.author.mention}, Your Bag is empty... Buy something with /buy",
                 color=discord.Color.teal(),
@@ -286,40 +298,15 @@ class Commands(commands.Cog):
             await ctx.respond(embed=em)
             return
 
-        # Erstelle eine Embed-Nachricht, um die Items anzuzeigen
-        embed = discord.Embed(
-            title=f"{ctx.author.display_name}'s Bag", color=discord.Color.teal()
-        )
-
-        for user_item in users:
-            item_name = user_item["item_name"]
-            item_quantity = user_item["item_quantity"]
-
-            embed.add_field(
-                name=item_name, value=f"Anzahl: {item_quantity}", inline=False
-            )
-
         await ctx.respond(embed=embed)
 
-    @bag.error
-    async def command_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
-
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
-    @commands.cooldown(
-        10, 600, commands.BucketType.user
-    )  # 10 Mal alle 10 Minuten pro Benutzer
     @option("item_name", description="Pick your item!", autocomplete=get_bag_data)
     @option("amount", description="Specify amount")
     async def use(self, ctx: discord.ApplicationContext, item_name: str, amount: int):
         """
         Use an item from your bag
         """
-        # Get Server-ID for further process
-        server_id = ctx.guild.id
-        user = ctx.author
-        user_id = user.id
-
         # Random Drink Text
         drinktext = [
             f"genießt **`{item_name.capitalize()}`**.",
@@ -346,46 +333,47 @@ class Commands(commands.Cog):
             await ctx.respond(embed=em)
             return
 
-        # Get User Data
-        sql = (
-            "SELECT * FROM `bag` WHERE `user_id` = :user_id AND `guild_id` = :guild_id"
-        )
-        val = {"user_id": user_id, "guild_id": server_id}
-        item = await db.select_var(sql, val, dictlist=True)
-
-        if not item:
+        # Get User Bag Item
+        try:
+            user_bag_items = await models.UserBagItems.objects.aget(
+                user_bag=ctx.user_profile.bags,
+                item_name=item_name,
+            )
+        except models.UserBag.DoesNotExist:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have `{item[0]['item_name']}`",
+                description=f"{ctx.author.mention}, Your Bag is empty... Buy something with /buy",
+            )
+            await ctx.respond(embed=em)
+            return
+        except models.UserBagItems.DoesNotExist:
+            em = discord.Embed(
+                title="",
+                color=discord.Color.red(),
+                description=f"{ctx.author.mention}, You don't have `{item_name.capitalize()}` in your bag",
             )
             await ctx.respond(embed=em)
             return
 
         # Überprüfe, ob genug Items vorhanden sind
-        if item[0]["item_quantity"] < amount:
+        if user_bag_items.quantity < amount:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have enough `{item[0]['item_name']}`",
+                description=f"{ctx.author.mention}, You don't have enough `{item_name.capitalize()}` in your bag",
             )
             await ctx.respond(embed=em)
             return
 
         # Aktualisiere die Menge des Items im Bag
-        new_quantity = item[0]["item_quantity"] - amount
+        changed_quantity = user_bag_items.quantity - amount
+        user_bag_items.quantity = changed_quantity
 
-        update_query = f"UPDATE `bag` SET `item_quantity` = {new_quantity} WHERE `user_id` = {user_id} AND `guild_id` = {server_id} AND `item_name` = '{item_name}'"
+        # Update the item quantity in the database
+        await user_bag_items.asave()
 
-        try:
-            await db.execute_sql(update_query)
-        # pylint: disable=broad-except
-        except Exception as e:
-            log.error(f"Fehler bei der Verbindung zur Datenbank: {e}", exc_info=True)
-            await ctx.respond("Something went wrong, please try again later")
-            return None
-
-        if item[0]["type"] == "drink":
+        if user_bag_items.item_type == "drink":
             if amount <= 1:
                 em = discord.Embed(
                     title="",
@@ -410,10 +398,6 @@ class Commands(commands.Cog):
             )
         await ctx.respond(embed=em)
 
-    @use.error
-    async def use_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
-
     class LeaderboardPaginator(Paginator):
         def __init__(self, pages, timeout):
             super().__init__(pages, timeout=timeout)
@@ -425,39 +409,33 @@ class Commands(commands.Cog):
                 await self.message.delete()
 
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
     async def richest(self, ctx: discord.ApplicationContext):
         """
         Get Information about the Richest Players
         """
         # Fetch User Data
-        users = await get_richest_data(ctx)
+        users = await self.get_richest_data(ctx)
 
-        # Sortiere die Spieler nach ihrem Wallet-Betrag in absteigender Reihenfolge
-        try:
-            gesamt = sum(user["wallet"] for user in users)
-            sorted_users = sorted(users, key=lambda user: user["wallet"], reverse=True)
-        # pylint: disable=broad-except
-        except Exception as e:
-            log.error(f"[Richest] • {e}", exc_info=True)
+        if not users:
             await ctx.respond(
-                "Something went wrong, please try again later.",
+                "No users found in the database. Please try again later.",
                 ephemeral=True,
                 delete_after=60,
             )
             return
 
+        total = sum(user.wallet for user in users if hasattr(user, "wallet"))
         pages = []
         description = ""
 
-        description += f":bank: Server gesamt :coin: {gesamt}\n"
+        description += f":bank: Server Total :coin: {total}\n\n"
 
-        # Füge die restlichen Plätze hinzu
-        for number, user in enumerate(sorted_users, start=1):
-            name = user["user_name"]
-            wallet = user["wallet"]
+        # Nur die Top 10 Spieler anzeigen
+        top_users = sorted(users, key=lambda x: x.wallet, reverse=True)[:10]
+
+        for number, user in enumerate(top_users, start=1):
+            name = user.user.user_name
+            wallet = user.wallet if hasattr(user, "wallet") else 0
 
             if number == 1:
                 place_emoji = ":first_place:"
@@ -471,22 +449,14 @@ class Commands(commands.Cog):
             else:
                 description += f"#{number} {name.capitalize()} :coin: {wallet}\n"
 
-            if (number + 1) % 10 == 0 or number == len(sorted_users):
-                embed = discord.Embed(
-                    title=f"{ctx.guild.name} Richest Players",
-                    color=discord.Color.teal(),
-                )
-                if ctx.guild.icon:
-                    embed.set_thumbnail(url=ctx.guild.icon.url)
-                embed.description = (
-                    description  # Set the description for the current embed
-                )
-                pages.append(embed)
-                description = ""
+        embed = discord.Embed(
+            title=f"{ctx.guild.name} Richest Players",
+            color=discord.Color.teal(),
+        )
+        if ctx.guild.icon:
+            embed.set_thumbnail(url=ctx.guild.icon.url)
+        embed.description = description
+        pages.append(embed)
 
         paginator = self.LeaderboardPaginator(pages=pages, timeout=60)
         await paginator.respond(ctx.interaction)
-
-    @richest.error
-    async def richest_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)

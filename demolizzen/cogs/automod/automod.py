@@ -1,9 +1,13 @@
-from datetime import timedelta
-
+# Discord
 import discord
-from core import checks
 from discord.commands import Option
 from discord.ext import commands
+
+# Django
+from django.utils import timezone
+
+# Demolizzen
+from demolizzen.core import checks
 
 invite_links = ["*discord.com/invite*", "*discord.gg*"]
 
@@ -23,7 +27,9 @@ class Automod(commands.Cog):
     @discord.guild_only()
     @checks.is_guild_owner()
     async def automod(
-        self, ctx: discord.ApplicationContext, log_channel: Option(discord.TextChannel)
+        self,
+        ctx: discord.ApplicationContext,
+        log_channel: discord.TextChannel = Option(),
     ):
         """
         Install Automod Module to Server
@@ -62,7 +68,7 @@ class Automod(commands.Cog):
                     discord.AutoModAction(
                         action_type=discord.AutoModActionType.timeout,
                         metadata=discord.AutoModActionMetadata(
-                            timeout_duration=timedelta(minutes=5)
+                            timeout_duration=timezone.timedelta(minutes=5)
                         ),
                     ),
                 ]

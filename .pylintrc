@@ -4,7 +4,9 @@
 ignore-paths=
     tests/,
     (.*)/tests/,
+    demolizzen/migrations/,
     demolizzen/Cogs/test/,
+    demolizzen/management/,
 
 [MESSAGES CONTROL]
 disable=
@@ -33,6 +35,8 @@ disable=
 
     duplicate-code,
 
+    broad-exception-caught,
+
 [DESIGN]
 max-attributes=20
 max-args=15
@@ -42,6 +46,7 @@ max-returns=10
 max-statements=50
 max-nested-blocks=7
 max-parents=7
+max-positional-arguments=7
 
 [REPORTS]
 output-format = colorized
