@@ -1,8 +1,6 @@
 # Changelog
 
-# IN DEVELOPMENT
-
-[2.0.0] - 2025-xx-xx
+[2.0.0] - 2025-09-10
 
 > [IMPORTANT]
 > This version changes the entire bot system including database structure, commands, etc.
