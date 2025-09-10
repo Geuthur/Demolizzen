@@ -54,12 +54,11 @@ class Admin(commands.Cog):
     # ---------------------------- Moderation ----------------------------
 
     @mod.command()
+    @commands.guild_only()
     @checks.is_mod()
     @option("limit", description="How many")
     async def clear(self, ctx: discord.ApplicationContext, limit: int):
-        """
-        Clear Message from a Channel
-        """
+        """Clear Message from a Channel."""
         # await ctx.defer(ephemeral=True)
 
         if limit > 100:
@@ -115,21 +114,20 @@ class Admin(commands.Cog):
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
     @mod.command()
+    @commands.guild_only()
     @checks.is_mod()
-    @option("user", description="Wähle User")
-    @option("role", description="Wähle Rolle")
+    @option("user", description="Choose User")
+    @option("role", description="Choose Role")
     async def role(
         self, ctx: discord.ApplicationContext, user: discord.Member, role: discord.Role
     ):
-        """
-        Give a Role to a User
-        """
+        """Give a Role to a User. Works Hierarchically."""
 
         if ctx.author.top_role.position < user.top_role.position:
-            return await ctx.respond("Du kannst seine Rolle nicht ändern.")
+            return await ctx.respond("You cannot give a role to this user.")
         try:
             await user.add_roles(role)
-            await ctx.respond(f"{role} an {user.mention} hinzugefügt!")
+            await ctx.respond(f"{role} has been added to {user.mention}!")
             return
         except discord.HTTPException as e:
             if e.code == 50013:  # No Permission
@@ -140,25 +138,25 @@ class Admin(commands.Cog):
                 embed = discord.Embed(
                     description="❌ I have no permission to do that..."
                 )
-            else:
-                self.bot.logger.error(e, exc_info=True)
-                embed = discord.Embed(description="❌ Something went wrong try later.")
+            self.bot.logger.error(e, exc_info=True)
+            embed = discord.Embed(description="❌ Something went wrong try later.")
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
     @mod.command()
+    @commands.guild_only()
     @checks.is_mod()
-    @option("user", description="Wähle User")
-    @option("derole", description="Wähle Rolle")
-    async def derole(self, ctx, user: discord.Member, role: discord.Role):
-        """
-        Remove a Role to a User
-        """
+    @option("user", description="Choose User")
+    @option("derole", description="Choose Role")
+    async def derole(
+        self, ctx: discord.ApplicationContext, user: discord.Member, role: discord.Role
+    ):
+        """Remove a Role from a User."""
 
         if ctx.author.top_role.position < user.top_role.position:
-            return await ctx.respond("Du kannst seine Rolle nicht ändern.")
+            return await ctx.respond("You cannot remove a role from this user.")
         try:
             await user.remove_roles(role)
-            await ctx.respond(f"{role} an {user.mention} entfernt!")
+            await ctx.respond(f"{role} has been removed from {user.mention}!")
             return
         except discord.HTTPException as e:
             if e.code == 50013:  # No Permission
@@ -169,9 +167,8 @@ class Admin(commands.Cog):
                 embed = discord.Embed(
                     description="❌ I have no permission to do that..."
                 )
-            else:
-                self.bot.logger.error(e, exc_info=True)
-                embed = discord.Embed(description="❌ Something went wrong try later.")
+            self.bot.logger.error(e, exc_info=True)
+            embed = discord.Embed(description="❌ Something went wrong try later.")
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
     # ---------------------------- Mission System ----------------------------
@@ -179,16 +176,15 @@ class Admin(commands.Cog):
     # ---------------------------- Mission System ----------------------------
 
     @economy.command()
-    @checks.is_botmanager()
+    @commands.guild_only()
+    @checks.is_admin()
     @option(
         "action",
-        description="Start or Stop the Event for the Mining/Raid System",
+        description="Start or Stop the Event for the Economy System",
         choices=["On", "Off", "Status"],
     )
     async def mode(self, ctx, action: str):
-        """
-        Start or Stop the Event for the Mining/Raid System
-        """
+        """Start or Stop the Event for the Economy System."""
 
         server_id = ctx.guild.id
 
@@ -215,12 +211,10 @@ class Admin(commands.Cog):
             return
 
     @economy.command()
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("amount", description="Multiply the Loan")
     async def set(self, ctx, amount: int):
-        """
-        Set the Event Faktor as Multiplier
-        """
+        """Set the Event Faktor as Multiplier."""
         server_id = ctx.guild.id
 
         EVENTS_SERVER[server_id] = (True, int(amount))
@@ -234,15 +228,13 @@ class Admin(commands.Cog):
     # ---------------------------- Bank System ----------------------------
 
     @bank.command(name="give-money")
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("member", description="Choose Member")
     @option("amount", description="Specify the amount of Coins to Give")
     async def give_money(
         self, ctx: discord.ApplicationContext, member: discord.Member, amount: int
     ):
-        """
-        Give money to a specific user
-        """
+        """Give money to a specific user."""
         amount = int(amount)
         if amount < 0:
             await ctx.respond("Amount must be positive!")
@@ -268,7 +260,7 @@ class Admin(commands.Cog):
         return
 
     @bank.command(name="remove-money")
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("member", description="Choose Member")
     @option("amount", description="Specify the amount of Coins to Remove")
     @option("konto", description="Choose Account", choices=["wallet", "bank"])
@@ -279,9 +271,7 @@ class Admin(commands.Cog):
         amount: int,
         konto: str,
     ):
-        """
-        Remove money from a specific user
-        """
+        """Remove money from a specific user."""
         # Get Server-ID for further process
         server_id = ctx.guild.id
 
@@ -320,7 +310,7 @@ class Admin(commands.Cog):
         return
 
     @bank.command(name="remove-bank")
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("member", description="Choose Member")
     async def reset_money(
         self, ctx: discord.ApplicationContext, member: discord.Member
@@ -370,6 +360,7 @@ class Admin(commands.Cog):
     @owner.command(name="force-deposits-update")
     @checks.is_owner()
     async def trigger_deposit_update(self, ctx: discord.ApplicationContext):
+        """Force a deposit update."""
         banksystem_cog: Bank = self.bot.get_cog("Bank")
         await banksystem_cog.process_daily_interest()
         await ctx.respond("Deposit Update Triggered.", ephemeral=True)
@@ -377,6 +368,7 @@ class Admin(commands.Cog):
     @owner.command(name="force-ship-update")
     @checks.is_owner()
     async def trigger_ship_update(self, ctx: discord.ApplicationContext):
+        """Force a ship data update."""
         shopsystem_cog: Economy = self.bot.get_cog("Eco")
         await shopsystem_cog.fetch_ship_data()
         await ctx.respond("Ship Data Update Triggered.", ephemeral=True)
