@@ -61,7 +61,7 @@ class Core(commands.Cog):
             self.bot.logger.error(f"Error on Get Data: {e}")
             return None
 
-    @auth.command()
+    @auth.command(contexts=[discord.InteractionContextType.guild])
     async def register(self, ctx: discord.ApplicationContext):
         """Register User Profile for further use of the Bot"""
         # Erstelle eine Embed-Nachricht, um die Items anzuzeigen
@@ -85,7 +85,12 @@ class Core(commands.Cog):
         )
         await ctx.respond(embed=embed, ephemeral=True)
 
-    @botsettings.command()
+    @botsettings.command(
+        contexts=[
+            discord.InteractionContextType.guild,
+            discord.InteractionContextType.bot_dm,
+        ]
+    )
     @checks.is_owner()
     async def activity(
         self,
@@ -101,7 +106,12 @@ class Core(commands.Cog):
             f"Activity set to {activity}.", ephemeral=True, delete_after=10
         )
 
-    @botsettings.command()
+    @botsettings.command(
+        contexts=[
+            discord.InteractionContextType.guild,
+            discord.InteractionContextType.bot_dm,
+        ]
+    )
     @checks.is_owner()
     @option("status", description="Change Status", choices=["online", "idle", "dnd"])
     async def status(
@@ -126,7 +136,12 @@ class Core(commands.Cog):
                 f"Status changed to `{status}`.", ephemeral=True, delete_after=10
             )
 
-    @botsettings.command()
+    @botsettings.command(
+        contexts=[
+            discord.InteractionContextType.guild,
+            discord.InteractionContextType.bot_dm,
+        ]
+    )
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 3 Mal alle 10 Minuten pro Benutzer
@@ -154,7 +169,12 @@ class Core(commands.Cog):
     async def command_cooldown(self, ctx, error):
         await application_cooldown(ctx, error)
 
-    @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @botsettings.command(
+        contexts=[
+            discord.InteractionContextType.guild,
+            discord.InteractionContextType.bot_dm,
+        ]
+    )
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 3 Mal alle 10 Minuten pro Benutzer
@@ -162,18 +182,60 @@ class Core(commands.Cog):
         """
         Show the bot's changelog
         """
-        await ctx.defer()
-        try:
-            await self.get_data("https://hell-rider.de/api/discord_changelog", ctx)
-        # pylint: disable=broad-except
-        except Exception:
-            await ctx.respond("Failed to fetch changelog. Try again later.")
+        em = discord.Embed(
+            title="Changelog",
+            color=discord.Color.blue(),
+            description="Here is the changelog for the bot: [CHANGELOG.md](https://github.com/Geuthur/Demolizzen/blob/master/CHANGELOG.md)",
+        )
+        return await ctx.respond(embed=em)
 
     @changelog.error
     async def changelog_cooldown(self, ctx, error):
         await application_cooldown(ctx, error)
 
     @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @commands.guild_only()
+    @checks.is_guild_owner()
+    async def set_channel(
+        self, ctx: discord.ApplicationContext, channel: discord.TextChannel
+    ):
+        """Set Main Channel for Bots Interactions. Only for Server Owner."""
+        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
+        guild_profile.main_channel = channel.id
+        await guild_profile.asave()
+        embed = discord.Embed(
+            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {guild_profile.main_channel}`"
+        )
+        return await ctx.respond(embed=embed)
+
+    @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @commands.guild_only()
+    @checks.is_guild_owner()
+    async def unset_channel(self, ctx: discord.ApplicationContext):
+        """Remove Main Channel for Bots Interactions. Only for Server Owner."""
+        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
+
+        if guild_profile.main_channel is None:
+            embed = discord.Embed(
+                description="🟡 **INFO**: `📢 Bot already react to all Channels`"
+            )
+            await ctx.respond(embed=embed)
+            return
+
+        # Remove all channels from the levelling server base
+        guild_profile.main_channel = None
+        await guild_profile.asave()
+        embed = discord.Embed(
+            description="🟢 **SUCCESS**: `📢 Bot react to all Channels`"
+        )
+        await ctx.respond(embed=embed)
+
+    @botsettings.command(
+        contexts=[
+            discord.InteractionContextType.guild,
+            discord.InteractionContextType.bot_dm,
+        ]
+    )
     @commands.is_owner()
     @option(
         "level",
@@ -201,12 +263,11 @@ class Core(commands.Cog):
         self.bot.logger.setLevel(log_level)
         await ctx.respond(f"Log level set to {level.upper()}.", ephemeral=True)
 
-    @botsettings.command()
+    @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @commands.guild_only()
     @checks.is_admin()
     async def perms_guild(self, ctx: discord.ApplicationContext):
-        """
-        Show permissions for Demolizzen for this Server.
-        """
+        """Show permissions for Demolizzen for this Server. needs at Least Admin Permission."""
 
         guild_perms = ctx.guild.me.guild_permissions
         perms_compare = guild_perms >= self.bot.req_perms
