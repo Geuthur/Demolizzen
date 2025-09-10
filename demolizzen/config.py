@@ -1,6 +1,5 @@
 # Standard Library
 import os
-from urllib.parse import quote
 
 # Third Party
 # Secure Configs for Github
@@ -26,9 +25,6 @@ DATABASE_HOST_WEBSITE = os.getenv("DATABASE_HOST_WEBSITE")
 DATABASE_USER_WEBSITE = os.getenv("DATABASE_USER_WEBSITE")
 DATABASE_PASSWORD_WEBSITE = os.getenv("DATABASE_PASSWORD_WEBSITE")
 DATABASE_NAME_WEBSITE = os.getenv("DATABASE_NAME_WEBSITE")
-
-DATABASE_PASSWORD_ENCODED = quote(DATABASE_PASSWORD)
-DATABASE_PASSWORD_WEBSITE_ENCODED = quote(DATABASE_PASSWORD_WEBSITE)
 
 SETTINGS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SETTINGS_DIR)
