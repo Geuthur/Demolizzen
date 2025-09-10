@@ -26,7 +26,7 @@ class Bank(commands.Cog):
         self.last_update_time = timezone.now()
         self.title = "Banksystem"
         self.alias = "bank"
-        self.earns = 0.01
+        self.earns = 0.001
         self.deposits.start()
 
     def cog_unload(self):
@@ -128,7 +128,7 @@ class Bank(commands.Cog):
         )
         em.add_field(
             name="Bank 🏦",
-            value=f"`💵` **Balance:** ${bank_account.bank}\n `📈` **INTEREST:** 1%",
+            value=f"`💵` **Balance:** ${bank_account.bank}\n `📈` **INTEREST:** {self.earns * 100}%",
             inline=True,
         )
         await ctx.respond(embed=em)

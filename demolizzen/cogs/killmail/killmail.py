@@ -251,7 +251,7 @@ class Killmail(commands.Cog):
         try:
             zk_channel = await models.ZKillboard.objects.select_related(
                 "guild", "owner"
-            ).aget(channel_id=subscription.channel_id, guild_id=subscription.guild_id)
+            ).aget(id=subscription.id)
         except models.ZKillboard.DoesNotExist:
             self.bot.logger.error(f"Failed to remove bad channel {subscription}")
             return False

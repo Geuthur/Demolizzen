@@ -229,7 +229,7 @@ class Shop(commands.Cog):
                 user_bag = await models.UserBag.objects.select_related("items").acreate(
                     user=user_profile
                 )
-                item = user_bag.items.get(item_name=item_name)
+                item = user_bag.items.aget(item_name=item_name)
             except models.UserBagItems.DoesNotExist:
                 item = await models.UserBagItems.objects.acreate(
                     user_bag=user_profile.bags,

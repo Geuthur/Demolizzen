@@ -1,5 +1,4 @@
 # Standard Library
-import time
 from typing import Any
 
 # Third Party
@@ -21,6 +20,9 @@ from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 from discord.ui import Button, View
+
+# Django
+from django.utils import timezone
 
 # Demolizzen
 from demolizzen import models
@@ -77,14 +79,16 @@ class Token(commands.Cog):
         if tokens:
             items = []
             for token in tokens:
-                if token.expires_at is not None and token.expires_at < time.time():
+                if token.expires_at is not None and token.expires_at < timezone.now():
                     new_token, success = await self.refresh_access_token(
                         token, self.client_id, self.secret_id
                     )
                     if success is False:
                         continue
                     token.access_token = new_token["access_token"]
-                    token.expires_at = float(new_token["expires_in"]) + time.time()
+                    token.expires_at = timezone.now() + timezone.timedelta(
+                        seconds=float(new_token["expires_in"])
+                    )
                     token.has_token_error = False
                     token.error_message = None
                     items.append(token)
@@ -263,7 +267,9 @@ class Token(commands.Cog):
                     )
 
             new_token.access_token = token["access_token"]
-            new_token.expires_at = float(token["expires_in"]) + time.time()
+            new_token.expires_at = timezone.now() + timezone.timedelta(
+                seconds=float(token["expires_in"])
+            )
             new_token.has_token_error = False
             new_token.error_message = None
 

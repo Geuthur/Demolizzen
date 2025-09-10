@@ -555,7 +555,7 @@ class ESI:
             query = await models.InvTypes.objects.aget(typeID=item_id)
 
             result_dict = {
-                c.name: getattr(query, c.name) for c in query.__table__.columns
+                field.name: getattr(query, field.name) for field in query._meta.fields
             }
             self._item_name_cache[item_id] = result_dict
             return result_dict
