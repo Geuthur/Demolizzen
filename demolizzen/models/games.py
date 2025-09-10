@@ -95,7 +95,7 @@ class UserRaidMission(models.Model):
     chance = models.IntegerField(null=True)
     salary = models.IntegerField(null=True)
     active = models.BooleanField(default=False)
-    ship = models.OneToOneField(
+    ship = models.ForeignKey(
         EconomyShip, on_delete=models.SET_NULL, null=True, related_name="raiding_ships"
     )
     ship_type = models.CharField(max_length=50, default="normal")
