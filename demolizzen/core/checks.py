@@ -1,14 +1,19 @@
+# Discord
 import discord
-import Levelling.Database.get
-import Levelling.Database.set
 from discord.ext import commands
 
+# Demolizzen
+from demolizzen.models import GuildProfile
 
-async def check_is_owner(ctx):
-    return await ctx.bot.is_owner(ctx.author)
+
+async def check_is_owner(ctx: discord.ApplicationContext):
+    if await ctx.bot.is_owner(ctx.author):
+        return True
+    await ctx.respond("You are not the Bot Owner.", ephemeral=True)
+    return False
 
 
-async def check_is_guildowner(ctx, precheck=None):
+async def check_is_guildowner(ctx: discord.ApplicationContext, precheck=None):
     if not ctx.guild:
         await ctx.respond("This command works only on Server", ephemeral=True)
         return False
@@ -19,7 +24,7 @@ async def check_is_guildowner(ctx, precheck=None):
     return False
 
 
-async def check_is_admin(ctx, precheck=None):
+async def check_is_admin(ctx: discord.ApplicationContext, precheck=None):
     if not ctx.guild:
         await ctx.respond("This command works only on Server", ephemeral=True)
         return False
@@ -32,7 +37,7 @@ async def check_is_admin(ctx, precheck=None):
     return False
 
 
-async def check_is_botmanager(ctx):
+async def check_is_botmanager(ctx: discord.ApplicationContext):
     if not ctx.guild:
         await ctx.respond("This command works only on Server", ephemeral=True)
         return False
@@ -46,7 +51,7 @@ async def check_is_botmanager(ctx):
     return False
 
 
-async def check_is_mod(ctx):
+async def check_is_mod(ctx: discord.ApplicationContext):
     if not ctx.guild:
         await ctx.respond("This command works only on Server", ephemeral=True)
         return False
@@ -61,7 +66,7 @@ async def check_is_mod(ctx):
 
 
 # Benutzerdefinierte Überprüfungsfunktion, die sicherstellt, dass der Befehl im gewünschten Channel ausgeführt wird
-async def check_channel(ctx):
+async def check_channel(ctx: discord.ApplicationContext):
     """
     Custom check function to ensure that a command is executed in the desired channel.
 
@@ -74,10 +79,12 @@ async def check_channel(ctx):
     Callable
         A coroutine predicate that checks if the command is in the correct channel.
     """
-    if await Levelling.Database.get.mainchannel(guild=ctx.guild) is not None:
+    guild_profile = await GuildProfile.objects.aget(guild_id=ctx.guild.id)
+
+    if guild_profile is not None:
         channel = discord.utils.get(
             ctx.guild.channels,
-            name=await Levelling.Database.get.mainchannel(guild=ctx.guild),
+            name=guild_profile.main_channel,
         )
         if ctx.channel.name != f"{channel}" and channel is not None:
             await ctx.respond(

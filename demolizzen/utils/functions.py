@@ -1,18 +1,6 @@
+# Discord
 import discord
 from discord.ext import commands
-
-
-async def cog_loader_sync(self):
-    guilds_to_check = [337275567487320064]
-    connected_guilds = [guild.id for guild in self.bot.guilds]
-    guilds = []
-    for guild_id in guilds_to_check:
-        if guild_id in connected_guilds:
-            x = await self.bot.fetch_guild(guild_id)
-            guilds.append(x)
-            if not guilds:
-                return False
-        return guilds
 
 
 # Convert Time
@@ -121,6 +109,7 @@ def colour(*args):
     return discord.Colour.lighter_grey()
 
 
+# pylint: disable=too-many-positional-arguments
 def make_embed(
     msg_type="",
     title=None,

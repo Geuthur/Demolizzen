@@ -1,19 +1,40 @@
+# Standard Library
 import os
+from urllib.parse import quote
 
+# Third Party
 # Secure Configs for Github
 from dotenv import load_dotenv
 
 load_dotenv()
 
-CLIEND_ID = os.getenv("CLIENT_ID")
+CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+
+TESTMODE = os.getenv("TESTMODE")
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+DATABASE_HOST = os.getenv("DATABASE_HOST")
+DATABASE_PORT = os.getenv("DATABASE_PORT")
+DATABASE_USER = os.getenv("DATABASE_USER")
+DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD")
+DATABASE_NAME = os.getenv("DATABASE_NAME")
+
+DATABASE_HOST_WEBSITE = os.getenv("DATABASE_HOST_WEBSITE")
+DATABASE_USER_WEBSITE = os.getenv("DATABASE_USER_WEBSITE")
+DATABASE_PASSWORD_WEBSITE = os.getenv("DATABASE_PASSWORD_WEBSITE")
+DATABASE_NAME_WEBSITE = os.getenv("DATABASE_NAME_WEBSITE")
+
+DATABASE_PASSWORD_ENCODED = quote(DATABASE_PASSWORD)
+DATABASE_PASSWORD_WEBSITE_ENCODED = quote(DATABASE_PASSWORD_WEBSITE)
 
 SETTINGS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SETTINGS_DIR)
 # DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 LOGS_DIR = "demolizzen/logs"
-CACHE_DIR = "demolizzen/cache"
 
 # Permissions
 MODERATOR_ROLE_NAME = "Moderator"
@@ -37,16 +58,15 @@ PRELOAD_EXTENSIONS = [
     "killmail",  # Killmail posting Module
     # 'automod',                  # Automod Module
     #  Testing Area only works limited, can break bot
-    # 'chatgpt',                 # ChatGPT Module - 1 Anwser (NO Conversation)
-    "test",
+    # "test",
     # require ESI Token to work
-    # 'token',               # Must be activated if Modules are enabled in this section
+    # "token",  # Must be activated if Modules are enabled in this section
     # Corporation Modules - Voices of War
     # 'vow'                       # Voices of War Module
 ]
 
 # ESI API - Here you need to setup your Application
-TOKENS = {"client_id": CLIEND_ID, "secret": CLIENT_SECRET}
+TOKENS = {"client_id": CLIENT_ID, "secret": CLIENT_SECRET}
 
 # Level System
 

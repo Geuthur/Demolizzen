@@ -1,9 +1,9 @@
-import logging
-
+# Discord
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
-log = logging.getLogger("main")
+# Demolizzen
+from demolizzen.core.bot import Demolizzen
 
 
 class Geuthur(commands.Cog):
@@ -11,7 +11,7 @@ class Geuthur(commands.Cog):
     Get all relevant commands for "Geuthur"
     """
 
-    def __init__(self, bot):
+    def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.title = "Geuthur"  # Title hier festlegen
         self.alias = "geuthur"  # Alias hier festlegen
@@ -47,7 +47,7 @@ class Geuthur(commands.Cog):
                         ):  # EINGANGSHALLE_CHANNEL_ID muss definiert sein
                             try:
                                 await user_id.add_roles(role)
-                                log.info(
+                                self.bot.logger.info(
                                     f"{user_id.name} hat die Rolle {role.name} erhalten."
                                 )
                             # pylint: disable=broad-except
@@ -81,7 +81,7 @@ class Geuthur(commands.Cog):
                         ):  # EINGANGSHALLE_CHANNEL_ID muss definiert sein
                             try:
                                 await user_id.remove_roles(role)
-                                log.info(
+                                self.bot.logger.info(
                                     f"{user_id.name} hat die Rolle {role.name} verloren."
                                 )
                             # pylint: disable=broad-except

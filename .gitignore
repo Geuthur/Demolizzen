@@ -7,5 +7,6 @@ demolizzen/Cache/cache.db
 .env
 demolizzen/Cogs/test
 .venv/
+testing/
 
 __pycache__/
