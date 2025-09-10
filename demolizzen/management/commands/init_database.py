@@ -9,6 +9,10 @@ class Command(BaseCommand):
     help = "Create all default Database entries"
 
     def handle(self, *args, **options):
+        from .create_latest_invtypes import Command as CreateLatestInvtypesCommand
+        from .create_latest_mapsolarsystems import (
+            Command as CreateLatestMapSolarSystemsCommand,
+        )
         from .create_mission_ships import Command as CreateMissionShipsCommand
         from .create_shop_items import Command as CreateShopItemsCommand
         from .create_solar_systems import Command as CreateSolarSystemsCommand
@@ -16,6 +20,8 @@ class Command(BaseCommand):
         CreateMissionShipsCommand().handle(*args, **options)
         CreateShopItemsCommand().handle(*args, **options)
         CreateSolarSystemsCommand().handle(*args, **options)
+        CreateLatestInvtypesCommand().handle(*args, **options)
+        CreateLatestMapSolarSystemsCommand().handle(*args, **options)
         self.stdout.write(
             self.style.SUCCESS("Database has been initialized with default entries")
         )
