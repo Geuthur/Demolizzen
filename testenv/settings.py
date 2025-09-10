@@ -22,9 +22,9 @@ if os.environ.get("USE_MYSQL", True) is True:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
-            "NAME": "test_demolizzen",
+            "NAME": "temp_demolizzen",
             "USER": "root",
-            "PASSWORD": "test_password_tox",
+            "PASSWORD": "temp_password_tox",
             "HOST": "localhost",
             "PORT": "3306",
             "OPTIONS": {
