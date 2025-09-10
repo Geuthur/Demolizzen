@@ -42,23 +42,21 @@ EVENTS_SERVER = {}
 
 # load extensions on start/restart
 PRELOAD_EXTENSIONS = [
+    "core",  # Core Module - Must be loaded first
     "general",  # General Module
     "admin",  # Administration Module
-    "banksystem",  # Economy System
     "commands",  # Standard Commands
-    "economy",  # Get the time in eve and around the world
-    "eveonline",  # EVE-Online Module
-    "games",  # Games
     "levelsystem",  # Level System Module
+    "banksystem",  # Economy System
+    "economy",  # Get the time in eve and around the world
     "shop",  # Shop System Module
+    "games",  # Games
+    "eveonline",  # EVE-Online Module
     "killmail",  # Killmail posting Module
-    # 'automod',                  # Automod Module
-    #  Testing Area only works limited, can break bot
-    # "test",
-    # require ESI Token to work
-    # "token",  # Must be activated if Modules are enabled in this section
-    # Corporation Modules - Voices of War
-    # 'vow'                       # Voices of War Module
+    # 'automod',                                # Automod Module
+    # "token",                                  # Must be activated if Modules are enabled in this section
+    # 'vow'                                     # Voices of War Module
+    # "test",                                   # Testing Module
 ]
 
 # ESI API - Here you need to setup your Application
