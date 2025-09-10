@@ -272,6 +272,10 @@ class Command(BaseCommand):
         # Mining Frigates: 3000-4000
         for name, desc in [
             (
+                "Venture",
+                "A basic mining frigate, widely used for its reliability and efficiency in resource extraction.",
+            ),
+            (
                 "Prospect",
                 "A specialized mining frigate, designed for efficient resource extraction in hazardous environments.",
             ),
