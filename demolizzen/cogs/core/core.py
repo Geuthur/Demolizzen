@@ -22,6 +22,8 @@ class Core(commands.Cog):
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
+        self.title = "Core"
+        self.alias = "core"
 
     botsettings = SlashCommandGroup("bot", "Bot Settings")
     auth = SlashCommandGroup("auth", "Authentication Commands")
