@@ -1,6 +1,9 @@
 # Standard Library
 import json
 import logging
+import subprocess
+import sys
+from pathlib import Path
 
 # Discord
 import discord
@@ -301,3 +304,37 @@ class Core(commands.Cog):
 
         except discord.errors.Forbidden:
             await ctx.respond(embed=embed)
+
+    @botsettings.command(
+        contexts=[
+            discord.InteractionContextType.guild,
+            discord.InteractionContextType.bot_dm,
+        ]
+    )
+    @commands.is_owner()
+    async def trigger_migrations(self, ctx: discord.ApplicationContext):
+        """Trigger database migrations (runs 'python manage.py migrate')"""
+        await ctx.defer(ephemeral=True)
+        project_root = Path(__file__).resolve().parents[3]
+        cwd = str(project_root)
+        try:
+            # Run the migration command and capture output
+            result = subprocess.run(
+                [sys.executable, "manage.py", "migrate"],
+                check=True,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            output = result.stdout.strip() or result.stderr.strip() or "No output."
+            # Discord message limit is 2000 chars
+            if len(output) > 1900:
+                output = output[:1900] + "\n...output truncated."
+            await ctx.respond(f"```\n{output}\n```", ephemeral=True)
+        except Exception as e:
+            self.bot.logger.error(f"Error running migrations: {e}")
+            await ctx.respond(
+                "Something went wrong while running migrations", ephemeral=True
+            )
