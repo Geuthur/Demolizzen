@@ -168,6 +168,8 @@ class Demolizzen(commands.Bot):
             await self.send_resp(context, exception)
         elif isinstance(exception, commands.CommandOnCooldown):
             await self.send_resp(context, exception)
+        elif isinstance(exception, discord.errors.CheckFailure):
+            pass  # Silently ignore these errors.
         else:  # Catch everything, and close out the interactions gracefully.
             self.logger.error(f"Unknown Error {exception}")
             self.logger.error(
