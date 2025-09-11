@@ -45,6 +45,7 @@ PRELOAD_EXTENSIONS = [
     "core",  # Core Module - Must be loaded first
     "general",  # General Module
     "admin",  # Administration Module
+    "owner",  # Owner Module
     "ticket",  # Ticket System
     "commands",  # Standard Commands
     "levelsystem",  # Level System Module

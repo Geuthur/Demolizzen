@@ -1,13 +1,8 @@
 # Standard Library
 import json
-import logging
-import subprocess
-import sys
-from pathlib import Path
 
 # Discord
 import discord
-from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 from discord.ext.pages import Paginator
@@ -28,8 +23,14 @@ class Core(commands.Cog):
         self.title = "Core"
         self.alias = "core"
 
-    botsettings = SlashCommandGroup("bot", "Bot Settings")
-    auth = SlashCommandGroup("auth", "Authentication Commands")
+    botsettings = SlashCommandGroup(
+        "bot", "Bot Settings", contexts=[discord.InteractionContextType.guild]
+    )
+    auth = SlashCommandGroup(
+        "auth",
+        "Authentication Commands",
+        contexts=[discord.InteractionContextType.guild],
+    )
 
     async def get_data(self, url, ctx: discord.ApplicationContext):
         """
@@ -88,63 +89,7 @@ class Core(commands.Cog):
         )
         await ctx.respond(embed=embed, ephemeral=True)
 
-    @botsettings.command(
-        contexts=[
-            discord.InteractionContextType.guild,
-            discord.InteractionContextType.bot_dm,
-        ]
-    )
-    @checks.is_owner()
-    async def activity(
-        self,
-        ctx: discord.ApplicationContext,
-        *,
-        activity: discord.Game = None,
-    ):
-        """
-        Set bot activity
-        """
-        await self.bot.change_presence(status="online", activity=activity)
-        await ctx.respond(
-            f"Activity set to {activity}.", ephemeral=True, delete_after=10
-        )
-
-    @botsettings.command(
-        contexts=[
-            discord.InteractionContextType.guild,
-            discord.InteractionContextType.bot_dm,
-        ]
-    )
-    @checks.is_owner()
-    @option("status", description="Change Status", choices=["online", "idle", "dnd"])
-    async def status(
-        self,
-        ctx: discord.ApplicationContext,
-        *,
-        status: str,
-    ):
-        """
-        Set bot status to online, idle or dnd
-        """
-        try:
-            status = discord.Status[status.lower()]
-        except KeyError:
-            await ctx.error(
-                "Invalid Status",
-                "Only `online`, `idle` or `dnd` statuses are available.",
-            )
-        else:
-            await self.bot.change_presence(status=status, activity=ctx.me.activity)
-            await ctx.respond(
-                f"Status changed to `{status}`.", ephemeral=True, delete_after=10
-            )
-
-    @botsettings.command(
-        contexts=[
-            discord.InteractionContextType.guild,
-            discord.InteractionContextType.bot_dm,
-        ]
-    )
+    @botsettings.command()
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 3 Mal alle 10 Minuten pro Benutzer
@@ -172,15 +117,7 @@ class Core(commands.Cog):
     async def command_cooldown(self, ctx, error):
         await application_cooldown(ctx, error)
 
-    @botsettings.command(
-        contexts=[
-            discord.InteractionContextType.guild,
-            discord.InteractionContextType.bot_dm,
-        ]
-    )
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 3 Mal alle 10 Minuten pro Benutzer
+    @botsettings.command()
     async def changelog(self, ctx: discord.ApplicationContext):
         """
         Show the bot's changelog
@@ -192,11 +129,7 @@ class Core(commands.Cog):
         )
         return await ctx.respond(embed=em)
 
-    @changelog.error
-    async def changelog_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
-
-    @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @botsettings.command()
     @commands.guild_only()
     @checks.is_guild_owner()
     async def set_channel(
@@ -211,7 +144,7 @@ class Core(commands.Cog):
         )
         return await ctx.respond(embed=embed)
 
-    @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @botsettings.command()
     @commands.guild_only()
     @checks.is_guild_owner()
     async def unset_channel(self, ctx: discord.ApplicationContext):
@@ -233,40 +166,7 @@ class Core(commands.Cog):
         )
         await ctx.respond(embed=embed)
 
-    @botsettings.command(
-        contexts=[
-            discord.InteractionContextType.guild,
-            discord.InteractionContextType.bot_dm,
-        ]
-    )
-    @commands.is_owner()
-    @option(
-        "level",
-        description="Choose Log Level",
-        choices=["debug", "info", "warning", "error", "critical"],
-    )
-    async def setloglevel(self, ctx: discord.ApplicationContext, level: str):
-        """
-        Set log level dynamically
-        """
-        log_level_map = {
-            "debug": logging.DEBUG,
-            "info": logging.INFO,
-            "warning": logging.WARNING,
-            "error": logging.ERROR,
-            "critical": logging.CRITICAL,
-        }
-
-        log_level = log_level_map.get(level.lower())
-
-        if log_level is None:
-            await ctx.respond("Invalid log level.")
-            return
-
-        self.bot.logger.setLevel(log_level)
-        await ctx.respond(f"Log level set to {level.upper()}.", ephemeral=True)
-
-    @botsettings.command(contexts=[discord.InteractionContextType.guild])
+    @botsettings.command()
     @commands.guild_only()
     @checks.is_admin()
     async def perms_guild(self, ctx: discord.ApplicationContext):
@@ -304,37 +204,3 @@ class Core(commands.Cog):
 
         except discord.errors.Forbidden:
             await ctx.respond(embed=embed)
-
-    @botsettings.command(
-        contexts=[
-            discord.InteractionContextType.guild,
-            discord.InteractionContextType.bot_dm,
-        ]
-    )
-    @commands.is_owner()
-    async def trigger_migrations(self, ctx: discord.ApplicationContext):
-        """Trigger database migrations (runs 'python manage.py migrate')"""
-        await ctx.defer(ephemeral=True)
-        project_root = Path(__file__).resolve().parents[3]
-        cwd = str(project_root)
-        try:
-            # Run the migration command and capture output
-            result = subprocess.run(
-                [sys.executable, "manage.py", "migrate"],
-                check=True,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-
-            output = result.stdout.strip() or result.stderr.strip() or "No output."
-            # Discord message limit is 2000 chars
-            if len(output) > 1900:
-                output = output[:1900] + "\n...output truncated."
-            await ctx.respond(f"```\n{output}\n```", ephemeral=True)
-        except Exception as e:
-            self.bot.logger.error(f"Error running migrations: {e}")
-            await ctx.respond(
-                "Something went wrong while running migrations", ephemeral=True
-            )
