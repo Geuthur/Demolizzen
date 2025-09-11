@@ -1,6 +1,6 @@
 # Discord
 import discord
-from discord import Embed
+from discord import Embed, SlashCommandGroup
 from discord.commands import option
 from discord.ext import commands
 from discord.ui import Button, View
@@ -188,9 +188,13 @@ class TicketSystem(commands.Cog):
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
-        self.title = "Help System"
+        self.title = "Ticket System"
         self.alias = "ticket"
         self.persisted_views = self.bot.loop.create_task(self.load_persistent_tickets())
+
+    ticket = SlashCommandGroup(
+        "ticket", "Ticket System", contexts=[discord.InteractionContextType.guild]
+    )
 
     def cog_unload(self):
         self.persisted_views.cancel()
@@ -219,7 +223,7 @@ class TicketSystem(commands.Cog):
                 )
                 self.bot.add_view(view)
 
-    @commands.slash_command(name="open_ticket")
+    @ticket.command(name="open")
     @commands.guild_only()
     @option("group", description="The group you wish to contact", required=True)
     async def open_ticket(
@@ -284,7 +288,7 @@ class TicketSystem(commands.Cog):
             ),
         )
 
-    @commands.slash_command(name="set_help_channel")
+    @ticket.command(name="set", help="Set the help channel for tickets")
     @commands.guild_only()
     @checks.is_admin()
     @option("channel", description="The channel to set as help channel", required=True)
