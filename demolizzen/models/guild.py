@@ -18,7 +18,7 @@ class GuildProfile(models.Model):
 
 class GuildSettings(models.Model):
     guild = models.OneToOneField(
-        GuildProfile, on_delete=models.CASCADE, related_name="settings"
+        GuildProfile, on_delete=models.CASCADE, related_name="guild_settings"
     )
     language = models.CharField(max_length=10, default="en")
     bank_interest = models.FloatField(default=0.001)  # Interest rate for bank system
@@ -26,6 +26,10 @@ class GuildSettings(models.Model):
     disabled_commands = models.JSONField(null=True)  # JSON field for disabled commands
     disabled_cogs = models.JSONField(null=True)  # JSON field for disabled cogs
     enabled_cogs = models.JSONField(null=True)  # JSON field for enabled cogs
+    help_channel = models.CharField(
+        max_length=255, null=True
+    )  # Channel for help tickets
+    ticket_count = models.IntegerField(default=1)  # Counter for tickets
 
     class Meta:
         db_table = "guild_settings"

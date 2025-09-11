@@ -36,7 +36,7 @@ LOGS_DIR = "demolizzen/logs"
 MODERATOR_ROLE_NAME = "Moderator"
 
 # https://discordapi.com/permissions.html
-BOT_PERMISSIONS = 21444947025
+BOT_PERMISSIONS = 399402069073
 
 EVENTS_SERVER = {}
 
@@ -45,6 +45,7 @@ PRELOAD_EXTENSIONS = [
     "core",  # Core Module - Must be loaded first
     "general",  # General Module
     "admin",  # Administration Module
+    "ticket",  # Ticket System
     "commands",  # Standard Commands
     "levelsystem",  # Level System Module
     "banksystem",  # Economy System
@@ -53,10 +54,11 @@ PRELOAD_EXTENSIONS = [
     "games",  # Games
     "eveonline",  # EVE-Online Module
     "killmail",  # Killmail posting Module
-    # 'automod',                                # Automod Module
-    # "token",                                  # Must be activated if Modules are enabled in this section
-    # 'vow'                                     # Voices of War Module
-    # "test",                                   # Testing Module
+    # "geuthur",                                 # Geuthur Module
+    # "automod",                                 # Automod Module
+    # "token",                                   # Must be activated if Modules are enabled in this section
+    # "vow"                                      # Voices of War Module
+    # "test",                                    # Testing Module
 ]
 
 # ESI API - Here you need to setup your Application
