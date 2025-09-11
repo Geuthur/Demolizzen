@@ -13,7 +13,6 @@ from discord.ext import commands
 # Demolizzen
 from demolizzen.cogs.banksystem import Bank
 from demolizzen.cogs.economy import Economy
-from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 
 
@@ -27,8 +26,12 @@ class Owner(commands.Cog):
         "owner", "Owner Commands", contexts=[discord.InteractionContextType.bot_dm]
     )
 
+    guild = SlashCommandGroup(
+        "guild", "Guild Commands", contexts=[discord.InteractionContextType.guild]
+    )
+
     @owner.command(name="force-deposits-update")
-    @checks.is_owner()
+    @commands.is_owner()
     async def trigger_deposit_update(self, ctx: discord.ApplicationContext):
         """Force a deposit update."""
         banksystem_cog: Bank = self.bot.get_cog("Bank")
@@ -36,14 +39,14 @@ class Owner(commands.Cog):
         await ctx.respond("Deposit Update Triggered.", ephemeral=True)
 
     @owner.command(name="force-ship-update")
-    @checks.is_owner()
+    @commands.is_owner()
     async def trigger_ship_update(self, ctx: discord.ApplicationContext):
         """Force a ship data update."""
         shopsystem_cog: Economy = self.bot.get_cog("Eco")
         await shopsystem_cog.fetch_ship_data()
         await ctx.respond("Ship Data Update Triggered.", ephemeral=True)
 
-    @owner.command(
+    @guild.command(
         name="sync",
         description="Synchonizes the slash commands.",
     )
@@ -209,7 +212,7 @@ class Owner(commands.Cog):
         await ctx.respond(f"Log level set to {level.upper()}.", ephemeral=True)
 
     @owner.command(name="activity", description="Set the bot's activity")
-    @checks.is_owner()
+    @commands.is_owner()
     async def activity(
         self,
         ctx: discord.ApplicationContext,
@@ -223,7 +226,7 @@ class Owner(commands.Cog):
         )
 
     @owner.command(name="status", description="Set the bot's status")
-    @checks.is_owner()
+    @commands.is_owner()
     @option("status", description="Change Status", choices=["online", "idle", "dnd"])
     async def status(
         self,
