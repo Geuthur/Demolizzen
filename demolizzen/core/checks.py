@@ -6,10 +6,11 @@ from discord.ext import commands
 from demolizzen.models import GuildProfile
 
 
-async def check_is_owner(ctx: discord.ApplicationContext):
+async def check_is_owner(ctx: discord.ApplicationContext, precheck=None):
     if await ctx.bot.is_owner(ctx.author):
         return True
-    await ctx.respond("You are not the Bot Owner.", ephemeral=True)
+    if not precheck:
+        await ctx.respond("You are not the Bot Owner.", ephemeral=True)
     return False
 
 
@@ -27,16 +28,33 @@ async def check_is_admin(ctx: discord.ApplicationContext, precheck=None):
     if await check_is_guildowner(ctx, precheck=True):
         return True
     if not precheck:
-        await ctx.respond("You have no Admin Permission.", ephemeral=True)
+        permissions = []
+        if await check_is_guildowner(ctx, precheck=True):
+            permissions.append("Guild Owner")
+        permissions.append("Admin")
+        await ctx.respond(
+            "You are not an Admin. Permitted are: " + ", ".join(permissions),
+            ephemeral=True,
+        )
     return False
 
 
-async def check_is_mod(ctx: discord.ApplicationContext):
+async def check_is_mod(ctx: discord.ApplicationContext, precheck=None):
     if ctx.channel.permissions_for(ctx.author).manage_messages:
         return True
     if await check_is_admin(ctx, precheck=True):
         return True
-    await ctx.respond("You have no Moderation Permission.", ephemeral=True)
+    if not precheck:
+        permissions = []
+        if await check_is_guildowner(ctx, precheck=True):
+            permissions.append("Guild Owner")
+        if await check_is_admin(ctx, precheck=True):
+            permissions.append("Admin")
+        permissions.append("Moderation")
+        await ctx.respond(
+            "You are not a Mod. Permitted are: " + ", ".join(permissions),
+            ephemeral=True,
+        )
     return False
 
 
