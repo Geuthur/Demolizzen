@@ -27,7 +27,11 @@ THREAD_EMBED = Embed(
 
 class TicketControlView(View):
     def __init__(
-        self, thread, opener: discord.User, group: discord.Role, ticket_number
+        self,
+        thread: discord.Thread,
+        opener: discord.User,
+        group: discord.Role,
+        ticket_number,
     ):
         super().__init__(timeout=None)
         self.thread = thread
@@ -127,8 +131,13 @@ class TicketControlView(View):
     async def delete(self, button: Button, interaction: discord.Interaction):
         button.disabled = True
         await self.update_status_message(interaction)
-        await self.thread.delete()
-        await interaction.followup.send(f"{interaction.user.mention} Ticket deleted.")
+        try:
+            await self.thread.delete()
+        except discord.errors.HTTPException as e:
+            if e.code == 10003:  # Unknown Channel
+                pass
+            else:
+                logger.error(f"Failed to delete thread: {e}")
 
 
 class TicketSystem(commands.Cog):
@@ -176,6 +185,8 @@ class TicketSystem(commands.Cog):
                     type=discord.ChannelType.private_thread,
                     reason=None,
                 )
+                guild_settings.ticket_count += 1
+                await guild_settings.asave()
             except discord.Forbidden:
                 return await ctx.respond(
                     content="I do not have permission to create threads in the help channel. Please inform the admins.",
