@@ -37,3 +37,24 @@ class GuildSettings(models.Model):
 
     def __str__(self):
         return f"Settings for {self.guild.guild_name} ({self.guild.guild_id})"
+
+
+class GuildTicket(models.Model):
+    guild = models.ForeignKey(
+        GuildProfile, on_delete=models.CASCADE, related_name="guild_tickets"
+    )
+    ticket_number = models.IntegerField()
+    thread_id = models.BigIntegerField()
+    user_id = models.BigIntegerField()
+    group_id = models.BigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    is_closed = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "guild_tickets"
+        unique_together = ("guild", "ticket_number")
+        default_permissions = ()
+
+    def __str__(self):
+        return f"Ticket {self.ticket_number} in {self.guild.guild_name} ({self.guild.guild_id})"

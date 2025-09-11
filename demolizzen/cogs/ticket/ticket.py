@@ -1,6 +1,3 @@
-# Standard Library
-import logging
-
 # Discord
 import discord
 from discord import Embed
@@ -10,9 +7,8 @@ from discord.ui import Button, View
 
 # Demolizzen
 from demolizzen.core import checks
-from demolizzen.models.guild import GuildSettings
-
-logger = logging.getLogger(__name__)
+from demolizzen.core.bot import Demolizzen
+from demolizzen.models.guild import GuildSettings, GuildTicket
 
 THREAD_EMBED = Embed(
     title="Private Thread Guide",
@@ -40,11 +36,49 @@ class TicketControlView(View):
         self.claimed_by = None
         self.closed_by = None
         self.ticket_number = ticket_number
+        self.guild_id = thread.guild.id
         self.generate_thread_name()
-        self.claim_button = None
-        self.close_button = None
-        self.reopen_button = None
-        self.delete_button = None
+
+        # Dynamische custom_ids
+        claim_id = f"claim:{self.guild_id}:{self.ticket_number}"
+        close_id = f"close:{self.guild_id}:{self.ticket_number}"
+        reopen_id = f"reopen:{self.guild_id}:{self.ticket_number}"
+        delete_id = f"delete:{self.guild_id}:{self.ticket_number}"
+
+        self.claim_button = Button(
+            label="Claim",
+            style=discord.ButtonStyle.primary,
+            emoji="🛠️",
+            custom_id=claim_id,
+        )
+        self.close_button = Button(
+            label="Close",
+            style=discord.ButtonStyle.danger,
+            emoji="🔒",
+            custom_id=close_id,
+        )
+        self.reopen_button = Button(
+            label="Reopen",
+            style=discord.ButtonStyle.success,
+            emoji="🔓",
+            custom_id=reopen_id,
+        )
+        self.delete_button = Button(
+            label="Delete",
+            style=discord.ButtonStyle.danger,
+            emoji="🗑️",
+            custom_id=delete_id,
+        )
+
+        self.claim_button.callback = self.claim_callback
+        self.close_button.callback = self.close_callback
+        self.reopen_button.callback = self.reopen_callback
+        self.delete_button.callback = self.delete_callback
+
+        self.add_item(self.claim_button)
+        self.add_item(self.close_button)
+        self.add_item(self.reopen_button)
+        self.add_item(self.delete_button)
 
     def generate_thread_name(self):
         claimed = self.claimed_by.display_name if self.claimed_by else "unclaimed"
@@ -82,8 +116,7 @@ class TicketControlView(View):
         if interaction:
             await interaction.response.edit_message(view=self)
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.primary, emoji="🛠️")
-    async def claim(self, button: Button, interaction: discord.Interaction):
+    async def claim_callback(self, interaction: discord.Interaction):
         if interaction.user.id == self.opener.id:
             await interaction.response.send_message(
                 "You cannot claim your own ticket!", ephemeral=True
@@ -92,31 +125,29 @@ class TicketControlView(View):
         self.claimed_by = interaction.user
         self.status = "claimed"
         await self.update_thread_name()
-        button.disabled = True
+        self.claim_button.disabled = True
         await self.update_status_message(interaction)
         await interaction.followup.send(
             f"Ticket claimed by {interaction.user.mention}."
         )
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
-    async def close(self, button: Button, interaction: discord.Interaction):
+    async def close_callback(self, interaction: discord.Interaction):
         self.closed_by = interaction.user
         self.status = "closed"
         await self.update_thread_name()
-        button.disabled = True
+        self.close_button.disabled = True
         await self.update_status_message(interaction)
         await interaction.followup.send(
             f"{interaction.user.mention} Ticket closed. You can reopen it if needed."
         )
+        ticket = await GuildTicket.objects.aget(
+            guild_id=self.group.guild.id, ticket_number=self.ticket_number
+        )
+        ticket.closed_at = discord.utils.utcnow()
+        ticket.is_closed = True
+        await ticket.asave()
 
-    @discord.ui.button(label="Reopen", style=discord.ButtonStyle.success, emoji="🔓")
-    async def reopen(self, __: Button, interaction: discord.Interaction):
-        # Only allow reopening if currently closed
-        if not self.closed_by:
-            await interaction.response.send_message(
-                "Ticket is already open!", ephemeral=True
-            )
-            return
+    async def reopen_callback(self, interaction: discord.Interaction):
         self.closed_by = None
         self.claimed_by = None
         self.status = "open"
@@ -126,18 +157,28 @@ class TicketControlView(View):
                 item.disabled = False
         await self.update_status_message(interaction)
         await interaction.followup.send(f"{interaction.user.mention} Ticket reopened.")
+        ticket = await GuildTicket.objects.aget(
+            guild_id=self.group.guild.id, ticket_number=self.ticket_number
+        )
+        ticket.closed_at = None
+        ticket.is_closed = False
+        await interaction.message.edit(view=self)
+        await ticket.asave()
 
-    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger, emoji="🗑️")
-    async def delete(self, button: Button, interaction: discord.Interaction):
-        button.disabled = True
+    async def delete_callback(self, interaction: discord.Interaction):
+        self.delete_button.disabled = True
         await self.update_status_message(interaction)
         try:
             await self.thread.delete()
+            ticket = await GuildTicket.objects.aget(
+                guild_id=self.group.guild.id, ticket_number=self.ticket_number
+            )
+            await ticket.adelete()
         except discord.errors.HTTPException as e:
             if e.code == 10003:  # Unknown Channel
                 pass
             else:
-                logger.error(f"Failed to delete thread: {e}")
+                self.opener.bot.logger.error(f"Failed to delete thread: {e}")
 
 
 class TicketSystem(commands.Cog):
@@ -145,10 +186,38 @@ class TicketSystem(commands.Cog):
     Help Ticket Cog Things
     """
 
-    def __init__(self, bot):
+    def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.title = "Help System"
         self.alias = "ticket"
+        self.persisted_views = self.bot.loop.create_task(self.load_persistent_tickets())
+
+    def cog_unload(self):
+        self.persisted_views.cancel()
+
+    async def load_persistent_tickets(self):
+        await self.bot.wait_until_ready()
+        self.bot.logger.debug("Loading persistent tickets...")
+        tickets = [ticket async for ticket in GuildTicket.objects.all()]
+        self.bot.logger.info(f"Loaded {len(tickets)} persistent tickets.")
+        for ticket in tickets:
+            guild = discord.utils.get(self.bot.guilds, id=ticket.guild_id)
+            opener = discord.utils.get(guild.members, id=ticket.user_id)
+            thread = discord.utils.get(opener.guild.threads, id=ticket.thread_id)
+            # Ensure not adding views for deleted threads
+            if not thread:
+                self.bot.logger.debug(
+                    f"Thread {ticket.thread_id} not found, deleting ticket {ticket.ticket_number}"
+                )
+                await ticket.adelete()
+                return
+            group = discord.utils.get(thread.guild.roles, id=ticket.group_id)
+            if group:
+                view = TicketControlView(thread, opener, group, ticket.ticket_number)
+                self.bot.logger.debug(
+                    f"Adding view for ticket {ticket.ticket_number} in thread {ticket.thread_id}, user {ticket.user_id}, group {ticket.group_id}"
+                )
+                self.bot.add_view(view)
 
     @commands.slash_command(name="open_ticket")
     @commands.guild_only()
@@ -192,10 +261,19 @@ class TicketSystem(commands.Cog):
                     content="I do not have permission to create threads in the help channel. Please inform the admins.",
                 )
             msg = f"Type: 📩 **OPEN TICKET** - Created by: {ctx.user.mention} - need help from {group.mention}"
+            ticket_view = TicketControlView(th, ctx.user, group, ticket_number)
             await th.send(
                 msg,
                 embed=THREAD_EMBED,
-                view=TicketControlView(th, ctx.user, group, ticket_number),
+                view=ticket_view,
+            )
+            # Create GuildTicket entry
+            await GuildTicket.objects.acreate(
+                guild_id=ctx.guild.id,
+                ticket_number=ticket_number,
+                thread_id=th.id,
+                user_id=ctx.user.id,
+                group_id=group.id,
             )
             return await ctx.respond(
                 content=f"Check the thread created! {th.mention} Ping in the thread for urgent help!",
