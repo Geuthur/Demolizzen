@@ -18,7 +18,7 @@ async def check_is_guildowner(ctx: discord.ApplicationContext, precheck=None):
     if ctx.author.id == ctx.guild.owner.id:
         return True
     if not precheck:
-        await ctx.respond("You are not the Owner.", ephemeral=True)
+        await ctx.respond("You are not the Guild Owner.", ephemeral=True)
     return False
 
 
