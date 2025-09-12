@@ -22,11 +22,10 @@ from demolizzen.models.guild import (
 )
 
 THREAD_EMBED = Embed(
-    title="Private Thread Guide",
+    title="Private Channel Guide",
     description=(
-        "This thread is private between you and the staff team you mentioned.\n"
+        "This Channel is private between you and the staff team.\n"
         "Use the buttons below to manage your ticket.\n"
-        "To add a person to this thread simply `@mention` them will also work for `@groups`.\n"
         "Please be patient while waiting for a response from the staff."
     ),
 )
