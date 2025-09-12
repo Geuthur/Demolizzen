@@ -1,14 +1,25 @@
+# Standard Library
+import asyncio
+import logging
+
 # Discord
 import discord
 from discord import Embed, SlashCommandGroup
 from discord.commands import option
-from discord.ext import commands
-from discord.ui import Button, View
+from discord.ext import commands, tasks
+
+# Django
+from django.utils import timezone
 
 # Demolizzen
+from demolizzen.cogs.ticket._ticketview import TicketControlView
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models.guild import GuildSettings, GuildTicket
+from demolizzen.models.guild import (
+    GuildTicket,
+    GuildTicketSettings,
+    GuildTicketTask,
+)
 
 THREAD_EMBED = Embed(
     title="Private Thread Guide",
@@ -20,291 +31,313 @@ THREAD_EMBED = Embed(
     ),
 )
 
-
-class TicketControlView(View):
-    def __init__(
-        self,
-        thread: discord.Thread,
-        opener: discord.User,
-        group: discord.Role,
-        ticket_number,
-    ):
-        super().__init__(timeout=None)
-        self.thread = thread
-        self.opener = opener
-        self.group = group
-        self.claimed_by = None
-        self.closed_by = None
-        self.ticket_number = ticket_number
-        self.guild_id = thread.guild.id
-        self.generate_thread_name()
-
-        # Dynamische custom_ids
-        claim_id = f"claim:{self.guild_id}:{self.ticket_number}"
-        close_id = f"close:{self.guild_id}:{self.ticket_number}"
-        reopen_id = f"reopen:{self.guild_id}:{self.ticket_number}"
-        delete_id = f"delete:{self.guild_id}:{self.ticket_number}"
-
-        self.claim_button = Button(
-            label="Claim",
-            style=discord.ButtonStyle.primary,
-            emoji="🛠️",
-            custom_id=claim_id,
-        )
-        self.close_button = Button(
-            label="Close",
-            style=discord.ButtonStyle.danger,
-            emoji="🔒",
-            custom_id=close_id,
-        )
-        self.reopen_button = Button(
-            label="Reopen",
-            style=discord.ButtonStyle.success,
-            emoji="🔓",
-            custom_id=reopen_id,
-        )
-        self.delete_button = Button(
-            label="Delete",
-            style=discord.ButtonStyle.danger,
-            emoji="🗑️",
-            custom_id=delete_id,
-        )
-
-        self.claim_button.callback = self.claim_callback
-        self.close_button.callback = self.close_callback
-        self.reopen_button.callback = self.reopen_callback
-        self.delete_button.callback = self.delete_callback
-
-        self.add_item(self.claim_button)
-        self.add_item(self.close_button)
-        self.add_item(self.reopen_button)
-        self.add_item(self.delete_button)
-
-    def generate_thread_name(self):
-        claimed = self.claimed_by.display_name if self.claimed_by else "unclaimed"
-        author = self.opener.display_name
-        return f"ticket{self.ticket_number}-{claimed}-{author}"
-
-    async def update_thread_name(self):
-        name = self.generate_thread_name()
-        try:
-            await self.thread.edit(name=name)
-        except Exception:
-            pass
-
-    async def update_status_message(self, interaction: discord.Interaction = None):
-        # Dynamische Status-Nachricht
-        msg_parts = ["Type: 📩 **OPEN TICKET**"]
-        if self.closed_by:
-            msg_parts.append(f"- Closed by: {self.closed_by.mention}")
-        if self.claimed_by:
-            msg_parts.append(f"- Claimed by: {self.claimed_by.mention}")
-        msg_parts.append(
-            f"- Created by: {self.opener.mention} - need help from {self.group.mention}"
-        )
-        content = " ".join(msg_parts)
-        # Editiere die erste Nachricht im Thread (angenommen, es ist die erste)
-        try:
-            first_message = None
-            async for m in self.thread.history(limit=1, oldest_first=True):
-                first_message = m
-                break
-            if first_message:
-                await first_message.edit(content=content, embed=THREAD_EMBED, view=self)
-        except Exception:
-            pass
-        if interaction:
-            await interaction.response.edit_message(view=self)
-
-    async def claim_callback(self, interaction: discord.Interaction):
-        if interaction.user.id == self.opener.id:
-            await interaction.response.send_message(
-                "You cannot claim your own ticket!", ephemeral=True
-            )
-            return
-        self.claimed_by = interaction.user
-        self.status = "claimed"
-        await self.update_thread_name()
-        self.claim_button.disabled = True
-        await self.update_status_message(interaction)
-        await interaction.followup.send(
-            f"Ticket claimed by {interaction.user.mention}."
-        )
-
-    async def close_callback(self, interaction: discord.Interaction):
-        self.closed_by = interaction.user
-        self.status = "closed"
-        await self.update_thread_name()
-        self.close_button.disabled = True
-        await self.update_status_message(interaction)
-        await interaction.followup.send(
-            f"{interaction.user.mention} Ticket closed. You can reopen it if needed."
-        )
-        ticket = await GuildTicket.objects.aget(
-            guild_id=self.group.guild.id, ticket_number=self.ticket_number
-        )
-        ticket.closed_at = discord.utils.utcnow()
-        ticket.is_closed = True
-        await ticket.asave()
-
-    async def reopen_callback(self, interaction: discord.Interaction):
-        self.closed_by = None
-        self.claimed_by = None
-        self.status = "open"
-        await self.update_thread_name()
-        for item in self.children:
-            if isinstance(item, Button):
-                item.disabled = False
-        await self.update_status_message(interaction)
-        await interaction.followup.send(f"{interaction.user.mention} Ticket reopened.")
-        ticket = await GuildTicket.objects.aget(
-            guild_id=self.group.guild.id, ticket_number=self.ticket_number
-        )
-        ticket.closed_at = None
-        ticket.is_closed = False
-        await interaction.message.edit(view=self)
-        await ticket.asave()
-
-    async def delete_callback(self, interaction: discord.Interaction):
-        self.delete_button.disabled = True
-        await self.update_status_message(interaction)
-        try:
-            await self.thread.delete()
-            ticket = await GuildTicket.objects.aget(
-                guild_id=self.group.guild.id, ticket_number=self.ticket_number
-            )
-            await ticket.adelete()
-        except discord.errors.HTTPException as e:
-            if e.code == 10003:  # Unknown Channel
-                pass
-            else:
-                self.opener.bot.logger.error(f"Failed to delete thread: {e}")
+logger = logging.getLogger(__name__)
 
 
 class TicketSystem(commands.Cog):
-    """
-    Help Ticket Cog Things
-    """
+    """Help Ticket Cog Things"""
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.title = "Ticket System"
         self.alias = "ticket"
         self.persisted_views = self.bot.loop.create_task(self.load_persistent_tickets())
+        self.channel_update_worker.start()
+
+    def cog_unload(self):
+        self.channel_update_worker.cancel()
+        self.persisted_views.cancel()
+
+    @tasks.loop(seconds=30)
+    async def channel_update_worker(self):
+        """Background task to process queued channel updates in parallel with timeout."""
+        c_tasks = [
+            ticket_task
+            async for ticket_task in GuildTicketTask.objects.all().select_related(
+                "ticket", "ticket__guild"
+            )
+        ]
+        logger.debug(f"Running channel update worker... {len(c_tasks)} tasks found.")
+        for task in c_tasks:
+            try:
+                guild = discord.utils.get(
+                    self.bot.guilds, id=task.ticket.guild.guild_id
+                )
+                channel = discord.utils.get(guild.channels, id=task.ticket.channel_id)
+                # Adding Task to queue
+                if not task.is_queued:
+                    task.is_queued = True
+                    await task.asave()
+                    self.bot.loop.create_task(
+                        asyncio.wait_for(
+                            self._process_channel_update(channel, task), timeout=300
+                        )
+                    )
+                    continue
+                # Task already being processed - skip
+                if task.is_queued and not task.is_outdated:
+                    logger.debug(f"{task} is already being processed.")
+                    continue
+                # Task is queued but outdated - reset one time
+                if task.is_queued and task.is_outdated and not task.has_error:
+                    logger.warning(f"{task} is outdated, try again.")
+                    task.is_queued = False
+                    task.has_error = True
+                    task.created_at = timezone.now()
+                    await task.asave()
+                    continue
+                # Task is queued, outdated and already had an error - delete task
+                if task.is_queued and task.is_outdated and task.has_error:
+                    logger.error(f"{task} has already failed once, deleting task.")
+                    await task.adelete()
+                    continue
+                # Unknown state - log error and delete task
+                logger.error(f"Unknown state for {task}.")
+                await task.adelete()
+                continue
+            except Exception as e:
+                logger.error(f"Error processing ticket task {task}: {e}")
+
+    @channel_update_worker.before_loop
+    async def before_channel_update_worker(self):
+        """Wait until the bot is ready before starting the worker."""
+        await self.bot.wait_until_ready()
+
+    async def _process_channel_update(
+        self, channel: discord.TextChannel, task: GuildTicketTask
+    ):
+        """Process a single channel update task."""
+        try:
+            if channel.topic != task.topic or channel.name != task.channel_name:
+                logger.debug(f"Updating channel {task}")
+                kwargs = {}
+
+                if task.topic:
+                    kwargs["topic"] = task.topic
+                if task.channel_name:
+                    kwargs["name"] = task.channel_name
+
+                # Update the channel
+                await channel.edit(**kwargs, reason="Ticket channel update task")
+                logger.debug(f"Ticket {task} updated successfully.")
+                await task.adelete()
+            else:
+                logger.debug(f"No update needed for channel {channel.id}")
+                await task.adelete()
+        except Exception as e:
+            logger.error(f"Error in channel update worker: {e}")
+
+    async def load_persistent_tickets(self):
+        await self.bot.wait_until_ready()
+        logger.debug("Loading persistent tickets...")
+        tickets = [ticket async for ticket in GuildTicket.objects.all()]
+        logger.info(f"Loaded {len(tickets)} persistent tickets.")
+        for ticket in tickets:
+            guild = discord.utils.get(self.bot.guilds, id=ticket.guild_id)
+            opener = discord.utils.get(guild.members, id=ticket.user_id)
+            channel = discord.utils.get(opener.guild.channels, id=ticket.channel_id)
+            # Ensure not adding views for deleted channels
+            if not channel:
+                logger.info(
+                    f"Channel {ticket.channel_id} not found, deleting ticket {ticket.ticket_number}"
+                )
+                await ticket.adelete()
+                continue
+            view = TicketControlView(channel, opener, ticket.ticket_number)
+            logger.debug(
+                f"Adding view for ticket {ticket.ticket_number} in channel {ticket.channel_id}, user {ticket.user_id}"
+            )
+            self.bot.add_view(view)
+
+    def queue_channel_update(self, channel: discord.TextChannel, topic: str, name: str):
+        """Queue a channel update to be processed by the worker."""
+        self.queue.append((channel, topic, name))
 
     ticket = SlashCommandGroup(
         "ticket", "Ticket System", contexts=[discord.InteractionContextType.guild]
     )
 
-    def cog_unload(self):
-        self.persisted_views.cancel()
-
-    async def load_persistent_tickets(self):
-        await self.bot.wait_until_ready()
-        self.bot.logger.debug("Loading persistent tickets...")
-        tickets = [ticket async for ticket in GuildTicket.objects.all()]
-        self.bot.logger.info(f"Loaded {len(tickets)} persistent tickets.")
-        for ticket in tickets:
-            guild = discord.utils.get(self.bot.guilds, id=ticket.guild_id)
-            opener = discord.utils.get(guild.members, id=ticket.user_id)
-            thread = discord.utils.get(opener.guild.threads, id=ticket.thread_id)
-            # Ensure not adding views for deleted threads
-            if not thread:
-                self.bot.logger.debug(
-                    f"Thread {ticket.thread_id} not found, deleting ticket {ticket.ticket_number}"
-                )
-                await ticket.adelete()
-                return
-            group = discord.utils.get(thread.guild.roles, id=ticket.group_id)
-            if group:
-                view = TicketControlView(thread, opener, group, ticket.ticket_number)
-                self.bot.logger.debug(
-                    f"Adding view for ticket {ticket.ticket_number} in thread {ticket.thread_id}, user {ticket.user_id}, group {ticket.group_id}"
-                )
-                self.bot.add_view(view)
-
-    @ticket.command(name="open")
+    @ticket.command(name="open", help="Open a help ticket")
     @commands.guild_only()
-    @option("group", description="The group you wish to contact", required=True)
     async def open_ticket(
         self,
         ctx: discord.ApplicationContext,
-        group: discord.Role,
     ):
         """Ticket system to contact Server staff."""
         try:
-            guild_settings = await GuildSettings.objects.aget(
+            guild_settings = await GuildTicketSettings.objects.aget(
                 guild_id=ctx.guild.id,
             )
-            channel_name = guild_settings.help_channel
+            category_id = guild_settings.category_id
             ticket_number = guild_settings.ticket_count
-        except GuildSettings.DoesNotExist:
-            guild_settings = await GuildSettings.objects.acreate(
-                guild_id=ctx.guild.id, help_channel="help", ticket_count=1
-            )
-            channel_name = guild_settings.help_channel
-            ticket_number = guild_settings.ticket_count
-
-        help_channel = discord.utils.get(ctx.guild.text_channels, name=channel_name)
-        if help_channel:
-            if group is None:
-                return await ctx.respond(
-                    content="That group is not found on this server?",
-                )
+            category = discord.utils.get(ctx.guild.categories, id=category_id)
+        except GuildTicketSettings.DoesNotExist:
             try:
-                th = await help_channel.create_thread(
-                    name=f"ticket{ticket_number}-unclaimed-{ctx.user.display_name}",
-                    auto_archive_duration=10080,
-                    type=discord.ChannelType.private_thread,
-                    reason=None,
+                category = await ctx.guild.create_category(
+                    name="Ticket System", reason="Help Ticket Category"
                 )
-                guild_settings.ticket_count += 1
-                await guild_settings.asave()
+                archived_category = await ctx.guild.create_category(
+                    name="Archived Tickets", reason="Help Ticket Archive Category"
+                )
+                guild_settings = await GuildTicketSettings.objects.acreate(
+                    guild_id=ctx.guild.id,
+                    category_id=category.id,
+                    archive_category_id=archived_category.id,
+                    ticket_count=1,
+                )
             except discord.Forbidden:
                 return await ctx.respond(
-                    content="I do not have permission to create threads in the help channel. Please inform the admins.",
+                    content="I do not have permission to create the help ticket category. Please inform the admins.",
                 )
-            msg = f"Type: 📩 **OPEN TICKET** - Created by: {ctx.user.mention} - need help from {group.mention}"
-            ticket_view = TicketControlView(th, ctx.user, group, ticket_number)
-            await th.send(
-                msg,
-                embed=THREAD_EMBED,
-                view=ticket_view,
-            )
-            # Create GuildTicket entry
-            await GuildTicket.objects.acreate(
-                guild_id=ctx.guild.id,
-                ticket_number=ticket_number,
-                thread_id=th.id,
-                user_id=ctx.user.id,
-                group_id=group.id,
-            )
+
+        # Channel-Name generieren
+        channel_name_ticket = (
+            f"ticket{guild_settings.ticket_count}-unclaimed-{ctx.user.name}"
+        )
+        # Channel erstellen mit Sichtbarkeit nur für User und ggf. Staff
+        overwrites = {
+            ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        }
+
+        # Set Permnissions for Channel
+
+        # Staff Members
+        staff_role_ids = getattr(guild_settings, "roles", None)
+        if staff_role_ids:
+            for staff_role_id in staff_role_ids:
+                role = ctx.guild.get_role(staff_role_id)
+                if role:
+                    overwrites[role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True, read_message_history=True
+                    )
+        else:
             return await ctx.respond(
-                content=f"Check the thread created! {th.mention} Ping in the thread for urgent help!",
+                content="No staff roles are set for this server. Please inform the admins to set at least one staff role using `/ticket staff` command.",
+                ephemeral=True,
             )
-        return await ctx.respond(
-            content=(
-                "Help channel not found on this server? Please inform the admins."
-            ),
+
+        # Bot
+        overwrites[ctx.guild.me] = discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, read_message_history=True
         )
 
-    @ticket.command(name="set", help="Set the help channel for tickets")
+        # Ticket-Ersteller
+        overwrites[ctx.user] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            mention_everyone=False,  # block @everyone/@here
+        )
+
+        # Create Channel
+        try:
+            ticket_channel = await ctx.guild.create_text_channel(
+                name=channel_name_ticket,
+                topic=f"Type: 📩 **OPEN TICKET** - Created by: {ctx.user.mention}",
+                category=category,
+                overwrites=overwrites,
+            )
+            guild_settings.ticket_count += 1
+            await guild_settings.asave()
+        except discord.Forbidden:
+            return await ctx.respond(
+                content="I do not have permission to create ticket channels. Please inform the admins.",
+            )
+
+        ticket_view = TicketControlView(ticket_channel, ctx.user, ticket_number)
+        await ticket_channel.send(
+            embed=THREAD_EMBED,
+            view=ticket_view,
+        )
+        # Create GuildTicket entry
+        await GuildTicket.objects.acreate(
+            guild_id=ctx.guild.id,
+            ticket_number=ticket_number,
+            channel_id=ticket_channel.id,
+            user_id=ctx.user.id,
+        )
+        return await ctx.respond(
+            content=f"Check the ticket channel created! {ticket_channel.mention}!",
+            ephemeral=True,
+        )
+
+    @ticket.command(name="set", help="Set the Category channel for tickets")
     @commands.guild_only()
     @checks.is_admin()
-    @option("channel", description="The channel to set as help channel", required=True)
-    async def set_help_channel(
+    @option(
+        "category", description="The category to set as help category", required=True
+    )
+    async def set_help_category(
         self,
         ctx: discord.ApplicationContext,
-        channel: discord.TextChannel,
+        category: discord.CategoryChannel,
     ):
-        """Set the help channel for tickets."""
-        guild_settings, created = await GuildSettings.objects.aget_or_create(
+        """Set the help category for tickets."""
+        guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
             guild_id=ctx.guild.id,
-            defaults={"help_channel": channel.name, "ticket_count": 1},
+            defaults={"category_id": category.id, "ticket_count": 1},
         )
         if not created:
-            guild_settings.help_channel = channel.name
+            guild_settings.category_id = category.id
             await guild_settings.asave()
         await ctx.respond(
-            content=f"Help channel set to {channel.mention}.",
+            content=f"Help Category set to {category.mention}.",
+            ephemeral=True,
         )
+
+    @ticket.command(name="staff", help="Add staff roles for ticket management")
+    @commands.guild_only()
+    @checks.is_admin()
+    async def add_staff_role(self, ctx: discord.ApplicationContext):
+        """Add one or more staff roles for ticket management via Select-View."""
+
+        class RoleSelectView(discord.ui.View):
+            def __init__(self, roles, timeout=60):
+                super().__init__(timeout=timeout)
+                options = [
+                    discord.SelectOption(label=role.name, value=str(role.id))
+                    for role in roles
+                    if not role.is_default()
+                ]
+                self.select = discord.ui.Select(
+                    placeholder="Select staff roles...",
+                    min_values=1,
+                    max_values=min(25, len(options)),
+                    options=options,
+                )
+                self.select.callback = self.select_callback
+                self.add_item(self.select)
+                self.selected_roles = None
+
+            async def select_callback(self, interaction: discord.Interaction):
+                selected_ids = self.select.values
+                self.selected_roles = [
+                    discord.utils.get(ctx.guild.roles, id=int(role_id))
+                    for role_id in selected_ids
+                    if discord.utils.get(ctx.guild.roles, id=int(role_id)) is not None
+                ]
+                await interaction.response.defer()
+                self.stop()
+
+        view = RoleSelectView(ctx.guild.roles)
+        await ctx.respond("Please select the staff roles:", view=view, ephemeral=True)
+        await view.wait()
+        roles = view.selected_roles
+
+        if not roles:
+            await ctx.respond("No roles selected.", ephemeral=True)
+            return
+
+        role_ids = [role.id for role in roles]
+
+        # Create or update GuildTicketSettings
+        guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
+            guild_id=ctx.guild.id,
+            defaults={"roles": role_ids, "ticket_count": 1},
+        )
+
+        if not created:
+            guild_settings.roles = role_ids
+            await guild_settings.asave()
+        mentions = ", ".join(role.mention for role in roles)
+        await ctx.respond(content=f"Staff roles set to: {mentions}", ephemeral=True)
