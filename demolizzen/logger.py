@@ -19,6 +19,7 @@ class ProjectPathFormatter(logging.Formatter):
         return super().format(record)
 
 
+# Format: [YYYY-MM-DD HH:MM:SS] [LEVEL] [COG] [MESSAGE]
 LOG_FORMAT = ProjectPathFormatter(
     "%(asctime)s %(levelname)s [%(pathname)s:%(lineno)d] [%(module)s] %(message)s",
     datefmt="[%Y-%m-%d %H:%M:%S]",
@@ -27,8 +28,6 @@ LOG_FORMAT = ProjectPathFormatter(
 
 def init_logger(debug_flag=None):
     root_logger = logging.getLogger()
-
-    # Prüfe, ob schon Handler gesetzt sind (mehrfaches Setup vermeiden)
 
     if not root_logger.handlers:
         # File Handler für App-Logs
@@ -47,7 +46,7 @@ def init_logger(debug_flag=None):
         sh.setFormatter(LOG_FORMAT)
         root_logger.addHandler(sh)
 
-        # Eigener FileHandler für Discord-Logger
+        # Own Handler für discord.py
         discord_fh = RotatingFileHandler(
             filename=Path(LOG_PATH, "discord.log"),
             encoding="utf-8",
@@ -57,7 +56,11 @@ def init_logger(debug_flag=None):
         )
         discord_fh.setFormatter(LOG_FORMAT)
         discord_logger = logging.getLogger("discord")
+        discord_logger.handlers.clear()
         discord_logger.addHandler(discord_fh)
+        discord_logger.propagate = (
+            False  # Ensure no propagation to root logger (no console)
+        )
 
     # Level je nach debug_flag
     if debug_flag == "debug":
@@ -70,7 +73,7 @@ def init_logger(debug_flag=None):
         level = logging.ERROR
 
     root_logger.setLevel(level)
-    logging.getLogger("discord").setLevel(level)  # Discord-Logger
+    logging.getLogger("discord").setLevel(level)
 
     if TESTMODE == "True":
         root_logger.setLevel(logging.DEBUG)
