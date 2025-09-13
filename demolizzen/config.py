@@ -36,7 +36,7 @@ LOGS_DIR = "demolizzen/logs"
 MODERATOR_ROLE_NAME = "Moderator"
 
 # https://discordapi.com/permissions.html
-BOT_PERMISSIONS = 399402069073
+BOT_PERMISSIONS = 405807557744
 
 EVENTS_SERVER = {}
 
