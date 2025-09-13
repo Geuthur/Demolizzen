@@ -287,13 +287,3 @@ class Bank(commands.Cog):
             )
         else:
             await ctx.respond("❌ Something went wrong, please try again later.")
-
-    # ------------------------------ADMIN BEREICH----------------------------
-
-    @commands.Cog.listener()
-    async def on_guild_join(self, guild):  # pylint: disable=unused-argument
-        """Event when the bot joins a guild."""
-
-    @commands.Cog.listener()
-    async def on_guild_remove(self, guild):  # pylint: disable=unused-argument
-        """Event when the bot is removed from a guild."""

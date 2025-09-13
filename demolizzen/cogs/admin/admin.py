@@ -9,8 +9,6 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import models
-from demolizzen.cogs.banksystem import Bank
-from demolizzen.cogs.economy import Economy
 from demolizzen.config import EVENTS_SERVER
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
@@ -27,10 +25,6 @@ class Admin(commands.Cog):
         self.alias = "admin"
         self.command_ids = {}
 
-    owner = SlashCommandGroup(
-        "owner", "Owner Commands", contexts=[discord.InteractionContextType.guild]
-    )
-
     admin = SlashCommandGroup(
         "admin", "Adminsystem", contexts=[discord.InteractionContextType.guild]
     )
@@ -45,21 +39,17 @@ class Admin(commands.Cog):
     economy = admin.create_subgroup(
         "economy", contexts=[discord.InteractionContextType.guild]
     )
-    killmail = admin.create_subgroup(
-        "killmail", contexts=[discord.InteractionContextType.guild]
-    )
 
     # ---------------------------- Moderation ----------------------------
     # ---------------------------- Moderation ----------------------------
     # ---------------------------- Moderation ----------------------------
 
     @mod.command()
+    @commands.guild_only()
     @checks.is_mod()
     @option("limit", description="How many")
     async def clear(self, ctx: discord.ApplicationContext, limit: int):
-        """
-        Clear Message from a Channel
-        """
+        """Clear Message from a Channel."""
         # await ctx.defer(ephemeral=True)
 
         if limit > 100:
@@ -115,21 +105,20 @@ class Admin(commands.Cog):
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
     @mod.command()
+    @commands.guild_only()
     @checks.is_mod()
-    @option("user", description="Wähle User")
-    @option("role", description="Wähle Rolle")
+    @option("user", description="Choose User")
+    @option("role", description="Choose Role")
     async def role(
         self, ctx: discord.ApplicationContext, user: discord.Member, role: discord.Role
     ):
-        """
-        Give a Role to a User
-        """
+        """Give a Role to a User. Works Hierarchically."""
 
         if ctx.author.top_role.position < user.top_role.position:
-            return await ctx.respond("Du kannst seine Rolle nicht ändern.")
+            return await ctx.respond("You cannot give a role to this user.")
         try:
             await user.add_roles(role)
-            await ctx.respond(f"{role} an {user.mention} hinzugefügt!")
+            await ctx.respond(f"{role} has been added to {user.mention}!")
             return
         except discord.HTTPException as e:
             if e.code == 50013:  # No Permission
@@ -140,25 +129,25 @@ class Admin(commands.Cog):
                 embed = discord.Embed(
                     description="❌ I have no permission to do that..."
                 )
-            else:
-                self.bot.logger.error(e, exc_info=True)
-                embed = discord.Embed(description="❌ Something went wrong try later.")
+            self.bot.logger.error(e, exc_info=True)
+            embed = discord.Embed(description="❌ Something went wrong try later.")
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
     @mod.command()
+    @commands.guild_only()
     @checks.is_mod()
-    @option("user", description="Wähle User")
-    @option("derole", description="Wähle Rolle")
-    async def derole(self, ctx, user: discord.Member, role: discord.Role):
-        """
-        Remove a Role to a User
-        """
+    @option("user", description="Choose User")
+    @option("derole", description="Choose Role")
+    async def derole(
+        self, ctx: discord.ApplicationContext, user: discord.Member, role: discord.Role
+    ):
+        """Remove a Role from a User."""
 
         if ctx.author.top_role.position < user.top_role.position:
-            return await ctx.respond("Du kannst seine Rolle nicht ändern.")
+            return await ctx.respond("You cannot remove a role from this user.")
         try:
             await user.remove_roles(role)
-            await ctx.respond(f"{role} an {user.mention} entfernt!")
+            await ctx.respond(f"{role} has been removed from {user.mention}!")
             return
         except discord.HTTPException as e:
             if e.code == 50013:  # No Permission
@@ -169,26 +158,26 @@ class Admin(commands.Cog):
                 embed = discord.Embed(
                     description="❌ I have no permission to do that..."
                 )
-            else:
-                self.bot.logger.error(e, exc_info=True)
-                embed = discord.Embed(description="❌ Something went wrong try later.")
+            self.bot.logger.error(e, exc_info=True)
+            embed = discord.Embed(description="❌ Something went wrong try later.")
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
 
     # ---------------------------- Mission System ----------------------------
     # ---------------------------- Mission System ----------------------------
     # ---------------------------- Mission System ----------------------------
 
-    @economy.command()
-    @checks.is_botmanager()
+    @economy.command(
+        name="mode", description="Start or Stop the Event for the Economy System"
+    )
+    @commands.guild_only()
+    @checks.is_admin()
     @option(
         "action",
-        description="Start or Stop the Event for the Mining/Raid System",
+        description="Start or Stop the Event for the Economy System",
         choices=["On", "Off", "Status"],
     )
     async def mode(self, ctx, action: str):
-        """
-        Start or Stop the Event for the Mining/Raid System
-        """
+        """Start or Stop the Event for the Economy System."""
 
         server_id = ctx.guild.id
 
@@ -214,19 +203,15 @@ class Admin(commands.Cog):
             await ctx.respond("🔴 Event wurde deaktiviert.")
             return
 
-    @economy.command()
-    @checks.is_botmanager()
+    @economy.command(name="set", description="Set the Event Faktor as Multiplier")
+    @checks.is_admin()
     @option("amount", description="Multiply the Loan")
     async def set(self, ctx, amount: int):
-        """
-        Set the Event Faktor as Multiplier
-        """
+        """Set the Event Faktor as Multiplier."""
         server_id = ctx.guild.id
 
         EVENTS_SERVER[server_id] = (True, int(amount))
-        await ctx.respond(
-            f"🟢 Event wurde aktiviert und der Faktor auf x {amount} gesetzt."
-        )
+        await ctx.respond(f"🟢 Event has been set to x {amount}.")
         return
 
     # ---------------------------- Bank System ----------------------------
@@ -234,15 +219,13 @@ class Admin(commands.Cog):
     # ---------------------------- Bank System ----------------------------
 
     @bank.command(name="give-money")
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("member", description="Choose Member")
     @option("amount", description="Specify the amount of Coins to Give")
     async def give_money(
         self, ctx: discord.ApplicationContext, member: discord.Member, amount: int
     ):
-        """
-        Give money to a specific user
-        """
+        """Give money to a specific user."""
         amount = int(amount)
         if amount < 0:
             await ctx.respond("Amount must be positive!")
@@ -268,7 +251,7 @@ class Admin(commands.Cog):
         return
 
     @bank.command(name="remove-money")
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("member", description="Choose Member")
     @option("amount", description="Specify the amount of Coins to Remove")
     @option("konto", description="Choose Account", choices=["wallet", "bank"])
@@ -279,9 +262,7 @@ class Admin(commands.Cog):
         amount: int,
         konto: str,
     ):
-        """
-        Remove money from a specific user
-        """
+        """Remove money from a specific user."""
         # Get Server-ID for further process
         server_id = ctx.guild.id
 
@@ -320,7 +301,7 @@ class Admin(commands.Cog):
         return
 
     @bank.command(name="remove-bank")
-    @checks.is_botmanager()
+    @checks.is_admin()
     @option("member", description="Choose Member")
     async def reset_money(
         self, ctx: discord.ApplicationContext, member: discord.Member
@@ -349,144 +330,3 @@ class Admin(commands.Cog):
             f"Bankaccount from {member.mention} has been reset.", ephemeral=True
         )
         return
-
-    # ---------------------------- Bank System ----------------------------
-    # ---------------------------- Bank System ----------------------------
-    # ---------------------------- Bank System ----------------------------
-
-    @killmail.command(name="analyze")
-    @checks.is_owner()
-    async def killmail_counter(self, ctx):
-        """
-        Owner Only - Bug Fixing
-        """
-        self.bot.logger.info("Char Names: %s", self.bot.esi_data._entity_name_cache)
-        self.bot.logger.info(
-            "System Names: %s", self.bot.esi_data._system_id_name_cache
-        )
-        self.bot.logger.info("Region Names: %s", self.bot.esi_data._region_id_cache)
-        await ctx.respond("Daten gespeichert")
-
-    @owner.command(name="force-deposits-update")
-    @checks.is_owner()
-    async def trigger_deposit_update(self, ctx: discord.ApplicationContext):
-        banksystem_cog: Bank = self.bot.get_cog("Bank")
-        await banksystem_cog.process_daily_interest()
-        await ctx.respond("Deposit Update Triggered.", ephemeral=True)
-
-    @owner.command(name="force-ship-update")
-    @checks.is_owner()
-    async def trigger_ship_update(self, ctx: discord.ApplicationContext):
-        shopsystem_cog: Economy = self.bot.get_cog("Eco")
-        await shopsystem_cog.fetch_ship_data()
-        await ctx.respond("Ship Data Update Triggered.", ephemeral=True)
-
-    @owner.command(
-        name="sync",
-        description="Synchonizes the slash commands.",
-    )
-    @commands.is_owner()
-    @option(
-        "scope",
-        description="The scope of the sync. Can be `global` or `guild`.",
-        choices=["global", "guild"],
-    )
-    async def sync(self, context: discord.ApplicationContext, scope: str) -> None:
-        """
-        Synchonizes the slash commands.
-
-        :param context: The command context.
-        :param scope: The scope of the sync. Can be `global` or `guild`.
-        """
-
-        if scope == "global":
-            await context.bot.sync_commands()
-            embed = discord.Embed(
-                description="Slash commands have been globally synchronized.",
-                color=0xBEBEFE,
-            )
-            await context.respond(embed=embed)
-            return
-        await context.bot.sync_commands(guild_ids=[context.guild.id])
-        embed = discord.Embed(
-            description="Slash commands have been synchronized in this guild.",
-            color=0xBEBEFE,
-        )
-        await context.respond(embed=embed, ephemeral=True)
-        return
-
-    @owner.command(
-        name="load",
-        description="Load a cog",
-    )
-    @commands.is_owner()
-    async def load(self, ctx: discord.ApplicationContext, cog: str) -> None:
-        """
-        The bot will load the given cog.
-
-        :param context: The hybrid command context.
-        :param cog: The name of the cog to load.
-        """
-        try:
-            self.bot.load_extension(f"demolizzen.cogs.{cog}")
-        except Exception:
-            embed = discord.Embed(
-                description=f"Could not load the `{cog}` cog.", color=0xE02B2B
-            )
-            await ctx.respond(embed=embed, ephemeral=True)
-            return
-        embed = discord.Embed(
-            description=f"Successfully loaded the `{cog}` cog.", color=0xBEBEFE
-        )
-        await ctx.respond(embed=embed, ephemeral=True)
-
-    @owner.command(
-        name="unload",
-        description="Unloads a cog.",
-    )
-    @commands.is_owner()
-    async def unload(self, ctx: discord.ApplicationContext, cog: str) -> None:
-        """
-        The bot will unload the given cog.
-
-        :param context: The hybrid command context.
-        :param cog: The name of the cog to unload.
-        """
-        try:
-            self.bot.unload_extension(f"demolizzen.cogs.{cog}")
-        except Exception:
-            embed = discord.Embed(
-                description=f"Could not unload the `{cog}` cog.", color=0xE02B2B
-            )
-            await ctx.respond(embed=embed, ephemeral=True)
-            return
-        embed = discord.Embed(
-            description=f"Successfully unloaded the `{cog}` cog.", color=0xBEBEFE
-        )
-        await ctx.respond(embed=embed, ephemeral=True)
-
-    @owner.command(
-        name="reload",
-        description="Reloads a cog.",
-    )
-    @commands.is_owner()
-    async def reload(self, ctx: discord.ApplicationContext, cog: str) -> None:
-        """
-        The bot will reload the given cog.
-
-        :param context: The hybrid command context.
-        :param cog: The name of the cog to reload.
-        """
-        try:
-            self.bot.reload_extension(f"demolizzen.cogs.{cog}")
-        except Exception as e:
-            self.bot.logger.error(e, exc_info=True)
-            embed = discord.Embed(
-                description=f"Could not reload the `{cog}` cog.", color=0xE02B2B
-            )
-            await ctx.respond(embed=embed, ephemeral=True)
-            return
-        embed = discord.Embed(
-            description=f"Successfully reloaded the `{cog}` cog.", color=0xBEBEFE
-        )
-        await ctx.respond(embed=embed, ephemeral=True)

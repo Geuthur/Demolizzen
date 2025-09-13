@@ -2,9 +2,11 @@
 # Standard Library
 import os
 import sys
+from pathlib import Path
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "demolizzen.settings")
+    sys.argv[0] = str(Path(sys.argv[0]).resolve())
     try:
         # Django
         from django.core.management import execute_from_command_line

@@ -28,6 +28,8 @@ class Demolizzen(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
+        kwargs["command_prefix"] = "$"
+        super().__init__(intents=intents, **kwargs)
         self.counter = Counter()
         self.core_dir = os.path.dirname(os.path.realpath(__file__))
         self.config = config
@@ -35,14 +37,11 @@ class Demolizzen(commands.Bot):
         self.token = config.BOT_TOKEN
         self.req_perms = discord.Permissions(config.BOT_PERMISSIONS)
         self.preload_ext = config.PRELOAD_EXTENSIONS
-        kwargs["command_prefix"] = "$"
-        super().__init__(intents=intents, **kwargs)
         self.session = aiohttp.ClientSession(loop=self.loop)
         self.esi_data = ESI(self.session)
         self.logger = logger.init_logger(debug_flag="info")
         self.launch_time = timezone.now()
 
-        self.load_extension("demolizzen.core.commands")
         print(Green("-------- Loading Modules ---------"))
         for ext in self.preload_ext:
             try:
@@ -169,6 +168,8 @@ class Demolizzen(commands.Bot):
             await self.send_resp(context, exception)
         elif isinstance(exception, commands.CommandOnCooldown):
             await self.send_resp(context, exception)
+        elif isinstance(exception, discord.errors.CheckFailure):
+            pass  # Silently ignore these errors.
         else:  # Catch everything, and close out the interactions gracefully.
             self.logger.error(f"Unknown Error {exception}")
             self.logger.error(

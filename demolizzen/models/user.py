@@ -66,7 +66,6 @@ class UserProfile(models.Model):
 
         # Wenn last_cooldown nicht gesetzt ist, setze ihn auf einen Zeitpunkt weit in der Vergangenheit
         if not last_cooldown:
-            print("No last cooldown found, setting to past time.")
             last_cooldown = timezone.now() - timer
 
         # Berechne, wie viel Zeit noch übrig ist

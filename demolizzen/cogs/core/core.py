@@ -1,10 +1,8 @@
 # Standard Library
 import json
-import logging
 
 # Discord
 import discord
-from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 from discord.ext.pages import Paginator
@@ -13,51 +11,8 @@ from discord.ext.pages import Paginator
 from demolizzen import models
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.constants import PERMS_MAP
 from demolizzen.utils.functions import application_cooldown
-
-PERMS_MAP = {
-    "create_instant_invite": 0,
-    "kick_members": 1,
-    "ban_members": 2,
-    "administrator": 3,
-    "manage_channels": 4,
-    "manage_guild": 5,
-    "add_reactions": 6,
-    "view_audit_log": 7,
-    "priority_speaker": 8,
-    "stream": 9,
-    "read_messages": 10,
-    "send_messages": 11,
-    "send_tts_messages": 12,
-    "manage_messages": 13,
-    "embed_links": 14,
-    "attach_files": 15,
-    "read_message_history": 16,
-    "mention_everyone": 17,
-    "use_external_emojis": 18,
-    "view_guild_insights": 19,
-    "connect": 20,
-    "speak": 21,
-    "mute_members": 22,
-    "deafen_members": 23,
-    "move_members": 24,
-    "use_voice_activation": 25,
-    "change_nickname": 26,
-    "manage_nicknames": 27,
-    "manage_roles": 28,
-    "manage_webhooks": 29,
-    "manage_emojis": 30,
-    "use_application_commands": 31,
-    "request_to_speak": 32,
-    "manage_events": 33,
-    "manage_threads": 34,
-    "create_public_threads": 35,
-    "create_private_threads": 36,
-    "use_external_stickers": 37,
-    "send_messages_in_threads": 38,
-    "use_embedded_activities": 39,
-    "moderate_members": 40,
-}
 
 
 class Core(commands.Cog):
@@ -65,9 +20,17 @@ class Core(commands.Cog):
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
+        self.title = "Core"
+        self.alias = "core"
 
-    botsettings = SlashCommandGroup("bot", "Bot Settings")
-    auth = SlashCommandGroup("auth", "Authentication Commands")
+    botsettings = SlashCommandGroup(
+        "bot", "Bot Settings", contexts=[discord.InteractionContextType.guild]
+    )
+    auth = SlashCommandGroup(
+        "auth",
+        "Authentication Commands",
+        contexts=[discord.InteractionContextType.guild],
+    )
 
     async def get_data(self, url, ctx: discord.ApplicationContext):
         """
@@ -102,7 +65,7 @@ class Core(commands.Cog):
             self.bot.logger.error(f"Error on Get Data: {e}")
             return None
 
-    @auth.command()
+    @auth.command(contexts=[discord.InteractionContextType.guild])
     async def register(self, ctx: discord.ApplicationContext):
         """Register User Profile for further use of the Bot"""
         # Erstelle eine Embed-Nachricht, um die Items anzuzeigen
@@ -125,47 +88,6 @@ class Core(commands.Cog):
             color=discord.Color.green(),
         )
         await ctx.respond(embed=embed, ephemeral=True)
-
-    @botsettings.command()
-    @checks.is_owner()
-    async def activity(
-        self,
-        ctx: discord.ApplicationContext,
-        *,
-        activity: discord.Game = None,
-    ):
-        """
-        Set bot activity
-        """
-        await self.bot.change_presence(status="online", activity=activity)
-        await ctx.respond(
-            f"Activity set to {activity}.", ephemeral=True, delete_after=10
-        )
-
-    @botsettings.command()
-    @checks.is_owner()
-    @option("status", description="Change Status", choices=["online", "idle", "dnd"])
-    async def status(
-        self,
-        ctx: discord.ApplicationContext,
-        *,
-        status: str,
-    ):
-        """
-        Set bot status to online, idle or dnd
-        """
-        try:
-            status = discord.Status[status.lower()]
-        except KeyError:
-            await ctx.error(
-                "Invalid Status",
-                "Only `online`, `idle` or `dnd` statuses are available.",
-            )
-        else:
-            await self.bot.change_presence(status=status, activity=ctx.me.activity)
-            await ctx.respond(
-                f"Status changed to `{status}`.", ephemeral=True, delete_after=10
-            )
 
     @botsettings.command()
     @commands.cooldown(
@@ -195,59 +117,60 @@ class Core(commands.Cog):
     async def command_cooldown(self, ctx, error):
         await application_cooldown(ctx, error)
 
-    @botsettings.command(contexts=[discord.InteractionContextType.guild])
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 3 Mal alle 10 Minuten pro Benutzer
+    @botsettings.command()
     async def changelog(self, ctx: discord.ApplicationContext):
         """
         Show the bot's changelog
         """
-        await ctx.defer()
-        try:
-            await self.get_data("https://hell-rider.de/api/discord_changelog", ctx)
-        # pylint: disable=broad-except
-        except Exception:
-            await ctx.respond("Failed to fetch changelog. Try again later.")
-
-    @changelog.error
-    async def changelog_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
-
-    @botsettings.command(contexts=[discord.InteractionContextType.guild])
-    @commands.is_owner()
-    @option(
-        "level",
-        description="Choose Log Level",
-        choices=["debug", "info", "warning", "error", "critical"],
-    )
-    async def setloglevel(self, ctx: discord.ApplicationContext, level: str):
-        """
-        Set log level dynamically
-        """
-        log_level_map = {
-            "debug": logging.DEBUG,
-            "info": logging.INFO,
-            "warning": logging.WARNING,
-            "error": logging.ERROR,
-            "critical": logging.CRITICAL,
-        }
-
-        log_level = log_level_map.get(level.lower())
-
-        if log_level is None:
-            await ctx.respond("Invalid log level.")
-            return
-
-        self.bot.logger.setLevel(log_level)
-        await ctx.respond(f"Log level set to {level.upper()}.", ephemeral=True)
+        em = discord.Embed(
+            title="Changelog",
+            color=discord.Color.blue(),
+            description="Here is the changelog for the bot: [CHANGELOG.md](https://github.com/Geuthur/Demolizzen/blob/master/CHANGELOG.md)",
+        )
+        return await ctx.respond(embed=em)
 
     @botsettings.command()
+    @commands.guild_only()
+    @checks.is_guild_owner()
+    async def set_channel(
+        self, ctx: discord.ApplicationContext, channel: discord.TextChannel
+    ):
+        """Set Main Channel for Bots Interactions. Only for Server Owner."""
+        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
+        guild_profile.main_channel = channel.id
+        await guild_profile.asave()
+        embed = discord.Embed(
+            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {guild_profile.main_channel}`"
+        )
+        return await ctx.respond(embed=embed)
+
+    @botsettings.command()
+    @commands.guild_only()
+    @checks.is_guild_owner()
+    async def unset_channel(self, ctx: discord.ApplicationContext):
+        """Remove Main Channel for Bots Interactions. Only for Server Owner."""
+        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
+
+        if guild_profile.main_channel is None:
+            embed = discord.Embed(
+                description="🟡 **INFO**: `📢 Bot already react to all Channels`"
+            )
+            await ctx.respond(embed=embed)
+            return
+
+        # Remove all channels from the levelling server base
+        guild_profile.main_channel = None
+        await guild_profile.asave()
+        embed = discord.Embed(
+            description="🟢 **SUCCESS**: `📢 Bot react to all Channels`"
+        )
+        await ctx.respond(embed=embed)
+
+    @botsettings.command()
+    @commands.guild_only()
     @checks.is_admin()
     async def perms_guild(self, ctx: discord.ApplicationContext):
-        """
-        Show permissions for Demolizzen for this Server.
-        """
+        """Show permissions for Demolizzen for this Server. needs at Least Admin Permission."""
 
         guild_perms = ctx.guild.me.guild_permissions
         perms_compare = guild_perms >= self.bot.req_perms
@@ -281,7 +204,3 @@ class Core(commands.Cog):
 
         except discord.errors.Forbidden:
             await ctx.respond(embed=embed)
-
-
-def setup(bot):
-    bot.add_cog(Core(bot))
