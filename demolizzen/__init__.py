@@ -1,4 +1,4 @@
-__version__ = "1.0.1.1"
+__version__ = "2.0.1"
 __title__ = "Demolizzen"
 
 __package_name__ = "Demolizzen"

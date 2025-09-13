@@ -1,5 +1,36 @@
 # Changelog
 
+[2.0.1] - 2025-09-13
+
+### Added
+
+- Ticket System Cog
+- Guild Settings, Guild Ticket, Guild Ticket Settings Model
+- [Django Migration Command (Bot Owner)](https://github.com/Geuthur/Demolizzen/commit/93f829a2c468e37f6db0c3ea0be389f6e930c335)
+
+### Changed
+
+- [moved `Core` commands from `core` to `cogs`](https://github.com/Geuthur/Demolizzen/commit/dd57e592b73ea8677dbb2a32d0859ae027a65e72)
+- [Restructured Commands Cog](https://github.com/Geuthur/Demolizzen/commit/bd7e5b6b1320c31d3b797fda42833ced19729f44)
+- [Give more information on Permission Check](https://github.com/Geuthur/Demolizzen/commit/047acd47b61a80aa3d1c0a962b9d35f8bab7b686)
+- [Reduced Bank interests from `1%` to `0.1%`](https://github.com/Geuthur/Demolizzen/commit/10e2602ba6f99264914b2811e22250ebe88c25e9)
+- [Use Timezone instead of time](https://github.com/Geuthur/Demolizzen/commit/f8df7fa6cbc726cb57403c2f3b5ae68c620bf319)
+- [Economy, BankSystem Commands require now at least admin permission](https://github.com/Geuthur/Demolizzen/commit/a7a9cabf2f0c1af33647faa0048bf600a4f4ea0b)
+- [moved Owner commands to Owner Cog & restricted to bot_dm only](https://github.com/Geuthur/Demolizzen/commit/001d76281b0f4c3e0ae66e3ae8c7a69054e1f22f)
+- [ignore CheckFailure error (use own check failure)](https://github.com/Geuthur/Demolizzen/commit/1a4039fe8449ea96ffa025a4435cac01727e95a9)
+
+### Fixed
+
+- [Django models don't have a __table__.columns attribute like SQLAlchemy.](https://github.com/Geuthur/Demolizzen/commit/b78dbddd714f4a90af734cbe3134e899ffbc9f5a)
+- [Use correct async call `.aget` instead of `.get`](https://github.com/Geuthur/Demolizzen/commit/fe0d555129bb8c5b7d605864cc5a4ee6272526b0)
+- [get() returned more than one ZKillboard -- it returned 2!](https://github.com/Geuthur/Demolizzen/commit/183b364dcb0e74fd03fdd669d16f7de09e84427c)
+- [Register Command work on DM's](https://github.com/Geuthur/Demolizzen/commit/e1d5f12e10fd9c08c207eec47803723884bf5967)
+
+### Removed
+
+- [`is_bot_manager` check](https://github.com/Geuthur/Demolizzen/commit/0dadc524fd174a563e63272d1ac52bb3dba4c28c)
+- [Cog Listener in Bank System](https://github.com/Geuthur/Demolizzen/commit/620ae18774d41b3a98ad25a656536a85a1925140)
+
 [2.0.0] - 2025-09-10
 
 > [IMPORTANT]
