@@ -12,6 +12,7 @@ from discord.ext import commands, tasks
 from django.utils import timezone
 
 # Demolizzen
+from demolizzen.cogs.ticket._staffview import RoleSelectView
 from demolizzen.cogs.ticket._ticketview import TicketControlView
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
@@ -289,36 +290,7 @@ class TicketSystem(commands.Cog):
     @checks.is_admin()
     async def add_staff_role(self, ctx: discord.ApplicationContext):
         """Add one or more staff roles for ticket management via Select-View."""
-
-        class RoleSelectView(discord.ui.View):
-            def __init__(self, roles, timeout=60):
-                super().__init__(timeout=timeout)
-                options = [
-                    discord.SelectOption(label=role.name, value=str(role.id))
-                    for role in roles
-                    if not role.is_default()
-                ]
-                self.select = discord.ui.Select(
-                    placeholder="Select staff roles...",
-                    min_values=1,
-                    max_values=min(25, len(options)),
-                    options=options,
-                )
-                self.select.callback = self.select_callback
-                self.add_item(self.select)
-                self.selected_roles = None
-
-            async def select_callback(self, interaction: discord.Interaction):
-                selected_ids = self.select.values
-                self.selected_roles = [
-                    discord.utils.get(ctx.guild.roles, id=int(role_id))
-                    for role_id in selected_ids
-                    if discord.utils.get(ctx.guild.roles, id=int(role_id)) is not None
-                ]
-                await interaction.response.defer()
-                self.stop()
-
-        view = RoleSelectView(ctx.guild.roles)
+        view = RoleSelectView(guild=ctx.guild)
         await ctx.respond("Please select the staff roles:", view=view, ephemeral=True)
         await view.wait()
         roles = view.selected_roles
