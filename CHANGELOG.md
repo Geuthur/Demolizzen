@@ -1,6 +1,6 @@
 # Changelog
 
-[2.0.1] - 2025-09-13
+## [2.0.1] - 2025-09-13
 
 ### Added
 
@@ -31,7 +31,7 @@
 - [`is_bot_manager` check](https://github.com/Geuthur/Demolizzen/commit/0dadc524fd174a563e63272d1ac52bb3dba4c28c)
 - [Cog Listener in Bank System](https://github.com/Geuthur/Demolizzen/commit/620ae18774d41b3a98ad25a656536a85a1925140)
 
-[2.0.0] - 2025-09-10
+## [2.0.0] - 2025-09-10
 
 > [IMPORTANT]
 > This version changes the entire bot system including database structure, commands, etc.
@@ -78,7 +78,7 @@
 - [cog load](https://github.com/Geuthur/Demolizzen/commit/5ab261023ff106e488269a942b9bf24b4fde1062)
 - [Uptime property not working](https://github.com/Geuthur/Demolizzen/commit/292a460552bdf7d5e869b4510b9fef7398e42290)
 
-[1.0.1.1] - 2024-09-5
+## [1.0.1.1] - 2024-09-5
 
 ### Fixed
 
@@ -89,7 +89,7 @@
 
 - Price List Command now use Modal for Fetch Data
 
-[1.0.1] - 2024-08-22
+## [1.0.1] - 2024-08-22
 
 ### Added
 
