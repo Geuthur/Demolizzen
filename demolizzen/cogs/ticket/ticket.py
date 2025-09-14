@@ -41,7 +41,6 @@ class TicketSystem(commands.Cog):
         self.bot = bot
         self.title = "Ticket System"
         self.alias = "ticket"
-        self.persisted_views = self.bot.loop.create_task(self.load_persistent_tickets())
         self.channel_update_worker.start()
 
     ticket = SlashCommandGroup(
@@ -50,7 +49,6 @@ class TicketSystem(commands.Cog):
 
     def cog_unload(self):
         self.channel_update_worker.cancel()
-        self.persisted_views.cancel()
 
     @tasks.loop(seconds=30)
     async def channel_update_worker(self):
@@ -131,27 +129,28 @@ class TicketSystem(commands.Cog):
         except Exception as e:
             logger.error(f"Error in channel update worker: {e}")
 
-    async def load_persistent_tickets(self):
-        await self.bot.wait_until_ready()
+    @commands.Cog.listener()
+    async def on_ready(self):
         logger.debug("Loading persistent tickets...")
         tickets = [ticket async for ticket in GuildTicket.objects.all()]
-        logger.info(f"Loaded {len(tickets)} persistent tickets.")
+        deleted_views = 0
+        added_views = 0
+
         for ticket in tickets:
             guild = discord.utils.get(self.bot.guilds, id=ticket.guild_id)
             opener = discord.utils.get(guild.members, id=ticket.user_id)
             channel = discord.utils.get(opener.guild.channels, id=ticket.channel_id)
             # Ensure not adding views for deleted channels
             if not channel:
-                logger.info(
-                    f"Channel {ticket.channel_id} not found, deleting ticket {ticket.ticket_number}"
-                )
+                deleted_views += 1
                 await ticket.adelete()
                 continue
             view = TicketControlView(channel, opener, ticket.ticket_number)
-            logger.debug(
-                f"Adding view for ticket {ticket.ticket_number} in channel {ticket.channel_id}, user {ticket.user_id}"
-            )
+            added_views += 1
             self.bot.add_view(view)
+        logger.info(
+            f"Added {added_views} Persistent tickets, deleted missing {deleted_views} tickets."
+        )
 
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
         guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
