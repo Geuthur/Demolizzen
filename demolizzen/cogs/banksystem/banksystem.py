@@ -51,9 +51,9 @@ class Bank(commands.Cog):
             )
             return
 
+        create_counter = 0
         for guild in guild_profiles:
             try:
-                create_counter = 0
                 _, created = await GuildBankSettings.objects.aget_or_create(guild=guild)
                 if created:
                     create_counter += 1
