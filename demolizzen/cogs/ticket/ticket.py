@@ -149,10 +149,6 @@ class TicketSystem(commands.Cog):
             )
             self.bot.add_view(view)
 
-    def queue_channel_update(self, channel: discord.TextChannel, topic: str, name: str):
-        """Queue a channel update to be processed by the worker."""
-        self.queue.append((channel, topic, name))
-
     ticket = SlashCommandGroup(
         "ticket", "Ticket System", contexts=[discord.InteractionContextType.guild]
     )
