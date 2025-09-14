@@ -44,6 +44,10 @@ class TicketSystem(commands.Cog):
         self.persisted_views = self.bot.loop.create_task(self.load_persistent_tickets())
         self.channel_update_worker.start()
 
+    ticket = SlashCommandGroup(
+        "ticket", "Ticket System", contexts=[discord.InteractionContextType.guild]
+    )
+
     def cog_unload(self):
         self.channel_update_worker.cancel()
         self.persisted_views.cancel()
@@ -149,9 +153,14 @@ class TicketSystem(commands.Cog):
             )
             self.bot.add_view(view)
 
-    ticket = SlashCommandGroup(
-        "ticket", "Ticket System", contexts=[discord.InteractionContextType.guild]
-    )
+    async def cog_before_invoke(self, ctx: discord.ApplicationContext):
+        guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
+            guild_id=ctx.guild.id,
+        )
+        ctx.guild_settings = guild_settings
+        logger.debug(f"GuildSettings loaded for {ctx.guild}.")
+        if created:
+            logger.info(f"Created new GuildSettings for {ctx.guild}.")
 
     @ticket.command(name="open", help="Open a help ticket")
     @commands.guild_only()
@@ -160,45 +169,33 @@ class TicketSystem(commands.Cog):
         ctx: discord.ApplicationContext,
     ):
         """Ticket system to contact Server staff."""
-        try:
-            guild_settings = await GuildTicketSettings.objects.aget(
-                guild_id=ctx.guild.id,
+        if not ctx.guild_settings.category_id:
+            return await ctx.respond(
+                content="No help category is set for this server. Please inform the admins to set a help category using `/ticket set` command.",
+                ephemeral=True,
             )
-            category_id = guild_settings.category_id
-            ticket_number = guild_settings.ticket_count
-            category = discord.utils.get(ctx.guild.categories, id=category_id)
-        except GuildTicketSettings.DoesNotExist:
-            try:
-                category = await ctx.guild.create_category(
-                    name="Ticket System", reason="Help Ticket Category"
-                )
-                archived_category = await ctx.guild.create_category(
-                    name="Archived Tickets", reason="Help Ticket Archive Category"
-                )
-                guild_settings = await GuildTicketSettings.objects.acreate(
-                    guild_id=ctx.guild.id,
-                    category_id=category.id,
-                    archive_category_id=archived_category.id,
-                    ticket_count=1,
-                )
-            except discord.Forbidden:
-                return await ctx.respond(
-                    content="I do not have permission to create the help ticket category. Please inform the admins.",
-                )
+
+        ticket_number = ctx.guild_settings.ticket_count
+        category_channel = discord.utils.get(
+            ctx.guild.categories, id=ctx.guild_settings.category_id
+        )
+
+        if not category_channel:
+            return await ctx.respond(
+                content="The configured help category does not exist anymore. Please inform the admins to set a new help category using `/ticket set` command.",
+                ephemeral=True,
+            )
 
         # Channel-Name generieren
-        channel_name_ticket = (
-            f"ticket{guild_settings.ticket_count}-unclaimed-{ctx.user.name}"
-        )
+        channel_name_ticket = f"ticket{ticket_number}-unclaimed-{ctx.user.name}"
         # Channel erstellen mit Sichtbarkeit nur für User und ggf. Staff
         overwrites = {
             ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
         }
 
         # Set Permnissions for Channel
-
         # Staff Members
-        staff_role_ids = getattr(guild_settings, "roles", None)
+        staff_role_ids = getattr(ctx.guild_settings, "roles", None)
         if staff_role_ids:
             for staff_role_id in staff_role_ids:
                 role = ctx.guild.get_role(staff_role_id)
@@ -206,17 +203,23 @@ class TicketSystem(commands.Cog):
                     overwrites[role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True
                     )
+            # Staff-Rollen erwähnen
+            staff_mentions = ""
+            staff_roles = [
+                ctx.guild.get_role(rid)
+                for rid in staff_role_ids
+                if ctx.guild.get_role(rid)
+            ]
+            staff_mentions = " ".join(role.mention for role in staff_roles)
         else:
             return await ctx.respond(
                 content="No staff roles are set for this server. Please inform the admins to set at least one staff role using `/ticket staff` command.",
                 ephemeral=True,
             )
-
         # Bot
         overwrites[ctx.guild.me] = discord.PermissionOverwrite(
             view_channel=True, send_messages=True, read_message_history=True
         )
-
         # Ticket-Ersteller
         overwrites[ctx.user] = discord.PermissionOverwrite(
             view_channel=True,
@@ -230,11 +233,11 @@ class TicketSystem(commands.Cog):
             ticket_channel = await ctx.guild.create_text_channel(
                 name=channel_name_ticket,
                 topic=f"Type: 📩 **OPEN TICKET** - Created by: {ctx.user.mention}",
-                category=category,
+                category=category_channel,
                 overwrites=overwrites,
             )
-            guild_settings.ticket_count += 1
-            await guild_settings.asave()
+            ctx.guild_settings.ticket_count += 1
+            await ctx.guild_settings.asave()
         except discord.Forbidden:
             return await ctx.respond(
                 content="I do not have permission to create ticket channels. Please inform the admins.",
@@ -242,6 +245,7 @@ class TicketSystem(commands.Cog):
 
         ticket_view = TicketControlView(ticket_channel, ctx.user, ticket_number)
         await ticket_channel.send(
+            content=staff_mentions if staff_mentions else None,
             embed=THREAD_EMBED,
             view=ticket_view,
         )
@@ -263,21 +267,32 @@ class TicketSystem(commands.Cog):
     @option(
         "category", description="The category to set as help category", required=True
     )
+    @option(
+        "category_type",
+        description="Which category type to set",
+        choices=["Help", "Archive"],
+        required=True,
+    )
     async def set_help_category(
         self,
         ctx: discord.ApplicationContext,
         category: discord.CategoryChannel,
+        category_type: str,
     ):
         """Set the help category for tickets."""
-        guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
-            guild_id=ctx.guild.id,
-            defaults={"category_id": category.id, "ticket_count": 1},
-        )
-        if not created:
-            guild_settings.category_id = category.id
-            await guild_settings.asave()
+        if category_type == "Help":
+            ctx.guild_settings.category_id = category.id
+        elif category_type == "Archive":
+            ctx.guild_settings.archive_category_id = category.id
+        else:
+            return await ctx.respond(
+                content="Invalid category type. Please choose either 'Help' or 'Archive'.",
+                ephemeral=True,
+            )
+
+        await ctx.guild_settings.asave()
         await ctx.respond(
-            content=f"Help Category set to {category.mention}.",
+            content=f"{category_type} Category set to {category.mention}.",
             ephemeral=True,
         )
 
@@ -298,13 +313,7 @@ class TicketSystem(commands.Cog):
         role_ids = [role.id for role in roles]
 
         # Create or update GuildTicketSettings
-        guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
-            guild_id=ctx.guild.id,
-            defaults={"roles": role_ids, "ticket_count": 1},
-        )
-
-        if not created:
-            guild_settings.roles = role_ids
-            await guild_settings.asave()
+        ctx.guild_settings.roles = role_ids
+        await ctx.guild_settings.asave()
         mentions = ", ".join(role.mention for role in roles)
         await ctx.respond(content=f"Staff roles set to: {mentions}", ephemeral=True)
