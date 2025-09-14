@@ -22,7 +22,6 @@ class GuildSettings(models.Model):
         GuildProfile, on_delete=models.CASCADE, related_name="guild_settings"
     )
     language = models.CharField(max_length=10, default="en")
-    bank_interest = models.FloatField(default=0.001)  # Interest rate for bank system
     custom_commands = models.JSONField(
         null=True, help_text="Custom commands for the guild"
     )  # JSON field for custom commands
@@ -44,6 +43,25 @@ class GuildSettings(models.Model):
         return f"Settings for {self.guild.guild_name} ({self.guild.guild_id})"
 
 
+class GuildBankSettings(models.Model):
+    guild = models.OneToOneField(
+        GuildProfile, on_delete=models.CASCADE, related_name="bank_settings"
+    )
+    allow_deposits = models.BooleanField(default=True, help_text="Allow deposits")
+    allow_withdrawals = models.BooleanField(default=True, help_text="Allow withdrawals")
+    interest_rate = models.FloatField(default=0.001, help_text="Daily interest rate")
+    last_interest_update = models.DateTimeField(
+        null=True, help_text="Timestamp of the last interest update"
+    )
+
+    class Meta:
+        db_table = "guild_bank_settings"
+        default_permissions = ()
+
+    def __str__(self):
+        return f"Bank Settings for {self.guild}"
+
+
 class GuildTicket(models.Model):
     guild = models.ForeignKey(
         GuildProfile, on_delete=models.CASCADE, related_name="guild_tickets"
@@ -63,7 +81,7 @@ class GuildTicket(models.Model):
         default_permissions = ()
 
     def __str__(self):
-        return f"Ticket {self.ticket_number} in {self.guild.guild_name} ({self.guild.guild_id})"
+        return f"Ticket {self.ticket_number} in {self.guild}"
 
 
 class GuildTicketSettings(models.Model):
