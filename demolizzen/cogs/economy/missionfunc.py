@@ -43,7 +43,7 @@ class MissionEvent(discord.ui.View):
 
         # Userdata
         self.payout = self.mission_account.salary
-        self.insurance = self.mission_account.insurance
+        self.insurance = self.mission_account.ship.insurance
         self.chance = self.mission_account.chance
 
         # Mode (Mining, Raiding)
@@ -125,6 +125,7 @@ class MissionEvent(discord.ui.View):
                 )
                 mission_payout = round(self.payout * multiply)
             else:
+                # Lost Ship, pay Insurance if no Event
                 mission_payout = 0 if self.events else -self.insurance
 
             # Felder generieren und zum Embed hinzufügen

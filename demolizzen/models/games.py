@@ -99,7 +99,6 @@ class UserRaidMission(models.Model):
         EconomyShip, on_delete=models.SET_NULL, null=True, related_name="raiding_ships"
     )
     ship_type = models.CharField(max_length=50, default="normal")
-    insurance = models.IntegerField(default=0)
 
     class Meta:
         db_table = "user_raid_mission"
@@ -230,7 +229,6 @@ class UserMiningMission(models.Model):
         EconomyShip, on_delete=models.SET_NULL, null=True, related_name="mining_ships"
     )
     ship_type = models.CharField(max_length=50, default="normal")
-    insurance = models.IntegerField(default=0)
 
     class Meta:
         db_table = "user_mining_mission"
