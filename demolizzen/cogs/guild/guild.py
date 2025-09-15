@@ -6,6 +6,7 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen import models
+from demolizzen.config import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_XP_COLOUR
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.utils.constants import PERMS_MAP
@@ -69,12 +70,12 @@ class Guild(commands.Cog):
     async def set_channel(
         self, ctx: discord.ApplicationContext, channel: discord.TextChannel
     ):
-        """Set Main Channel for Bots Interactions. Only for Server Manager or higher."""
+        """Set Main Channel for Bots Interactions This not include Application Commands."""
         guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
-        guild_profile.main_channel = channel.id
+        guild_profile.main_channel_id = channel.id
         await guild_profile.asave()
         embed = discord.Embed(
-            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {guild_profile.main_channel}`"
+            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {channel.name}`"
         )
         return await ctx.respond(embed=embed)
 
@@ -82,10 +83,10 @@ class Guild(commands.Cog):
     @commands.guild_only()
     @checks.is_guild_manager()
     async def unset_channel(self, ctx: discord.ApplicationContext):
-        """Remove Main Channel for Bots Interactions. Only for Server Manager or higher."""
+        """Remove Main Channel for Bots Interactions."""
         guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
 
-        if guild_profile.main_channel is None:
+        if guild_profile.main_channel_id is None:
             embed = discord.Embed(
                 description="🟡 **INFO**: `📢 Bot already react to all Channels`"
             )
@@ -93,7 +94,7 @@ class Guild(commands.Cog):
             return
 
         # Remove all channels from the levelling server base
-        guild_profile.main_channel = None
+        guild_profile.main_channel_id = None
         await guild_profile.asave()
         embed = discord.Embed(
             description="🟢 **SUCCESS**: `📢 Bot react to all Channels`"
@@ -138,3 +139,78 @@ class Guild(commands.Cog):
 
         except discord.errors.Forbidden:
             await ctx.respond(embed=embed)
+
+    # on guild join
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        # Check if Guild Profile already exists
+        try:
+            guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
+            if guild_profile:
+                self.bot.logger.debug(
+                    f"Levelling Serverbase for {guild.name} already exists, skipping creation."
+                )
+                return
+        except models.GuildProfile.DoesNotExist:
+            # Create GuildProfile
+            guild_profile = await models.GuildProfile.objects.acreate(
+                guild_id=guild.id, guild_name=guild.name
+            )
+
+            # Create levelling records for all members
+            member_ids = [member.id for member in guild.members if not member.bot]
+            existing_ids = await models.UserProfile.objects.filter(
+                user_id__in=member_ids, guild_id=guild.id
+            ).values_list("user_id", flat=True)
+
+            new_members = [
+                member
+                for member in guild.members
+                if member.id not in existing_ids and not member.bot
+            ]
+            new_user_profiles = []
+            for member in new_members:
+                new_user_profiles.append(
+                    models.UserProfile(
+                        user_id=member.id, guild_id=guild.id, user_name=member.name
+                    )
+                )
+            if new_user_profiles:
+                await models.UserProfile.objects.abulk_create(new_user_profiles)
+                # Get the UserProfile objects from the DB to use them for UserSettings
+                created_profiles = [
+                    up
+                    async for up in models.UserProfile.objects.filter(
+                        user_id__in=[member.id for member in new_members],
+                        guild_id=guild.id,
+                    )
+                ]
+                new_settings = []
+                for user_profile in created_profiles:
+                    new_settings.append(
+                        models.UserSettings(
+                            user=user_profile,
+                            background=DEFAULT_BACKGROUND,
+                            border=DEFAULT_BORDER,
+                            xp_colour=DEFAULT_XP_COLOUR,
+                            blur=5,
+                        )
+                    )
+                if new_settings:
+                    await models.UserSettings.objects.abulk_create(new_settings)
+        self.bot.logger.info(f"{guild.name} created successfully.")
+
+    # on guild leave
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild):
+        # Delete GuildProfile and related data
+        try:
+            guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
+            if guild_profile is not None:
+                await guild_profile.adelete()
+                self.bot.logger.info(
+                    f"Guild {guild.name} ({guild.id}) has left and deleted successfully."
+                )
+        except models.GuildProfile.DoesNotExist:
+            self.bot.logger.debug(f"Guild {guild.name} ({guild.id}) does not exist.")
+            return

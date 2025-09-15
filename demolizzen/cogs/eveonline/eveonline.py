@@ -13,7 +13,6 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import models
-from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.utils.autocomplete import search_items
 from demolizzen.utils.functions import application_cooldown, format_number
@@ -157,7 +156,6 @@ class EveOnline(commands.Cog):
                     await interaction.respond(embed=em, delete_after=10)
 
     @eve.command(name="status")
-    @checks.is_in_channel()
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer
@@ -193,7 +191,6 @@ class EveOnline(commands.Cog):
         await application_cooldown(ctx, error)
 
     @eve.command(name="price")
-    @checks.is_in_channel()
     @commands.cooldown(
         10, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer

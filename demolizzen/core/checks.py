@@ -2,9 +2,6 @@
 import discord
 from discord.ext import commands
 
-# Demolizzen
-from demolizzen.models import GuildProfile
-
 
 async def check_is_guildowner(ctx: discord.ApplicationContext, precheck=None):
     if ctx.author.id == ctx.guild.owner.id:
@@ -77,35 +74,6 @@ async def check_is_mod(ctx: discord.ApplicationContext, precheck=None):
     return False
 
 
-# Benutzerdefinierte Überprüfungsfunktion, die sicherstellt, dass der Befehl im gewünschten Channel ausgeführt wird
-async def check_channel(ctx: discord.ApplicationContext):
-    """
-    Custom check function to ensure that a command is executed in the desired channel.
-
-    This function checks if a command is being executed in a specific channel defined
-    by the guild's main channel setting. If a main channel is defined, the command can
-    only be used in that channel.
-
-    Returns
-    -------
-    Callable
-        A coroutine predicate that checks if the command is in the correct channel.
-    """
-    guild_profile = await GuildProfile.objects.aget(guild_id=ctx.guild.id)
-
-    if guild_profile is not None:
-        channel = discord.utils.get(
-            ctx.guild.channels,
-            name=guild_profile.main_channel,
-        )
-        if ctx.channel.name != f"{channel}" and channel is not None:
-            await ctx.respond(
-                f"Commands are only allowed in <#{channel.id}>.", ephemeral=True
-            )
-            return False
-    return True
-
-
 # Decorators for the checks hierarchy example: is_mod > is_guild_manager > is_admin > is_guild_owner
 def is_guild_owner():
     """Check if the user is the guild owner or higher."""
@@ -125,8 +93,3 @@ def is_guild_manager():
 def is_mod():
     """Check if the user is a mod or higher."""
     return commands.check(check_is_mod)
-
-
-def is_in_channel():
-    """Check if the command is used in the correct channel."""
-    return commands.check(check_channel)

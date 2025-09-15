@@ -13,10 +13,9 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
 # Demolizzen
-from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.models import UserBankAccount
-from demolizzen.utils.functions import application_cooldown
+from demolizzen.utils.functions import application_cooldown, get_command_mention
 
 
 class Games(commands.Cog):
@@ -36,7 +35,6 @@ class Games(commands.Cog):
 
     @games.command()
     @commands.guild_only()
-    @checks.is_in_channel()
     @commands.cooldown(
         5, 600, commands.BucketType.user
     )  # 5 Mal alle 10 Minuten pro Benutzer
@@ -71,7 +69,6 @@ class Games(commands.Cog):
 
     @games.command()
     @commands.guild_only()
-    @checks.is_in_channel()
     @commands.cooldown(
         5, 600, commands.BucketType.user
     )  # 5 Mal alle 10 Minuten pro Benutzer
@@ -96,7 +93,7 @@ class Games(commands.Cog):
                 em = discord.Embed(
                     title="",
                     color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You don't have a bank account. Create one with /bank create",
+                    description=f"{ctx.author.mention}, You don't have a bank account. Create one with {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')}",
                 )
                 await ctx.respond(embed=em)
                 return
@@ -168,7 +165,6 @@ class Games(commands.Cog):
 
     @games.command()
     @commands.guild_only()
-    @checks.is_in_channel()
     @commands.cooldown(
         5, 600, commands.BucketType.user
     )  # 5 Mal alle 10 Minuten pro Benutzer

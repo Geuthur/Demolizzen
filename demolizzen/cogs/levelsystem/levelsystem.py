@@ -14,12 +14,13 @@ from demolizzen.config import (
     DEFAULT_BACKGROUND,
     DEFAULT_BORDER,
     DEFAULT_XP_COLOUR,
-    LEADERBOARD_EMBED_COLOUR,
+    DISCORD_EMBED_COLOR_DANGER,
+    DISCORD_EMBED_COLOR_SUCCESS,
 )
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.models import GuildProfile, UserProfile, UserSettings
-from demolizzen.utils.functions import application_cooldown
+from demolizzen.utils.functions import application_cooldown, get_command_mention
 
 
 class Levelsystem(commands.Cog):
@@ -41,7 +42,7 @@ class Levelsystem(commands.Cog):
         contexts=[discord.InteractionContextType.guild],
     )
 
-    # Update Shop every 2 Hours
+    # Check for new Guild or Members every 2 Hours
     @tasks.loop(minutes=120)
     async def check_level_system(self):
         """Periodic check for guilds and members in the bot's presence."""
@@ -100,19 +101,19 @@ class Levelsystem(commands.Cog):
                 continue
 
     @levelsystem_config.command(
-        name="set-mention", description="Set Level UP Banner mention"
+        name="set-mention", description="Activate/Deactivate Level UP Posting"
     )
     @checks.is_guild_manager()
-    async def banner(self, ctx: discord.ApplicationContext, state: bool):
+    async def toggle(self, ctx: discord.ApplicationContext, state: bool):
         """
-        Activate/Deactivate Level UP Banner
+        Activate/Deactivate Level UP Posting
         """
         guild_profile = await GuildProfile.objects.aget(guild_id=ctx.guild.id)
         guild_profile.mention = state
 
         await guild_profile.asave()
         embed = discord.Embed(
-            description=f"🟢 **SUCCESS**: `📢 Level UP Banner mention set to: {state}`"
+            description=f"🟢 **SUCCESS**: `📢 Level UP Posting set to: {state}`"
         )
         await ctx.respond(embed=embed)
 
@@ -140,7 +141,8 @@ class Levelsystem(commands.Cog):
             return await ctx.respond(embed=embed)
 
         embed = discord.Embed(
-            title=f":trophy: {ctx.guild}'s Leaderboard", colour=LEADERBOARD_EMBED_COLOUR
+            title=f":trophy: {ctx.guild}'s Leaderboard",
+            colour=DISCORD_EMBED_COLOR_SUCCESS,
         )
 
         level = []
@@ -177,7 +179,6 @@ class Levelsystem(commands.Cog):
 
     # Rank Command
     @commands.slash_command(dm_permission=False)
-    @checks.is_in_channel()
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer
@@ -287,99 +288,46 @@ class Levelsystem(commands.Cog):
             except Exception as e:
                 self.bot.logger.error(f"Fehler bei On Message: {e}", exc_info=True)
 
-    # on guild join
-    @commands.Cog.listener()
-    async def on_guild_join(self, guild: discord.Guild):
-        # Check if levelling server base exists
-        try:
-            guild_profile = await GuildProfile.objects.aget(guild_id=guild.id)
-            if guild_profile:
-                self.bot.logger.debug(
-                    f"Levelling Serverbase for {guild.name} already exists, skipping creation."
-                )
-                return
-        except GuildProfile.DoesNotExist:
-            # Create levelling server base
-            guild_profile = await GuildProfile.objects.acreate(
-                guild_id=guild.id, guild_name=guild.name
-            )
-
-            # Create levelling records for all members
-            member_ids = [member.id for member in guild.members if not member.bot]
-            existing_ids = await UserProfile.objects.filter(
-                user_id__in=member_ids, guild_id=guild.id
-            ).values_list("user_id", flat=True)
-
-            new_members = [
-                member
-                for member in guild.members
-                if member.id not in existing_ids and not member.bot
-            ]
-            new_user_profiles = []
-            for member in new_members:
-                new_user_profiles.append(
-                    UserProfile(
-                        user_id=member.id, guild_id=guild.id, user_name=member.name
-                    )
-                )
-            if new_user_profiles:
-                await UserProfile.objects.abulk_create(new_user_profiles)
-                # Get the UserProfile objects from the DB to use them for UserSettings
-                created_profiles = [
-                    up
-                    async for up in UserProfile.objects.filter(
-                        user_id__in=[member.id for member in new_members],
-                        guild_id=guild.id,
-                    )
-                ]
-                new_settings = []
-                for user_profile in created_profiles:
-                    new_settings.append(
-                        UserSettings(
-                            user=user_profile,
-                            background=DEFAULT_BACKGROUND,
-                            border=DEFAULT_BORDER,
-                            xp_colour=DEFAULT_XP_COLOUR,
-                            blur=5,
-                        )
-                    )
-                if new_settings:
-                    await UserSettings.objects.abulk_create(new_settings)
-        self.bot.logger.info(
-            f"Levelling records for {guild.name} created successfully."
-        )
-
-    # on guild leave
-    @commands.Cog.listener()
-    async def on_guild_remove(self, guild: discord.Guild):
-        # Delete levelling records for all members
-        try:
-            guild_profile = await GuildProfile.objects.aget(guild_id=guild.id)
-            if guild_profile is not None:
-                await guild_profile.adelete()
-                self.bot.logger.info(
-                    f"Levelling records for guild {guild.name} ({guild.id}) deleted successfully."
-                )
-        except GuildProfile.DoesNotExist:
-            self.bot.logger.debug(
-                f"Levelling records for guild {guild.name} ({guild.id}) do not exist."
-            )
-            return
-
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.TextChannel):
         try:
             guild_profile = await GuildProfile.objects.aget(guild_id=channel.guild.id)
             if guild_profile is not None:
-                if channel.name == guild_profile.main_channel:
-                    # get random channel in guild
-                    channels = await channel.guild.fetch_channels()
-                    new_channel = channels[0]
-                    guild_profile.main_channel = new_channel.id
-                    self.bot.logger.info(
-                        f"Main channel for {channel.guild.name} set to {new_channel.name}"
-                    )
-                    await guild_profile.asave()
+                if channel.id == guild_profile.main_channel_id:
+                    # Use system (default) channel if available, else pick first available text channel
+                    new_channel = None
+                    if (
+                        channel.guild.system_channel
+                        and channel.guild.system_channel.id != channel.id
+                    ):
+                        new_channel = channel.guild.system_channel
+                    if not new_channel:
+                        channels = [
+                            ch
+                            for ch in await channel.guild.fetch_channels()
+                            if isinstance(ch, discord.TextChannel)
+                            and ch.id != channel.id
+                        ]
+                        if channels:
+                            new_channel = channels[0]
+                    if new_channel:
+                        guild_profile.main_channel_id = new_channel.id
+                        # Try to resolve the command for mention
+                        command_mention = get_command_mention(
+                            self.bot,
+                            cog="Guild",
+                            slash_command="guild",
+                            slash_command_group="set_channel",
+                        )
+                        embed = discord.Embed(
+                            description=(
+                                f"⛔CONFIG ERROR⛔: The main channel has been deleted, Use System Channel.\n"
+                                f"If you want to change the main channel, use {command_mention}"
+                            ),
+                            color=DISCORD_EMBED_COLOR_DANGER,
+                        )
+                        await new_channel.send(embed=embed)
+                        await guild_profile.asave()
                     return
         except GuildProfile.DoesNotExist:
             return

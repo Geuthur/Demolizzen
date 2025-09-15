@@ -6,7 +6,7 @@ from django.utils import timezone
 class GuildProfile(models.Model):
     guild_id = models.BigIntegerField(primary_key=True)
     guild_name = models.CharField(max_length=255)
-    main_channel = models.TextField(null=True)
+    main_channel_id = models.BigIntegerField(null=True)
     mention = models.BooleanField(default=True)
 
     class Meta:
