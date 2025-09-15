@@ -18,6 +18,7 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.functions import get_command_mention
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class Economy(commands.Cog):
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
-        self.alias = "eco"
+        self.alias = "economy"
         self.title = "Economy"
 
     economy = SlashCommandGroup(
@@ -55,14 +56,14 @@ class Economy(commands.Cog):
             logger.debug(f"UserProfile loaded for {ctx.author}.")
         except models.UserProfile.DoesNotExist as exc:
             raise commands.CheckFailure(
-                "UserProfile does not exist. Please register first. `/auth register`"
+                f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
             ) from exc
 
         try:
             assert user.bank_account
         except models.UserBankAccount.DoesNotExist as exc:
             raise commands.CheckFailure(
-                "Bank account does not exist. Please create one first. `/bank create`"
+                f"Bank account does not exist. Please create one first. {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')} "
             ) from exc
 
     @commands.slash_command()

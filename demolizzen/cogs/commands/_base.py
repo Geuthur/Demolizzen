@@ -5,9 +5,14 @@ from discord.ext.pages import Paginator
 
 # Demolizzen
 from demolizzen import models
+from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.functions import get_command_mention
 
 
 class CommandsBase:
+    def __init__(self, bot: Demolizzen):
+        self.bot = bot
+
     async def get_richest_data(self, ctx: discord.ApplicationContext):
         return [
             account
@@ -46,8 +51,14 @@ class CommandsBase:
                     name=item_name, value=f"Anzahl: {item_quantity}", inline=False
                 )
         except (models.UserBagItems.DoesNotExist, models.UserBag.DoesNotExist):
+            app_command = get_command_mention(
+                bot=self.bot,
+                cog="Shop",
+                slash_command="shop",
+                slash_command_group="buy",
+            )
             em = discord.Embed(
-                description=f"{ctx.author.mention}, Your Bag is empty... Buy something with /buy",
+                description=f"{ctx.author.mention}, Your Bag is empty... Buy something with {app_command}",
                 color=discord.Color.teal(),
             )
             await ctx.respond(embed=em)

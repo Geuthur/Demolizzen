@@ -211,12 +211,18 @@ def get_command_mention(
                 if slash_command_group and isinstance(
                     command, discord.SlashCommandGroup
                 ):
+                    if command.id is None:
+                        raise ValueError("Command ID is None.")
                     return f"</{slash_command} {slash_command_group}:{command.id}>"
                 if isinstance(command, discord.SlashCommand):
+                    if command.id is None:
+                        raise ValueError("Command ID is None.")
                     return f"</{slash_command}:{command.id}>"
         raise ValueError("Command not found or invalid command type.")
+    except ValueError:
+        logger.debug("Command not found or invalid command type.")
     except Exception:
-        logger.debug("Failed to get command mention", exc_info=True)
+        logger.debug("Failed to get command mention")
     if slash_command_group:
         return f"/{slash_command} {slash_command_group}"
     return f"/{slash_command}"

@@ -22,6 +22,7 @@ from demolizzen.cogs.economy import missionfunc
 from demolizzen.config import EVENTS_SERVER
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.functions import get_command_mention
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +55,14 @@ class TextAdventure(commands.Cog):
             logger.debug(f"UserProfile loaded for {ctx.author}.")
         except models.UserProfile.DoesNotExist as exc:
             raise commands.CheckFailure(
-                "UserProfile does not exist. Please register first. `/auth register`"
+                f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
             ) from exc
 
         try:
             assert user.bank_account
         except models.UserBankAccount.DoesNotExist as exc:
             raise commands.CheckFailure(
-                "Bank account does not exist. Please create one first. `/bank create`"
+                f"Bank account does not exist. Please create one first. {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')} "
             ) from exc
 
         # pylint: disable=too-many-statements
@@ -235,7 +236,7 @@ class TextAdventure(commands.Cog):
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have a ship yet. \nYou can buy a ship with `/mission buy`. \nGet information about available ships with `/price`.",
+                description=f"{ctx.author.mention}, You don't have a ship yet. \nYou can buy a ship with {get_command_mention(bot=self.bot, cog='Mission', slash_command='mission', slash_command_group='buy')}. \nGet information about available ships with {get_command_mention(bot=self.bot, cog='Mission', slash_command='mission', slash_command_group='price')}.",
             )
             await ctx.respond(embed=em)
             return
@@ -341,7 +342,7 @@ class TextAdventure(commands.Cog):
                 )
             except models.UserMiningMission.DoesNotExist:
                 return await ctx.respond(
-                    f"{ctx.author.mention}, You don't have a mining mission account yet. Please start a mining mission first.",
+                    f"{ctx.author.mention}, You don't have a mining mission account yet. Please start a mining mission first with {get_command_mention(bot=self.bot, cog='Mission', slash_command='mission', slash_command_group='start')}.",
                     ephemeral=True,
                 )
         if modus == "raiding":
@@ -351,7 +352,7 @@ class TextAdventure(commands.Cog):
                 )
             except models.UserRaidMission.DoesNotExist:
                 return await ctx.respond(
-                    f"{ctx.author.mention}, You don't have a raid mission account yet. Please start a raid mission first.",
+                    f"{ctx.author.mention}, You don't have a raid mission account yet. Please start a raid mission first with {get_command_mention(bot=self.bot, cog='Mission', slash_command='mission', slash_command_group='start')}.",
                     ephemeral=True,
                 )
         if modus not in ("mining", "raiding"):
@@ -551,7 +552,7 @@ class TextAdventure(commands.Cog):
             em = discord.Embed(
                 title=f"Shop (Seite {page + 1}/{total_pages})",
                 color=discord.Color.teal(),
-                description="Use `/eve mission price` `schiffname` to learn more about the item. Use. \n Use `/eve buy` `schiffname` to purchase the item. \n\n:money_with_wings: Here are the items:\n\n ",
+                description=f"Use {get_command_mention(bot=self.bot, cog='TextAdventure', slash_command='mission', slash_command_group='price')} `shipname` to learn more about the item. Use. \n Use {get_command_mention(bot=self.bot, cog='TextAdventure', slash_command='mission', slash_command_group='buy')} `shipname` to purchase the item. \n\n:money_with_wings: Here are the items:\n\n ",
             )
             for name, price, desc in fields[
                 page * items_per_page : (page + 1) * items_per_page
