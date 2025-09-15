@@ -1,3 +1,6 @@
+# Standard Library
+import logging
+
 # Discord
 import discord
 from discord import option
@@ -10,6 +13,8 @@ from demolizzen.config import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_XP_COL
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.utils.constants import PERMS_MAP
+
+logger = logging.getLogger(__name__)
 
 
 class Guild(commands.Cog):
@@ -147,7 +152,7 @@ class Guild(commands.Cog):
         try:
             guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
             if guild_profile:
-                self.bot.logger.debug(
+                logger.debug(
                     f"Levelling Serverbase for {guild.name} already exists, skipping creation."
                 )
                 return
@@ -159,9 +164,12 @@ class Guild(commands.Cog):
 
             # Create levelling records for all members
             member_ids = [member.id for member in guild.members if not member.bot]
-            existing_ids = await models.UserProfile.objects.filter(
-                user_id__in=member_ids, guild_id=guild.id
-            ).values_list("user_id", flat=True)
+            existing_ids = [
+                existing.user_id
+                async for existing in models.UserProfile.objects.filter(
+                    user_id__in=member_ids, guild_id=guild.id
+                )
+            ]
 
             new_members = [
                 member
@@ -198,7 +206,10 @@ class Guild(commands.Cog):
                     )
                 if new_settings:
                     await models.UserSettings.objects.abulk_create(new_settings)
-        self.bot.logger.info(f"{guild.name} created successfully.")
+            logger.info(
+                f"{guild_profile} created with {len(new_user_profiles)} members."
+            )
+            return
 
     # on guild leave
     @commands.Cog.listener()
@@ -207,10 +218,8 @@ class Guild(commands.Cog):
         try:
             guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
             if guild_profile is not None:
+                logger.info(f"Guild {guild_profile} has left and deleted successfully.")
                 await guild_profile.adelete()
-                self.bot.logger.info(
-                    f"Guild {guild.name} ({guild.id}) has left and deleted successfully."
-                )
         except models.GuildProfile.DoesNotExist:
-            self.bot.logger.debug(f"Guild {guild.name} ({guild.id}) does not exist.")
+            logger.debug(f"Guild {guild.name} ({guild.id}) does not exist.")
             return
