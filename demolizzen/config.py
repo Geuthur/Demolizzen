@@ -43,18 +43,19 @@ EVENTS_SERVER = {}
 # load extensions on start/restart
 PRELOAD_EXTENSIONS = [
     "core",  # Core Module - Must be loaded first
-    "general",  # General Module
-    "admin",  # Administration Module
     "owner",  # Owner Module
-    "ticket",  # Ticket System
+    "admin",  # Administration Module
+    "guild",  # Guild Management Module
+    "general",  # General Module
     "commands",  # Standard Commands
     "levelsystem",  # Level System Module
     "banksystem",  # Economy System
     "economy",  # Get the time in eve and around the world
     "shop",  # Shop System Module
-    "games",  # Games
+    "games",  # Games Module
     "eveonline",  # EVE-Online Module
     "killmail",  # Killmail posting Module
+    "ticket",  # Ticket System Module
     # "geuthur",                                 # Geuthur Module
     # "automod",                                 # Automod Module
     # "token",                                   # Must be activated if Modules are enabled in this section

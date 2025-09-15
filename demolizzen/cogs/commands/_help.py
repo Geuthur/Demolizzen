@@ -42,6 +42,23 @@ class CommandsHelp:
                 continue
             if access != "None" and str(access) != str(server_id):
                 continue
+
+            # Check if the user has permission to view any command in the cog
+            show_cog = True
+            for command in cog.get_commands():
+                if isinstance(command, discord.SlashCommandGroup):
+                    perms = getattr(command, "default_member_permissions", None)
+                    if perms is not None and isinstance(perms, discord.Permissions):
+                        if (
+                            not ctx.author.guild_permissions.value & perms.value
+                            == perms.value
+                        ):
+                            show_cog = False
+                            break
+
+            if not show_cog:
+                continue
+
             commands_info = [f"{command.name}" for command in cog.get_commands()]
             if commands_info:
                 options.append(
@@ -52,8 +69,7 @@ class CommandsHelp:
             embed.description = "No plugins/categories found."
 
         view = HelpSelect(self.bot, options)
-        message = await ctx.respond(embed=embed, view=view)
-        view.message = message
+        return await ctx.respond(embed=embed, view=view)
 
 
 class HelpSelect(discord.ui.View):

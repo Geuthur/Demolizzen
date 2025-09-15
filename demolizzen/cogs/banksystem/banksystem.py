@@ -8,16 +8,15 @@ from asgiref.sync import sync_to_async
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 # Django
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 # Demolizzen
+from demolizzen import models
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models import UserBankAccount, UserProfile
-from demolizzen.models.guild import GuildBankSettings, GuildProfile
 
 logger = logging.getLogger(__name__)
 
@@ -32,85 +31,13 @@ class Bank(commands.Cog):
         self.last_update_time = timezone.now()
         self.title = "Banksystem"
         self.alias = "bank"
-        self.deposits.start()
-
-    def cog_unload(self):
-        self.deposits.cancel()
 
     bank = SlashCommandGroup(
         "bank", "Banksystem", contexts=[discord.InteractionContextType.guild]
     )
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        logger.debug("Bank Cog is ready.")
-        guild_profiles = [g async for g in GuildProfile.objects.all()]
-        if not guild_profiles:
-            logger.warning(
-                "No guild profiles found. Skipping bank settings initialization."
-            )
-            return
-
-        create_counter = 0
-        for guild in guild_profiles:
-            try:
-                _, created = await GuildBankSettings.objects.aget_or_create(guild=guild)
-                if created:
-                    create_counter += 1
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.exception(
-                    f"Error loading bank settings for guild {guild.guild_name} ({guild.guild_id}): {e}"
-                )
-        if create_counter > 0:
-            logger.info(f"Created bank settings for {create_counter} guild(s).")
-
-    # Täglicher Update-Task
-    @tasks.loop(hours=168)
-    async def deposits(self):
-        await self.process_daily_interest()
-        self.last_update_time = timezone.now()
-
-    @deposits.before_loop
-    async def before_deposits(self):
-        await self.bot.wait_until_ready()
-        logger.info("Bank Interest Ready")
-
-    async def process_daily_interest(self):
-        try:
-            logger.debug("Starting bank interest update...")
-            guild_bank_settings = [
-                g async for g in GuildBankSettings.objects.all().select_related("guild")
-            ]
-            for guild_bank in guild_bank_settings:
-                bank_accounts = [
-                    r
-                    async for r in UserBankAccount.objects.filter(
-                        user__guild=guild_bank.guild
-                    )
-                ]
-                if bank_accounts and (
-                    guild_bank.last_interest_update is None
-                    or (timezone.now() - guild_bank.last_interest_update).days >= 7
-                ):
-                    items = []
-                    for account in bank_accounts:
-                        interest = int(account.bank * guild_bank.interest_rate)
-                        account.bank += interest
-                        items.append(account)
-                    updated = await UserBankAccount.objects.abulk_update(
-                        items, fields=["bank"]
-                    )
-                    if updated:
-                        logger.info(
-                            f"Payout {len(items)} Accounts with {guild_bank.interest_rate * 100}% interest for {guild_bank.guild}."
-                        )
-                    guild_bank.last_interest_update = timezone.now()
-                    await guild_bank.asave()
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.exception(f"Error during bank interest update: {e}")
-
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
-        user, created = await UserProfile.objects.select_related(
+        user, created = await models.UserProfile.objects.select_related(
             "guild"
         ).aget_or_create(
             user_id=ctx.author.id,
@@ -123,7 +50,7 @@ class Bank(commands.Cog):
             logger.debug(
                 f"Created new user profile for {ctx.author} in guild {ctx.guild}"
             )
-        bank_account, created = await UserBankAccount.objects.aget_or_create(
+        bank_account, created = await models.UserBankAccount.objects.aget_or_create(
             user=user,
         )
         if created:
@@ -132,7 +59,7 @@ class Bank(commands.Cog):
             )
         ctx.bank_account = bank_account
         logger.debug(f"Bank Account loaded for {ctx.author} in guild {ctx.guild}")
-        guild_settings, created = await GuildBankSettings.objects.aget_or_create(
+        guild_settings, created = await models.GuildBankSettings.objects.aget_or_create(
             guild=user.guild,
         )
         ctx.guild_settings = guild_settings
@@ -144,7 +71,7 @@ class Bank(commands.Cog):
         Create your Bank Account
         """
         try:
-            await UserBankAccount.objects.acreate(user=ctx.user_profile)
+            await models.UserBankAccount.objects.acreate(user=ctx.user_profile)
         except IntegrityError as e:
             logger.debug(f"IntegrityError: {e}")
             await ctx.respond(
@@ -254,17 +181,17 @@ class Bank(commands.Cog):
             return
 
         try:
-            member_account = await UserProfile.objects.select_related(
+            member_account = await models.UserProfile.objects.select_related(
                 "bank_account"
             ).aget(user_id=member.id, guild__guild_id=server_id)
             member_bank_account = member_account.bank_account
-        except UserProfile.DoesNotExist:
+        except models.UserProfile.DoesNotExist:
             await ctx.respond(
                 "❌ One of the accounts does not exist.",
                 ephemeral=True,
             )
             return
-        except UserBankAccount.DoesNotExist:
+        except models.UserBankAccount.DoesNotExist:
             await ctx.respond(
                 "❌ One of the bank accounts does not exist.",
                 ephemeral=True,

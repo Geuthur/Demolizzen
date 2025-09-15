@@ -1,4 +1,5 @@
 # Discord
+import discord
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
@@ -18,7 +19,10 @@ class Geuthur(commands.Cog):
         self.access = 337275567487320064  # Guild hier festlegen
 
     geuthur = SlashCommandGroup(
-        name="geuthur", description="Geuthur", guild_ids=[337275567487320064]
+        name="geuthur",
+        description="Geuthur",
+        guild_ids=[337275567487320064],
+        default_member_permissions=discord.Permissions(manage_guild=True),
     )
 
     @commands.Cog.listener()

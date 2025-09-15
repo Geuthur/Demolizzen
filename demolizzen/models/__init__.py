@@ -8,7 +8,7 @@ from .eveonline import (
     ZKillboard,
 )
 from .games import UserMiningMission, UserRaidMission, UserWorkMission
-from .guild import GuildProfile
+from .guild import GuildBankSettings, GuildProfile, GuildSettings
 from .user import (
     UserBag,
     UserBagItems,

@@ -9,9 +9,7 @@ from discord.ext.pages import Paginator
 
 # Demolizzen
 from demolizzen import models
-from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
-from demolizzen.utils.constants import PERMS_MAP
 from demolizzen.utils.functions import application_cooldown
 
 
@@ -128,79 +126,3 @@ class Core(commands.Cog):
             description="Here is the changelog for the bot: [CHANGELOG.md](https://github.com/Geuthur/Demolizzen/blob/master/CHANGELOG.md)",
         )
         return await ctx.respond(embed=em)
-
-    @botsettings.command()
-    @commands.guild_only()
-    @checks.is_guild_owner()
-    async def set_channel(
-        self, ctx: discord.ApplicationContext, channel: discord.TextChannel
-    ):
-        """Set Main Channel for Bots Interactions. Only for Server Owner."""
-        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
-        guild_profile.main_channel = channel.id
-        await guild_profile.asave()
-        embed = discord.Embed(
-            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {guild_profile.main_channel}`"
-        )
-        return await ctx.respond(embed=embed)
-
-    @botsettings.command()
-    @commands.guild_only()
-    @checks.is_guild_owner()
-    async def unset_channel(self, ctx: discord.ApplicationContext):
-        """Remove Main Channel for Bots Interactions. Only for Server Owner."""
-        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
-
-        if guild_profile.main_channel is None:
-            embed = discord.Embed(
-                description="🟡 **INFO**: `📢 Bot already react to all Channels`"
-            )
-            await ctx.respond(embed=embed)
-            return
-
-        # Remove all channels from the levelling server base
-        guild_profile.main_channel = None
-        await guild_profile.asave()
-        embed = discord.Embed(
-            description="🟢 **SUCCESS**: `📢 Bot react to all Channels`"
-        )
-        await ctx.respond(embed=embed)
-
-    @botsettings.command()
-    @commands.guild_only()
-    @checks.is_admin()
-    async def perms_guild(self, ctx: discord.ApplicationContext):
-        """Show permissions for Demolizzen for this Server. needs at Least Admin Permission."""
-
-        guild_perms = ctx.guild.me.guild_permissions
-        perms_compare = guild_perms >= self.bot.req_perms
-        msg = f"Server Permissions: {guild_perms.value}\n"
-        msg += f"Met Minimum Permissions: {perms_compare}\n\n"
-
-        if not perms_compare:
-            msg += (
-                "You can reconfigure the bot role by\n"
-                f"[reauthorising the permissions here]({self.bot.invite_url}).\n\n"
-                "The new auth will update the existing\n"
-                "bot role automatically.\n\n"
-            )
-
-        for perm, bitshift in PERMS_MAP.items():
-            if bool((self.bot.req_perms.value >> bitshift) & 1):
-                if bool((guild_perms.value >> bitshift) & 1):
-                    msg += f":white_small_square:  {perm}\n"
-                else:
-                    msg += f":black_small_square:  {perm}\n"
-
-        embed = discord.Embed(
-            title="Guild Permissions", color=discord.Color.blue(), description=f"{msg}"
-        )
-
-        try:
-            if guild_perms.embed_links:
-                await ctx.respond(embed=embed)
-            else:
-                await ctx.respond(msg)
-
-        except discord.errors.Forbidden:
-            await ctx.respond(embed=embed)

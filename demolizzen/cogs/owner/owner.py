@@ -26,10 +26,6 @@ class Owner(commands.Cog):
         "owner", "Owner Commands", contexts=[discord.InteractionContextType.bot_dm]
     )
 
-    guild = SlashCommandGroup(
-        "guild", "Guild Commands", contexts=[discord.InteractionContextType.guild]
-    )
-
     @owner.command(name="force-deposits-update")
     @commands.is_owner()
     async def trigger_deposit_update(self, ctx: discord.ApplicationContext):
@@ -45,40 +41,6 @@ class Owner(commands.Cog):
         shopsystem_cog: Economy = self.bot.get_cog("Eco")
         await shopsystem_cog.fetch_ship_data()
         await ctx.respond("Ship Data Update Triggered.", ephemeral=True)
-
-    @guild.command(
-        name="sync",
-        description="Synchonizes the slash commands.",
-    )
-    @commands.is_owner()
-    @option(
-        "scope",
-        description="The scope of the sync. Can be `global` or `guild`.",
-        choices=["global", "guild"],
-    )
-    async def sync(self, context: discord.ApplicationContext, scope: str) -> None:
-        """
-        Synchonizes the slash commands.
-
-        :param context: The command context.
-        :param scope: The scope of the sync. Can be `global` or `guild`.
-        """
-
-        if scope == "global":
-            await context.bot.sync_commands()
-            embed = discord.Embed(
-                description="Slash commands have been globally synchronized.",
-                color=0xBEBEFE,
-            )
-            await context.respond(embed=embed)
-            return
-        await context.bot.sync_commands(guild_ids=[context.guild.id])
-        embed = discord.Embed(
-            description="Slash commands have been synchronized in this guild.",
-            color=0xBEBEFE,
-        )
-        await context.respond(embed=embed, ephemeral=True)
-        return
 
     @owner.command(
         name="load",

@@ -1,6 +1,7 @@
 # Standard Library
 import asyncio
 import json
+import logging
 from urllib.parse import quote_plus
 
 # Discord
@@ -13,7 +14,6 @@ from discord.ext import commands, tasks
 from demolizzen import __github_url__, __title__, __version__, models
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
-from demolizzen.utils.functions import application_cooldown
 
 from .objects import KillmailManager, Subscription
 
@@ -25,6 +25,8 @@ ZKILLBOARD_URL = "https://zkillredisq.stream/listen.php"
 MAIL_LOCK = asyncio.Lock()
 
 # ------------- Fork from Firetail and continued Coding ---------------
+
+logger = logging.getLogger(__name__)
 
 
 class MailProcessingError(Exception):
@@ -49,7 +51,10 @@ class Killmail(commands.Cog):
         self.clean_subscriptions.start()
 
     killmail = SlashCommandGroup(
-        "killmail", "zKillboard", contexts=[discord.InteractionContextType.guild]
+        "killmail",
+        "zKillboard",
+        contexts=[discord.InteractionContextType.guild],
+        default_member_permissions=discord.Permissions(manage_guild=True),
     )
 
     def cog_unload(self):
@@ -64,7 +69,7 @@ class Killmail(commands.Cog):
             Subscription.killmail_sent_per_channel.clear()
         # pylint: disable=broad-except
         except Exception as e:
-            self.bot.logger.error(f"[Loop] Killmail Cleaner • {e}")
+            logger.error(f"[Loop] Killmail Cleaner • {e}")
 
     @tasks.loop(hours=23)
     async def clean_subscriptions(self):
@@ -85,12 +90,12 @@ class Killmail(commands.Cog):
     @clean_subscriptions.before_loop
     async def before_clean_subscriptions(self):
         await self.bot.wait_until_ready()
-        self.bot.logger.info("Killmail Subs Checker Ready")
+        logger.info("Killmail Subs Checker Ready")
 
     @cleanup_killmail_storage.before_loop
     async def before_cleanup_killmail_storage(self):
         await self.bot.wait_until_ready()
-        self.bot.logger.info("Killmail Memory Cleaner Ready")
+        logger.info("Killmail Memory Cleaner Ready")
 
     async def add_sub(
         self,
@@ -109,7 +114,7 @@ class Killmail(commands.Cog):
             )
 
         except models.GuildProfile.DoesNotExist:
-            self.bot.logger.error(f"GuildProfile not found for user {user_profile}")
+            logger.error(f"GuildProfile not found for user {user_profile}")
             return False
 
         sub_obj = await models.ZKillboard.objects.acreate(
@@ -121,7 +126,7 @@ class Killmail(commands.Cog):
             group_id=group_id,
         )
         if sub_obj is None:
-            self.bot.logger.error(
+            logger.error(
                 f"Failed to add subscription for channel {channel_id} with group {group_id} and threshold {threshold}"
             )
             return False
@@ -138,7 +143,7 @@ class Killmail(commands.Cog):
 
     async def prepare_subs(self):
         await self.bot.wait_until_ready()
-        self.bot.logger.debug("Preparing killmail subs.")
+        logger.debug("Preparing killmail subs.")
 
         killmail_subs = [s async for s in models.ZKillboard.objects.all()]
         for subscription in killmail_subs:
@@ -168,20 +173,20 @@ class Killmail(commands.Cog):
             asyncio.gather(*[sub.mail(killmail) for sub in self.subs.values()])
 
     async def listen_for_mails(self):
-        self.bot.logger.debug("Listening for killmails.")
+        logger.debug("Listening for killmails.")
         while True:
             try:
                 result = await self.get_new_mail_with_status()
                 await asyncio.sleep(1)  # Small delay to avoid rate limiting
                 if result == 0:
-                    self.bot.logger.info("No new killmails. Pausing for 1 minute.")
-                    self.bot.logger.info(f"Killmails Processed: {self.km_counter:,}")
+                    logger.info("No new killmails. Pausing for 1 minute.")
+                    logger.info(f"Killmails Processed: {self.km_counter:,}")
                     self.km_fetched = 0
                     await asyncio.sleep(60)
             except (json.JSONDecodeError, KeyError):
-                self.bot.logger.exception("Killmail data was badly formed.")
+                logger.exception("Killmail data was badly formed.")
             except MailProcessingError as e:
-                self.bot.logger.exception(f"Killmail Error: {e}")
+                logger.exception(f"Killmail Error: {e}")
 
     async def get_new_mail_with_status(self):
         params = {
@@ -193,9 +198,7 @@ class Killmail(commands.Cog):
         }
 
         if MAIL_LOCK.locked():
-            self.bot.logger.debug(
-                "Killmail: Lock is active, skipping get_new_mail call."
-            )
+            logger.debug("Killmail: Lock is active, skipping get_new_mail call.")
             return None
 
         async def request_with_lock():
@@ -210,7 +213,7 @@ class Killmail(commands.Cog):
                         status_code = resp.status
                         if status_code == 200:
                             data = await resp.json()
-                            # self.bot.logger.debug(json.dumps(data.get("package", {}), indent=4))
+                            # logger.debug(json.dumps(data.get("package", {}), indent=4))
 
                             if data["package"]:
                                 self.km_counter += 1
@@ -222,16 +225,14 @@ class Killmail(commands.Cog):
                             return 0
 
                         if status_code in [522, 504, 502, 500]:  # Server errors
-                            self.bot.logger.info(f"HTTP-Statuscode {status_code}")
+                            logger.info(f"HTTP-Statuscode {status_code}")
                             return 0
 
                         if status_code == 429:
-                            self.bot.logger.info(f"HTTP-Statuscode {status_code}")
-                            self.bot.logger.info(f"{resp}")
+                            logger.info(f"HTTP-Statuscode {status_code}")
+                            logger.info(f"{resp}")
                             return 0
-                        self.bot.logger.info(
-                            f"Unbekannter HTTP-Statuscode: {status_code}"
-                        )
+                        logger.info(f"Unbekannter HTTP-Statuscode: {status_code}")
                         return 0
                 except asyncio.TimeoutError:
                     pass
@@ -242,7 +243,7 @@ class Killmail(commands.Cog):
         try:
             return await asyncio.wait_for(request_with_lock(), timeout=30)
         except asyncio.TimeoutError:
-            self.bot.logger.warning(
+            logger.warning(
                 "Killmail: Anfrage hat den Lock-Timeout (30s) überschritten und wurde abgebrochen."
             )
             return None
@@ -253,12 +254,10 @@ class Killmail(commands.Cog):
                 "guild", "owner"
             ).aget(id=subscription.id)
         except models.ZKillboard.DoesNotExist:
-            self.bot.logger.error(f"Failed to remove bad channel {subscription}")
+            logger.error(f"Failed to remove bad channel {subscription}")
             return False
         await zk_channel.adelete()
-        self.bot.logger.info(
-            f"Killmail - Bad Channel {zk_channel} removed successfully"
-        )
+        logger.info(f"Killmail - Bad Channel {zk_channel} removed successfully")
         return True
 
     @killmail.command(name="subscription")
@@ -300,7 +299,7 @@ class Killmail(commands.Cog):
             await ctx.respond(embed=embed)
         # pylint: disable=broad-except
         except Exception as e:
-            self.bot.logger.error(f"[KM Subscription Command] • {e}")
+            logger.error(f"[KM Subscription Command] • {e}")
             em = discord.Embed(
                 color=discord.Color.red(),
                 description="❌ An error occurred, please try again later.",
@@ -308,12 +307,8 @@ class Killmail(commands.Cog):
             await ctx.respond(embed=em, ephemeral=True)
             return
 
-    @km.error
-    async def command_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
-
     @killmail.command(name="add")
-    @checks.is_mod()
+    @checks.is_guild_manager()
     @option("match_id", description="Alliance ID, Corp ID, Region ID or System ID")
     @option("threshold", description="ISK threshold", required=False)
     @option("include_losses", description="Bool: True or False", required=False)
@@ -355,7 +350,7 @@ class Killmail(commands.Cog):
         await ctx.respond("Killmail subscription added!", ephemeral=True)
 
     @killmail.command(name="clear")
-    @checks.is_mod()
+    @checks.is_guild_manager()
     @option("sub_id", description="Subscription ID", required=False)
     async def killmail_clear(self, ctx: discord.ApplicationContext, sub_id: int = None):
         """
@@ -421,7 +416,7 @@ class Killmail(commands.Cog):
             )
         # pylint: disable=broad-except
         except Exception as e:
-            self.bot.logger.error(f"[Clear Command] • {e}")
+            logger.error(f"[Clear Command] • {e}")
             await ctx.respond(
                 "Es ist ein Fehler aufgetreten, versuche es später erneut",
                 ephemeral=True,
@@ -429,12 +424,9 @@ class Killmail(commands.Cog):
             return
 
     @killmail.command(name="counter")
+    @checks.is_guild_manager()
     async def killmail_counter(self, ctx):
         """
         Show how many Killmails already Processed
         """
         await ctx.respond(f"Killmails Processed: `{self.km_counter:,}`")
-
-    @killmail_counter.error
-    async def killmail_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)

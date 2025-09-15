@@ -5,10 +5,9 @@ import logging
 import discord
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
-from discord.ext.pages import Paginator
 from discord.ui import Button, View
 
-log = logging.getLogger("main")
+logger = logging.getLogger(__name__)
 
 
 class Vow(commands.Cog):
@@ -25,52 +24,6 @@ class Vow(commands.Cog):
     vow = SlashCommandGroup(
         name="vow", description="VoiceofWar", guild_ids=[476405195585355776]
     )
-
-    async def get_assets_data(self, assets, ctx: discord.ApplicationContext):
-        """
-        Voices of War Asset System
-        """
-        pages = []
-        try:
-            counter = 0
-            embed = discord.Embed(
-                title="Voices of War Assets",
-                description="",
-                color=discord.Color.blurple(),
-            )
-            for entry in assets:
-                total_price = entry["price"] * entry["quantity"]
-                total_price = f"{total_price:,.0f} ISK".replace(",", ".")
-                quantity = f"{entry['quantity']:,}".replace(",", ".")
-                embed.add_field(
-                    name=f"{entry['eve_type_name']}\nQuantity: {quantity}",
-                    value=f"{total_price}",
-                )
-                counter += 1
-
-                if counter == 10:
-                    embed.description += "\n[Click here for more details](https://auth.voices-of-war.de/assets/)"
-                    pages.append(embed)
-                    embed = discord.Embed(
-                        title="Voices of War Assets",
-                        description="",
-                        color=discord.Color.blurple(),
-                    )
-                    counter = 0
-
-            # Add the last page if there are remaining entries
-            if counter > 0:
-                embed.description += "\n[Click here for more details](https://auth.voices-of-war.de/assets/)"
-                pages.append(embed)
-
-            paginator = Paginator(pages=pages, timeout=30)
-            message = await paginator.respond(ctx.interaction)
-            return message
-        # pylint: disable=broad-except
-        except Exception as e:
-            # Handle the connection error here
-            log.error(f"Error on Get Assets Data: {e}")
-            return None
 
     @commands.slash_command(guild_ids=[476405195585355776])
     @commands.guild_only()

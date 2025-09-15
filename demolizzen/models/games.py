@@ -216,6 +216,18 @@ class UserRaidMission(models.Model):
             ]
         )
 
+    def get_dock_story(self) -> str:
+        return random.choice(
+            [
+                "You dock at a bustling space station, the hum of activity filling the air as traders and adventurers go about their business.",
+                "The station's lights twinkle against the backdrop of space as you secure your ship and prepare to explore.",
+                "As you step onto the station, the scent of exotic foods and the sound of lively chatter greet you.",
+                "The station is a hive of activity, with merchants hawking their wares and pilots sharing tales of their latest exploits.",
+                "You navigate through the crowded corridors of the station, eager to see what opportunities await.",
+                "The station's marketplace is alive with color and sound, a testament to the diverse inhabitants of this corner of space.",
+            ]
+        )
+
 
 class UserMiningMission(models.Model):
     user = models.OneToOneField(
