@@ -5,7 +5,7 @@ import logging
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 # Demolizzen
 from demolizzen import models
@@ -27,6 +27,7 @@ class Guild(commands.Cog):
         self.title = "Guild"
         self.alias = "guild"
         self.command_ids = {}
+        self.check_guild.start()
 
     guild = SlashCommandGroup(
         "guild",
@@ -34,6 +35,70 @@ class Guild(commands.Cog):
         contexts=[discord.InteractionContextType.guild],
         default_member_permissions=discord.Permissions(manage_guild=True),
     )
+    # Check for new Guild or Members every 2 Hours
+
+    @tasks.loop(minutes=120)
+    async def check_guild(self):
+        """Periodic check for guilds and members in the bot's presence."""
+        await self.check()
+
+    @check_guild.before_loop
+    async def before_check_guild(self):
+        await self.bot.wait_until_ready()
+        self.bot.logger.info("Guild and Member worker starting...")
+
+    def cog_unload(self):
+        self.check_guild.cancel()
+
+    async def check(self):
+        self.bot.logger.debug("Starting periodic check for guilds and members...")
+        database_guilds = [
+            obj.guild_id async for obj in models.GuildProfile.objects.all()
+        ]
+        bot_guild_ids = [guild.id for guild in self.bot.guilds]
+        missing_guilds = set(database_guilds) - set(bot_guild_ids)
+
+        for guild in self.bot.guilds:
+            try:
+                guild_profile = await models.GuildProfile.objects.aget(
+                    guild_id=guild.id
+                )
+            except models.GuildProfile.DoesNotExist:
+                # Create GuildProfile
+                guild_profile = await models.GuildProfile.objects.acreate(
+                    guild_id=guild.id, guild_name=guild.name
+                )
+                self.bot.logger.info(f"Added Guild {guild.name} to Database.")
+            for member in guild.members:
+                if not member.bot:
+                    try:
+                        user_profile = await models.UserProfile.objects.aget(
+                            user_id=member.id, guild=guild_profile
+                        )
+                    except models.UserProfile.DoesNotExist:
+                        user_profile = await models.UserProfile.objects.acreate(
+                            user_id=member.id,
+                            guild=guild_profile,
+                            user_name=member.display_name,
+                        )
+                        await models.UserSettings.objects.acreate(
+                            user=user_profile,
+                            background=DEFAULT_BACKGROUND,
+                            border=DEFAULT_BORDER,
+                            xp_colour=DEFAULT_XP_COLOUR,
+                            blur=5,
+                        )
+                        self.bot.logger.info(f"Added Member {member.name} to Database.")
+
+        for guild_id in missing_guilds:
+            try:
+                guild_profile = await models.GuildProfile.objects.aget(
+                    guild_id=guild_id
+                )
+                await guild_profile.adelete()
+                self.bot.logger.info(f"Removed Guild ID {guild_id} from Database.")
+            except models.GuildProfile.DoesNotExist:
+                continue
 
     @guild.command(
         name="sync",
@@ -207,7 +272,7 @@ class Guild(commands.Cog):
                 if new_settings:
                     await models.UserSettings.objects.abulk_create(new_settings)
             logger.info(
-                f"{guild_profile} created with {len(new_user_profiles)} members."
+                f"{guild_profile} has joined and created with {len(new_user_profiles)} members successfully."
             )
             return
 
