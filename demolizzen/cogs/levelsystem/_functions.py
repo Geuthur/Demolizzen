@@ -163,11 +163,7 @@ class CheckLevelUp:
                 content = f"{member.mention},"
             await channel.send(file=card, embed=embed, content=content)
             return True
-        # If bot cannot send messages, notify the owner
-        owner = channel.guild.owner
-        await owner.send(
-            f"Level System Permission Error on Server ***{channel.guild.name}*** - I'm not able to send messages to ***{channel.name}***, Please configure with /mc set or disable it with /mc banner"
-        )
+        # Skip if no permission to send messages
         return False
 
     def load_image_url_or_path(self, path_or_url):
@@ -190,6 +186,7 @@ class CheckLevelUp:
         try:
             if not user_profile or not guild_profile:
                 return
+
             try:
                 settings = await UserSettings.objects.aget(user=user_profile)
             except UserSettings.DoesNotExist:
@@ -214,7 +211,7 @@ class CheckLevelUp:
 
                 await sync_to_async(sync_save)()
 
-                # Check if Guild mentions are enabled
+                # Deactivate Level Up Banner Posting
                 if not guild_profile.mention:
                     return False
 
