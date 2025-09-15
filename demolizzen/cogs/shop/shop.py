@@ -14,6 +14,7 @@ from django.db import transaction
 from demolizzen import models
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.functions import get_command_mention
 
 
 class Shop(commands.Cog):
@@ -70,7 +71,7 @@ class Shop(commands.Cog):
             self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
         except models.UserProfile.DoesNotExist as exc:
             raise commands.CheckFailure(
-                "UserProfile does not exist. Please register first. `/auth register`"
+                f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
             ) from exc
 
     @shop.command(name="price")
@@ -129,7 +130,7 @@ class Shop(commands.Cog):
             em = discord.Embed(
                 title=f"Shop (Seite {page + 1}/{total_pages})",
                 color=discord.Color.teal(),
-                description="Use `/shop price` `item` to get more information about the item. \n Use `/shop buy` `item` to buy the item. \n\n:money_with_wings: Here are the available items:\n\n ",
+                description=f"Use {get_command_mention(bot=self.bot, cog='Shop', slash_command='shop', slash_command_group='price')} `item` to get more information about the item. \n Use {get_command_mention(bot=self.bot, cog='Shop', slash_command='shop', slash_command_group='buy')} `item` to buy the item. \n\n:money_with_wings: Here are the available items:\n\n ",
             )
             for name, price, __ in fields[
                 page * items_per_page : (page + 1) * items_per_page

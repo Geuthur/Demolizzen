@@ -6,6 +6,7 @@ from discord.ext import commands
 from demolizzen import models
 from demolizzen.cogs.commands import _base, _economy, _help
 from demolizzen.core.bot import Demolizzen
+from demolizzen.utils.functions import get_command_mention
 
 
 class Commands(
@@ -27,6 +28,12 @@ class Commands(
             ctx.user_profile = user
             self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
         except models.UserProfile.DoesNotExist as exc:
+            app_command = get_command_mention(
+                bot=self.bot,
+                cog="Core",
+                slash_command="auth",
+                slash_command_group="register",
+            )
             raise commands.CheckFailure(
-                "UserProfile does not exist. Please register first. `/auth register`"
+                f"UserProfile does not exist. Please register first. Use {app_command} to register."
             ) from exc

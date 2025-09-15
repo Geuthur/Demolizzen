@@ -13,6 +13,7 @@ from demolizzen.models.guild import (
     GuildTicket,
     GuildTicketSettings,
 )
+from demolizzen.utils.functions import get_command_mention
 
 THREAD_EMBED = Embed(
     title="Private Channel Guide",
@@ -58,8 +59,7 @@ class TicketSystem(commands.Cog):
         """Ticket system to contact Server staff."""
         if not ctx.guild_settings.category_id:
             return await ctx.respond(
-                content="No help category is set for this server. Please inform the admins to set a help category using `/ticket set` command.",
-                ephemeral=True,
+                content=f"No help category is set for this server. Please inform the admins to set a help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command.",
             )
 
         ticket_number = ctx.guild_settings.ticket_count
@@ -69,8 +69,7 @@ class TicketSystem(commands.Cog):
 
         if not category_channel:
             return await ctx.respond(
-                content="The configured help category does not exist anymore. Please inform the admins to set a new help category using `/ticket set` command.",
-                ephemeral=True,
+                content=f"The configured help category does not exist anymore. Please inform the admins to set a new help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command.",
             )
 
         # Channel-Name generieren
@@ -100,8 +99,7 @@ class TicketSystem(commands.Cog):
             staff_mentions = " ".join(role.mention for role in staff_roles)
         else:
             return await ctx.respond(
-                content="No staff roles are set for this server. Please inform the admins to set at least one staff role using `/ticket staff` command.",
-                ephemeral=True,
+                content=f"No staff roles are set for this server. Please inform the admins to set at least one staff role using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='staff')} command.",
             )
         # Bot
         overwrites[ctx.guild.me] = discord.PermissionOverwrite(
@@ -112,7 +110,7 @@ class TicketSystem(commands.Cog):
             view_channel=True,
             send_messages=True,
             read_message_history=True,
-            mention_everyone=False,  # block @everyone/@here
+            mention_everyone=False,  # block @everyone, @here
         )
 
         # Create Channel
