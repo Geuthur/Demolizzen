@@ -206,7 +206,7 @@ class Demolizzen(commands.Bot):
         )
         em.add_field(
             name="",
-            value=f"Hello **{owner.name}**, thank you choosing me as EVE Online Assistant.",
+            value=f"Hello **{owner.display_name}**, thank you choosing me as EVE Online Assistant.",
             inline=False,
         )
         em.add_field(
@@ -216,7 +216,7 @@ class Demolizzen(commands.Bot):
         )
         em.add_field(
             name="",
-            value="I recommend to set the main channel for my interactions with `/mc set`",
+            value="I recommend to set the main channel for my interactions with `/guild set_channel`",
             inline=False,
         )
         em.add_field(
@@ -226,7 +226,12 @@ class Demolizzen(commands.Bot):
         )
         em.add_field(
             name="",
-            value="Be sure that the bot has enough permission you can check it with `/bot perms_guild`",
+            value="Be sure that the bot has enough permission you can check it with `/guild perms_guild`",
+            inline=False,
+        )
+        em.add_field(
+            name="",
+            value="Visit my Discovery Page: https://discord.com/discovery/applications/990582360103870495",
             inline=False,
         )
         em.add_field(
