@@ -20,6 +20,7 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import config, logger
 from demolizzen.core.esi import ESI
+from demolizzen.models.guild import GuildProfile
 
 
 class Demolizzen(commands.Bot):
@@ -115,6 +116,19 @@ class Demolizzen(commands.Bot):
         users = len(list(self.get_all_members()))
 
         await self.sync_commands()
+
+        updated_guilds = 0
+        for guild in self.guilds:
+            try:
+                guild_profile = await GuildProfile.objects.aget(guild_id=guild.id)
+                if guild.name != guild_profile.guild_name:
+                    guild_profile.guild_name = guild.name
+                    updated_guilds += 1
+                    await guild_profile.asave()
+            except GuildProfile.DoesNotExist:
+                pass
+        if updated_guilds > 0:
+            print(f"Updated guild names for {updated_guilds} guild(s).")
 
         if guilds:
             print(f"Servers: {guilds}")
