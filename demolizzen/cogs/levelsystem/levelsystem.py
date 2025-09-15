@@ -30,8 +30,15 @@ class Levelsystem(commands.Cog):
         self.level = CheckLevelUp(bot)
         self.check_level_system.start()
 
-    mc = SlashCommandGroup(
-        "mc", "Levelsystem", contexts=[discord.InteractionContextType.guild]
+    levelsystem = SlashCommandGroup(
+        "levelsystem", "Levelsystem", contexts=[discord.InteractionContextType.guild]
+    )
+
+    levelsystem_config = SlashCommandGroup(
+        "levelsystem_config",
+        "Levelsystem Configuration",
+        default_member_permissions=discord.Permissions(manage_guild=True),
+        contexts=[discord.InteractionContextType.guild],
     )
 
     # Update Shop every 2 Hours
@@ -92,8 +99,10 @@ class Levelsystem(commands.Cog):
             except GuildProfile.DoesNotExist:
                 continue
 
-    @mc.command()
-    @checks.is_guild_owner()
+    @levelsystem_config.command(
+        name="set-mention", description="Set Level UP Banner mention"
+    )
+    @checks.is_guild_manager()
     async def banner(self, ctx: discord.ApplicationContext, state: bool):
         """
         Activate/Deactivate Level UP Banner
@@ -109,7 +118,6 @@ class Levelsystem(commands.Cog):
 
     # Leaderboard Command
     @commands.slash_command(dm_permission=False)
-    @checks.is_in_channel()
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer
@@ -209,13 +217,6 @@ class Levelsystem(commands.Cog):
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        await self.bot.wait_until_ready()
-        if config.LOADER_TYPE.lower() == "startup":
-            # pylint: disable=too-many-function-args
-            await self.check(self)
 
     @commands.Cog.listener()
     async def on_message(self, ctx: discord.Message):
