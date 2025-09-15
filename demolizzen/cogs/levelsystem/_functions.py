@@ -136,11 +136,11 @@ class CheckLevelUp:
         member: discord.Member,
         guild: discord.Guild,
     ):
-        if guild_profile.main_channel is None:
+        if guild_profile.main_channel_id is None:
             channel = guild.system_channel
         else:
             channel = discord.utils.get(
-                member.guild.channels, name=guild_profile.main_channel
+                member.guild.channels, name=guild_profile.main_channel_id
             )
             if channel is None:
                 channel = guild.system_channel

@@ -14,7 +14,8 @@ from demolizzen.config import (
     DEFAULT_BACKGROUND,
     DEFAULT_BORDER,
     DEFAULT_XP_COLOUR,
-    LEADERBOARD_EMBED_COLOUR,
+    DISCORD_EMBED_COLOR_DANGER,
+    DISCORD_EMBED_COLOR_SUCCESS,
 )
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
@@ -140,7 +141,8 @@ class Levelsystem(commands.Cog):
             return await ctx.respond(embed=embed)
 
         embed = discord.Embed(
-            title=f":trophy: {ctx.guild}'s Leaderboard", colour=LEADERBOARD_EMBED_COLOUR
+            title=f":trophy: {ctx.guild}'s Leaderboard",
+            colour=DISCORD_EMBED_COLOR_SUCCESS,
         )
 
         level = []
@@ -177,7 +179,6 @@ class Levelsystem(commands.Cog):
 
     # Rank Command
     @commands.slash_command(dm_permission=False)
-    @checks.is_in_channel()
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer
@@ -292,7 +293,7 @@ class Levelsystem(commands.Cog):
         try:
             guild_profile = await GuildProfile.objects.aget(guild_id=channel.guild.id)
             if guild_profile is not None:
-                if channel.name == guild_profile.main_channel:
+                if channel.id == guild_profile.main_channel_id:
                     # Use system (default) channel if available, else pick first available text channel
                     new_channel = None
                     if (
@@ -310,7 +311,7 @@ class Levelsystem(commands.Cog):
                         if channels:
                             new_channel = channels[0]
                     if new_channel:
-                        guild_profile.main_channel = new_channel.id
+                        guild_profile.main_channel_id = new_channel.id
                         # Try to resolve the command for mention
                         command_mention = get_command_mention(
                             self.bot,
@@ -318,9 +319,14 @@ class Levelsystem(commands.Cog):
                             slash_command="guild",
                             slash_command_group="set_channel",
                         )
-                        await new_channel.send(
-                            f"Config Error: The main channel was deleted, so I set this channel as the new main channel. You can change it with {command_mention}"
+                        embed = discord.Embed(
+                            description=(
+                                f"⛔CONFIG ERROR⛔: The main channel has been deleted, Use System Channel.\n"
+                                f"If you want to change the main channel, use {command_mention}"
+                            ),
+                            color=DISCORD_EMBED_COLOR_DANGER,
                         )
+                        await new_channel.send(embed=embed)
                         await guild_profile.asave()
                     return
         except GuildProfile.DoesNotExist:

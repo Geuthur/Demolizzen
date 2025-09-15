@@ -72,10 +72,10 @@ class Guild(commands.Cog):
     ):
         """Set Main Channel for Bots Interactions This not include Application Commands."""
         guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
-        guild_profile.main_channel = channel.id
+        guild_profile.main_channel_id = channel.id
         await guild_profile.asave()
         embed = discord.Embed(
-            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {guild_profile.main_channel}`"
+            description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {channel.name}`"
         )
         return await ctx.respond(embed=embed)
 
@@ -86,7 +86,7 @@ class Guild(commands.Cog):
         """Remove Main Channel for Bots Interactions."""
         guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
 
-        if guild_profile.main_channel is None:
+        if guild_profile.main_channel_id is None:
             embed = discord.Embed(
                 description="🟡 **INFO**: `📢 Bot already react to all Channels`"
             )
@@ -94,7 +94,7 @@ class Guild(commands.Cog):
             return
 
         # Remove all channels from the levelling server base
-        guild_profile.main_channel = None
+        guild_profile.main_channel_id = None
         await guild_profile.asave()
         embed = discord.Embed(
             description="🟢 **SUCCESS**: `📢 Bot react to all Channels`"
