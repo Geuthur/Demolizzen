@@ -12,7 +12,6 @@ from django.db import transaction
 
 # Demolizzen
 from demolizzen import models
-from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.utils.functions import get_command_mention
 
@@ -75,7 +74,6 @@ class Shop(commands.Cog):
             ) from exc
 
     @shop.command(name="price")
-    @checks.is_in_channel()
     @option(
         "item",
         description="Get more information about a specific item",
@@ -194,7 +192,6 @@ class Shop(commands.Cog):
         return
 
     @shop.command(name="buy")
-    @checks.is_in_channel()
     @option(
         "item",
         description="Get more information about a specific item",

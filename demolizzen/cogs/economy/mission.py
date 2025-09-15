@@ -20,7 +20,6 @@ from django.utils import timezone
 from demolizzen import models
 from demolizzen.cogs.economy import missionfunc
 from demolizzen.config import EVENTS_SERVER
-from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.utils.functions import get_command_mention
 
@@ -81,7 +80,6 @@ class TextAdventure(commands.Cog):
         return filtered_items
 
     @commands.slash_command()
-    @checks.is_in_channel()
     async def work(self, ctx: discord.ApplicationContext):
         """
         Go to work and let the coins flow.
