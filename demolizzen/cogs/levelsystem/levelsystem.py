@@ -4,22 +4,19 @@ import random
 # Discord
 import discord
 from discord.commands import SlashCommandGroup
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.ext.pages import Paginator
 
 # Demolizzen
 from demolizzen import config
 from demolizzen.cogs.levelsystem._functions import CheckLevelUp
 from demolizzen.config import (
-    DEFAULT_BACKGROUND,
-    DEFAULT_BORDER,
-    DEFAULT_XP_COLOUR,
     DISCORD_EMBED_COLOR_DANGER,
     DISCORD_EMBED_COLOR_SUCCESS,
 )
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models import GuildProfile, UserProfile, UserSettings
+from demolizzen.models import GuildProfile, UserProfile
 from demolizzen.utils.functions import application_cooldown, get_command_mention
 
 
@@ -29,7 +26,6 @@ class Levelsystem(commands.Cog):
         self.title = "Levelsystem"
         self.alias = "levelsystem"
         self.level = CheckLevelUp(bot)
-        self.check_level_system.start()
 
     levelsystem = SlashCommandGroup(
         "levelsystem", "Levelsystem", contexts=[discord.InteractionContextType.guild]
@@ -41,64 +37,6 @@ class Levelsystem(commands.Cog):
         default_member_permissions=discord.Permissions(manage_guild=True),
         contexts=[discord.InteractionContextType.guild],
     )
-
-    # Check for new Guild or Members every 2 Hours
-    @tasks.loop(minutes=120)
-    async def check_level_system(self):
-        """Periodic check for guilds and members in the bot's presence."""
-        await self.check()
-
-    @check_level_system.before_loop
-    async def before_check_level_system(self):
-        await self.bot.wait_until_ready()
-        self.bot.logger.info("Level System Checker Ready")
-
-    def cog_unload(self):
-        self.check_level_system.cancel()
-
-    async def check(self):
-        self.bot.logger.debug("Starting periodic check for guilds and members...")
-        database_guilds = [obj.guild_id async for obj in GuildProfile.objects.all()]
-        bot_guild_ids = [guild.id for guild in self.bot.guilds]
-        missing_guilds = set(database_guilds) - set(bot_guild_ids)
-
-        for guild in self.bot.guilds:
-            try:
-                guild_profile = await GuildProfile.objects.aget(guild_id=guild.id)
-            except GuildProfile.DoesNotExist:
-                # Create a new levelling server base if it doesn't exist
-                guild_profile = await GuildProfile.objects.acreate(
-                    guild_id=guild.id, guild_name=guild.name
-                )
-                self.bot.logger.info(f"Added Guild {guild.name} to Database.")
-            for member in guild.members:
-                if not member.bot:
-                    try:
-                        user_profile = await UserProfile.objects.aget(
-                            user_id=member.id, guild=guild_profile
-                        )
-                    except UserProfile.DoesNotExist:
-                        user_profile = await UserProfile.objects.acreate(
-                            user_id=member.id,
-                            guild=guild_profile,
-                            user_name=member.display_name,
-                        )
-                        await UserSettings.objects.acreate(
-                            user=user_profile,
-                            background=DEFAULT_BACKGROUND,
-                            border=DEFAULT_BORDER,
-                            xp_colour=DEFAULT_XP_COLOUR,
-                            blur=5,
-                        )
-                        self.bot.logger.info(f"Added Member {member.name} to Database.")
-
-        for guild_id in missing_guilds:
-            try:
-                guild_profile = await GuildProfile.objects.aget(guild_id=guild_id)
-                await guild_profile.adelete()
-                self.bot.logger.info(f"Removed Guild ID {guild_id} from Database.")
-            except GuildProfile.DoesNotExist:
-                continue
 
     @levelsystem_config.command(
         name="set-mention", description="Activate/Deactivate Level UP Posting"
