@@ -1,6 +1,14 @@
+# Standard Library
+import logging
+
 # Discord
 import discord
 from discord.ext import commands
+
+# Demolizzen
+from demolizzen.core.bot import Demolizzen
+
+logger = logging.getLogger(__name__)
 
 
 # Convert Time
@@ -190,3 +198,25 @@ def translate(num):
         magnitude += 1
         num /= 1000.0
     return f"{num:f}".rstrip("0").rstrip(".") + ["", "K", "M", "B", "T"][magnitude]
+
+
+def get_command_mention(
+    bot: Demolizzen, cog: str, slash_command: str, slash_command_group: str = None
+) -> str:
+    """Get the mention string for a application command."""
+    try:
+        cog = bot.get_cog(cog)
+        for command in cog.get_commands():
+            if command.name == slash_command:
+                if slash_command_group and isinstance(
+                    command, discord.SlashCommandGroup
+                ):
+                    return f"</{slash_command} {slash_command_group}:{command.id}>"
+                if isinstance(command, discord.SlashCommand):
+                    return f"</{slash_command}:{command.id}>"
+        raise ValueError("Command not found or invalid command type.")
+    except Exception:
+        logger.debug("Failed to get command mention", exc_info=True)
+    if slash_command_group:
+        return f"/{slash_command} {slash_command_group}"
+    return f"/{slash_command}"
