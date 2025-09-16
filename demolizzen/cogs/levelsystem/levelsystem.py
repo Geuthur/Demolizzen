@@ -56,7 +56,7 @@ class Levelsystem(commands.Cog):
         await ctx.respond(embed=embed)
 
     # Leaderboard Command
-    @commands.slash_command(dm_permission=False)
+    @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer
@@ -116,7 +116,7 @@ class Levelsystem(commands.Cog):
         return await paginator.respond(ctx.interaction)
 
     # Rank Command
-    @commands.slash_command(dm_permission=False)
+    @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     @commands.cooldown(
         3, 600, commands.BucketType.user
     )  # 10 Mal alle 10 Minuten pro Benutzer

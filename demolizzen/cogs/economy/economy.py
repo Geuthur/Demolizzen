@@ -66,7 +66,7 @@ class Economy(commands.Cog):
                 f"Bank account does not exist. Please create one first. {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')} "
             ) from exc
 
-    @commands.slash_command()
+    @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     async def daily(self, ctx: discord.ApplicationContext):
         """
         Collect your Daily Reward
@@ -122,7 +122,7 @@ class Economy(commands.Cog):
             )
         return
 
-    @commands.slash_command()
+    @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     @commands.cooldown(1, 300, commands.BucketType.user)
     @option("user", description="Choose a target member", required=True)
     async def gank(self, ctx: discord.ApplicationContext, user: discord.Member):

@@ -79,7 +79,7 @@ class TextAdventure(commands.Cog):
         ]
         return filtered_items
 
-    @commands.slash_command()
+    @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     async def work(self, ctx: discord.ApplicationContext):
         """
         Go to work and let the coins flow.
