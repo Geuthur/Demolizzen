@@ -5,14 +5,19 @@ import logging
 
 # Third Party
 import aiohttp
+from aiohttp.client_exceptions import (
+    ClientConnectionError,
+    ClientConnectorDNSError,
+    ClientConnectorError,
+)
 
 # Django
 from django.db import IntegrityError
 
 # Demolizzen
-from demolizzen import __package_name__, __user_agent__, models
+from demolizzen import __user_agent__, models
 
-log = logging.getLogger(__package_name__)
+log = logging.getLogger(__name__)
 
 ESI_URL = "https://esi.evetech.net/latest"
 FUZZ_URL = "https://www.fuzzwork.co.uk/api"
@@ -141,10 +146,22 @@ class ESI:
                     return None
             return data
         except asyncio.TimeoutError:
+            log.debug("Timeout when requesting URL: %s", url)
             return None
-        # pylint: disable=broad-except
+        # Handle aiohttp connection errors (incl. DNS resolution problems)
+        except (
+            ClientConnectorError,
+            ClientConnectorDNSError,
+            ClientConnectionError,
+        ) as e:
+            log.debug("Connection error on Get Data (%s): %s", url, e)
+            return None
+        # Network-level socket errors (e.g., getaddrinfo failures)
+        except OSError as e:
+            log.debug("OS error on Get Data (%s): %s", url, e)
+            return None
         except Exception as e:
-            # Handle the connection error here
+            # Fallback logging for unexpected errors
             log.exception("Error on Get Data: %s", e)
             return None
 
@@ -165,6 +182,23 @@ class ESI:
                     return None
             return response
         except asyncio.TimeoutError:
+            log.debug("Timeout when requesting URL: %s", url)
+            return None
+        # Handle aiohttp connection errors (incl. DNS resolution problems)
+        except (
+            ClientConnectorError,
+            ClientConnectorDNSError,
+            ClientConnectionError,
+        ) as e:
+            log.debug("Connection error on Get Data (%s): %s", url, e)
+            return None
+        # Network-level socket errors (e.g., getaddrinfo failures)
+        except OSError as e:
+            log.debug("OS error on Get Data (%s): %s", url, e)
+            return None
+        except Exception as e:
+            # Fallback logging for unexpected errors
+            log.exception("Error on Get Data: %s", e)
             return None
 
     async def server_info(self):
