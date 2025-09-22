@@ -12,11 +12,11 @@ import discord
 from django.utils import timezone
 
 # Demolizzen
-from demolizzen import __package_name__
+from demolizzen import __package_name__, models
 from demolizzen.core.esi import ESI
 from demolizzen.utils.functions import make_embed
 
-log = logging.getLogger(f"{__package_name__}")
+logger = logging.getLogger(f"{__package_name__}")
 
 
 @dataclass
@@ -182,6 +182,17 @@ class KillmailManager(_KillmailBase):
                 char_ids.add(attacker.character_id)
         return list(char_ids)
 
+    async def killmail_region_id(self):
+        """Get the unique region ID from the solar system."""
+        if self.region_id:
+            return self.region_id
+
+        self.region_id = await self.fetch_region_id()
+
+        if self.region_id is None:
+            return False
+        return self.region_id
+
     async def fetch_celestial(self):
         async with self._celestial_lock:
             if not self.celestial:
@@ -291,30 +302,37 @@ class KillmailManager(_KillmailBase):
                 footer_icon="https://zkillboard.com/img/wreck.png",
             )
             await channel.send(embed=embed)
+        except discord.errors.Forbidden:
+            logger.info(
+                f"Bot in {channel.guild.name} has no permission to send messages in channel {channel.name} ({channel.id})"
+            )
+            allowed_channels = [
+                c
+                for c in channel.guild.channels
+                if isinstance(c, discord.TextChannel)
+                and c.permissions_for(channel.guild.me).send_messages
+            ]
+            if allowed_channels:
+                alternative_channel = allowed_channels[0]
+                try:
+                    await alternative_channel.send(embed=embed)
+                    await alternative_channel.send(
+                        f"❌ Permission ERROR: The killmail couldn't be sent to the channel - **<#{channel.id}>**"
+                    )
+                    return
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.info(
+                        f"Berechtigungsfehler Für Alle Channels: {exc}",
+                        exc_info=True,
+                    )
+        except discord.errors.NotFound:
+            logger.info(f"Channel {channel.name} ({channel.id}) was deleted.")
+            await models.ZKillboard.objects.filter(channel_id=channel.id).adelete()
+            logger.info(f"Removed Subscription for deleted channel {channel.id}.")
+            return
         except Exception as e:  # pylint: disable=broad-except
-            if "Missing Access" in str(e):
-                allowed_channels = [
-                    c
-                    for c in channel.guild.channels
-                    if isinstance(c, discord.TextChannel)
-                    and c.permissions_for(channel.guild.me).send_messages
-                ]
-                if allowed_channels:
-                    alternative_channel = allowed_channels[0]
-                    try:
-                        await alternative_channel.send(embed=embed)
-                        await alternative_channel.send(
-                            f"❌ Permission ERROR: The killmail couldn't be sent to the channel - **<#{channel.id}>**"
-                        )
-                        log.info(f"Berechtigungsfehler: {e}", exc_info=True)
-                        return
-                    except Exception as exc:  # pylint: disable=broad-except
-                        log.info(
-                            f"Berechtigungsfehler Für Alle Channels: {exc}",
-                            exc_info=True,
-                        )
-            else:
-                log.error(f"Failed to send killmail embed: {e}", exc_info=True)
+            logger.error(f"Failed to send killmail embed: {e}", exc_info=True)
+            return
 
     @classmethod
     def _extract_victim_and_position(cls, killmail_data: dict):
@@ -496,13 +514,8 @@ class Subscription:
         if self.group_id in await killmail.attackers_alliance_ids():
             return True
 
-        # Check if Region ID exist otherwise fetch information from System ID
-        if not killmail.region_id:
-            await killmail.fetch_celestial()
-            killmail.region_id = await killmail.fetch_region_id()
-
         # Get Region Killmail
-        if self.group_id == (killmail.region_id):
+        if self.group_id == await killmail.killmail_region_id():
             return True
 
         # Get Character Killmail - Only Kills possible no Losses
