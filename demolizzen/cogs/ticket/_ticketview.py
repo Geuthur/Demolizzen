@@ -265,6 +265,7 @@ class TicketControlView(View):
             ticket.closed_by = None
             ticket.closed_at = None
             ticket.is_closed = False
+            ticket.is_archived = False
             ticket.claimed_by = None
             await ticket.asave()
         except GuildTicket.DoesNotExist:
