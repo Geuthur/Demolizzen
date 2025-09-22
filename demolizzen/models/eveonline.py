@@ -13,7 +13,7 @@ class ZKillboard(models.Model):
     group_id = models.BigIntegerField(null=True)
     owner = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
     losses = models.BooleanField(default=False)
-    threshold = models.IntegerField(null=False)
+    threshold = models.PositiveBigIntegerField(null=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -9,6 +9,7 @@ import discord
 from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
+from discord.ui import View
 
 # Demolizzen
 from demolizzen import __github_url__, __title__, __version__, models
@@ -23,6 +24,10 @@ TTW_TIMEOUT = 5  # Time to wait for new mails in seconds
 ZKILLBOARD_URL = "https://zkillredisq.stream/listen.php"
 
 MAIL_LOCK = asyncio.Lock()
+
+# Discord Embed Limit: 4096 Zeichen pro description, 25 Felder pro Embed
+EMBED_LIMIT = 4096
+PAGE_SIZE = 15  # ca. 15 Zeilen pro Embed, je nach Länge
 
 # ------------- Fork from Firetail and continued Coding ---------------
 
@@ -261,67 +266,129 @@ class Killmail(commands.Cog):
         return True
 
     @killmail.command(name="subscription")
-    async def km(
-        self, ctx: discord.ApplicationContext, *, channel: discord.TextChannel = None
+    @option(
+        "channel",
+        description="The channel to show the subscriptions for",
+        required=False,
+    )
+    async def subscription_killmail(
+        self, ctx: discord.ApplicationContext, channel: discord.TextChannel
     ):
-        """
-        Show the current channel's killmail subscriptions.
-        """
-
+        """Show all killmail subscriptions of the guild, optional channel."""
         try:
-            channel = channel or ctx.channel
-            subscription_obj = [
-                s async for s in models.ZKillboard.objects.filter(channel_id=channel.id)
-            ]
-
-            subs = []
-            sub_text = ""
-
-            if subscription_obj:
-                for subscription in subscription_obj:
-                    sub_text += f"`{subscription.pk}`: Kills"
-                    if subscription.losses:
-                        sub_text += " and Losses"
-                    if subscription.threshold:
-                        sub_text += f" over `{subscription.threshold:,}` ISK - "
-                    if subscription.group_id and subscription.group_id != 6:
-                        sub_text += f" matching ID `{subscription.group_id}`\n"
+            if channel is None:
+                subscription_obj = [
+                    s
+                    async for s in models.ZKillboard.objects.select_related(
+                        "guild"
+                    ).filter(guild__guild_id=ctx.guild.id)
+                ]
+            else:
+                subscription_obj = [
+                    s
+                    async for s in models.ZKillboard.objects.filter(
+                        channel_id=channel.id
+                    )
+                ]
 
             if not subscription_obj:
-                sub_text = "There's no subs for this channel."
+                await ctx.respond("No subscriptions found.", ephemeral=True)
+                return
 
-            subs.append(sub_text)
-            embed = discord.Embed(
-                title=f"Killmails for <#{channel.id}>",
-                description=sub_text,
-                color=discord.Color.green(),
-            )
-            await ctx.respond(embed=embed)
-        # pylint: disable=broad-except
+            # Prepare the subscriptions as text blocks
+            entries = []
+            for sub in subscription_obj:
+                # Channel-Name oder None
+                ch = self.bot.get_channel(sub.channel_id)
+                ch_name = ch.mention if ch else "None"
+                line = f"`{sub.pk}`: {ch_name} | Kills"
+                if sub.losses:
+                    line += " and Losses"
+                if sub.threshold:
+                    line += f" over `{sub.threshold:,}` ISK"
+                if sub.group_id and sub.group_id != 6:
+                    line += f" | matching ID `{sub.group_id}`"
+                entries.append(line)
+
+            pages = [
+                entries[i : i + PAGE_SIZE] for i in range(0, len(entries), PAGE_SIZE)
+            ]
+
+            if len(pages) == 1:
+                embed = discord.Embed(
+                    title="Killmail-Subscriptions",
+                    description="\n".join(pages[0]),
+                    color=discord.Color.green(),
+                )
+                await ctx.respond(embed=embed)
+            else:
+
+                class PaginatorView(View):
+                    def __init__(self, pages):
+                        super().__init__(timeout=60)
+                        self.pages = pages
+                        self.current = 0
+                        self.message = None
+
+                    async def update(self, interaction):
+                        embed = discord.Embed(
+                            title=f"Killmail-Subscriptions (Site {self.current + 1}/{len(self.pages)})",
+                            description="\n".join(self.pages[self.current]),
+                            color=discord.Color.green(),
+                        )
+                        await interaction.response.edit_message(embed=embed, view=self)
+
+                    @discord.ui.button(
+                        label="Back", style=discord.ButtonStyle.secondary
+                    )
+                    async def back(self, __, interaction):
+                        if self.current > 0:
+                            self.current -= 1
+                            await self.update(interaction)
+
+                    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
+                    async def next(self, __, interaction):
+                        if self.current < len(self.pages) - 1:
+                            self.current += 1
+                            await self.update(interaction)
+
+                view = PaginatorView(pages)
+                embed = discord.Embed(
+                    title=f"Killmail-Subscriptions (Site 1/{len(pages)})",
+                    description="\n".join(pages[0]),
+                    color=discord.Color.green(),
+                )
+                await ctx.respond(embed=embed, view=view)
         except Exception as e:
-            logger.error(f"[KM Subscription Command] • {e}")
+            logger.error(f"Error in subscription_killmail: {e}")
             em = discord.Embed(
                 color=discord.Color.red(),
-                description="❌ An error occurred, please try again later.",
+                description="An error occurred while fetching subscriptions. Please try again later.",
             )
             await ctx.respond(embed=em, ephemeral=True)
             return
 
     @killmail.command(name="add")
     @checks.is_guild_manager()
-    @option("match_id", description="Alliance ID, Corp ID, Region ID or System ID")
+    @option(
+        "channel", description="The channel to add the subscription to", required=True
+    )
+    @option(
+        "match_id",
+        description="Alliance ID, Corp ID, Region ID or System ID",
+        required=True,
+    )
     @option("threshold", description="ISK threshold", required=False)
     @option("include_losses", description="Bool: True or False", required=False)
     async def add_killmail(
         self,
         ctx: discord.ApplicationContext,
+        channel: discord.TextChannel,
         match_id: int,
         threshold: int,
         include_losses: bool = False,
     ):
-        """
-        Add a new killmail subscription to the channel.
-        """
+        """Add a new killmail subscription to a channel."""
         losses = bool(include_losses)
         try:
             user_profile = await models.UserProfile.objects.aget(
@@ -334,8 +401,16 @@ class Killmail(commands.Cog):
                 ephemeral=True,
             )
 
+        # Check if I have permissions to send messages in the channel
+        bot_member = await ctx.guild.fetch_member(self.bot.user.id)
+        if not channel.permissions_for(bot_member).send_messages:
+            return await ctx.respond(
+                f"Killmail subscriptions cannot be added to {channel.mention}, as I lack permission to send messages there.",
+                ephemeral=True,
+            )
+
         added = await self.add_sub(
-            channel_id=ctx.channel.id,
+            channel_id=channel.id,
             user_profile=user_profile,
             group_id=match_id,
             losses=losses,
@@ -343,23 +418,33 @@ class Killmail(commands.Cog):
         )
         if not added:
             await ctx.respond(
-                "Failed to add killmail subscription.",
+                "Failed to add killmail subscription, please try again later.",
                 ephemeral=True,
             )
             return
         await ctx.respond("Killmail subscription added!", ephemeral=True)
 
-    @killmail.command(name="clear")
+    @killmail.command(name="remove")
     @checks.is_guild_manager()
+    @option(
+        "channel",
+        description="The channel to remove the subscription from",
+        required=False,
+    )
     @option("sub_id", description="Subscription ID", required=False)
-    async def killmail_clear(self, ctx: discord.ApplicationContext, sub_id: int = None):
-        """
-        Clear all killmails for the channel or individually remove with subscription IDs.
-        """
+    async def remove_killmail(
+        self,
+        ctx: discord.ApplicationContext,
+        channel: discord.TextChannel,
+        sub_id: int = None,
+    ):
+        """Remove all killmail subscriptions for the channel or individually remove with subscription IDs."""
         try:
             if sub_id:
                 try:
-                    subscription = await models.ZKillboard.objects.aget(pk=sub_id)
+                    subscription = await models.ZKillboard.objects.select_related(
+                        "guild"
+                    ).aget(pk=sub_id)
                 except models.ZKillboard.DoesNotExist:
                     await ctx.respond(
                         f"ID {sub_id} does not match any of your killmail subscriptions.",
@@ -367,12 +452,6 @@ class Killmail(commands.Cog):
                     )
                     return
 
-                if not subscription:
-                    await ctx.respond(
-                        f"ID {sub_id} does not match any of your killmail subscriptions.",
-                        ephemeral=True,
-                    )
-                    return
                 if subscription.guild.guild_id != ctx.guild.id:
                     await ctx.respond(
                         f"ID {sub_id} does not match any of your killmail subscriptions.",
@@ -388,15 +467,16 @@ class Killmail(commands.Cog):
                 )
                 return True
 
+            # If no Channel is provided, use the current channel
+            channel = channel or ctx.channel
+
+            # Remove all subscriptions for the channel
             deleted = [
-                s
-                async for s in models.ZKillboard.objects.filter(
-                    channel_id=ctx.channel.id
-                )
+                s async for s in models.ZKillboard.objects.filter(channel_id=channel.id)
             ]
             if not deleted:
                 await ctx.respond(
-                    f"No killmail subs for <#{ctx.channel.id}>.",
+                    f"No killmail subs for <#{channel.id}>.",
                     ephemeral=True,
                 )
                 return False
@@ -405,20 +485,20 @@ class Killmail(commands.Cog):
                 await sub.adelete()
 
             rm_ids = [
-                sub.id for sub in self.subs.values() if sub.channel.id == ctx.channel.id
+                sub.id for sub in self.subs.values() if sub.channel.id == channel.id
             ]
             for rm_id in rm_ids:
                 del self.subs[rm_id]
 
             await ctx.respond(
-                f"All killmail subs removed for <#{ctx.channel.id}>.\nYou may encounter additional killmails in the message queue that have already been submitted and partially processed.",
+                f"All killmail subs removed for <#{channel.id}>.\nYou may encounter additional killmails in the message queue that have already been submitted and partially processed.",
                 ephemeral=True,
             )
         # pylint: disable=broad-except
         except Exception as e:
-            logger.error(f"[Clear Command] • {e}")
+            logger.error(f"Error in remove_killmail: {e}")
             await ctx.respond(
-                "Es ist ein Fehler aufgetreten, versuche es später erneut",
+                "An error occurred, please try again later.",
                 ephemeral=True,
             )
             return
