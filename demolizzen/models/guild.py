@@ -73,6 +73,7 @@ class GuildTicket(models.Model):
     closed_by = models.BigIntegerField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     is_closed = models.BooleanField(default=False)
+    is_archived = models.BooleanField(default=False)
     claimed_by = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
