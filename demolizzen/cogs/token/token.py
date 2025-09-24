@@ -22,6 +22,7 @@ from discord.ext import commands, tasks
 from discord.ui import Button, View
 
 # Django
+from django.db import close_old_connections
 from django.utils import timezone
 
 # Demolizzen
@@ -62,6 +63,7 @@ class Token(commands.Cog):
     @tasks.loop(minutes=21)
     async def token_refresh(self):
         """Refresh expired tokens every 21 minutes."""
+        close_old_connections()
         try:
             await self._refresh()
         # pylint: disable=broad-except

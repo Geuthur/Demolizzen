@@ -8,6 +8,7 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 
 # Django
+from django.db import close_old_connections
 from django.utils import timezone
 
 # Demolizzen
@@ -67,6 +68,7 @@ class BankConfig(commands.Cog):
     # Täglicher Update-Task
     @tasks.loop(hours=168)
     async def deposits(self):
+        close_old_connections()
         await self.process_daily_interest()
         self.last_update_time = timezone.now()
 

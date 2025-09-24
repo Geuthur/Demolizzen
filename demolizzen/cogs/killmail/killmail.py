@@ -11,6 +11,9 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 from discord.ui import View
 
+# Django
+from django.db import close_old_connections
+
 # Demolizzen
 from demolizzen import __github_url__, __title__, __version__, models
 from demolizzen.core import checks
@@ -79,6 +82,7 @@ class Killmail(commands.Cog):
     @tasks.loop(hours=23)
     async def clean_subscriptions(self):
         """Check if the channels for the subscriptions still exists."""
+        close_old_connections()
         killmail_subs = [
             s
             async for s in models.ZKillboard.objects.select_related(
