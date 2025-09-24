@@ -26,7 +26,11 @@ DATABASES = {
         "PORT": config.DATABASE_PORT,
         "OPTIONS": {
             "charset": "utf8mb4",
+            "init_command": "SET SESSION wait_timeout=28800",
+            "connect_timeout": 10,
         },
+        # Keep connections open for a short time so long-running processes
+        "CONN_MAX_AGE": 300,  # 5 Minuten
     }
 }
 

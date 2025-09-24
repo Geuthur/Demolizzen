@@ -6,6 +6,7 @@ import logging
 import discord
 
 # Django
+from django.db import close_old_connections
 from django.utils import timezone
 
 # Demolizzen
@@ -59,6 +60,7 @@ class ChannelUpdateProcessor:
     async def run(self):
         """Run the processing for the assigned task."""
         try:
+            close_old_connections()
             if not await self._validate_presence():
                 return
 
@@ -81,6 +83,9 @@ class ChannelUpdateProcessor:
     async def _ticket_archiver_loop(self):
         """Background loop to archive closed tickets."""
         await self.bot.wait_until_ready()
+
+        # Ensure DB connections are fresh at start of loop
+        close_old_connections()
         while not self._stopped:
             try:
                 tickets = [
@@ -134,6 +139,9 @@ class ChannelUpdateProcessor:
     async def _channel_update_worker_loop(self):
         """Background loop to process channel update tasks."""
         await self.bot.wait_until_ready()
+
+        # Ensure DB connections are fresh at start of loop
+        close_old_connections()
         while not self._stopped:
             try:
                 c_tasks = [
@@ -166,12 +174,25 @@ class ChannelUpdateProcessor:
 
                             async def _run_and_cleanup(proc, t_id):
                                 try:
+                                    # Make sure the worker has a fresh DB connection before
+                                    # starting the per-task processing.
+                                    close_old_connections()
                                     await proc.run()
                                 except Exception:
                                     self.logger.exception(
                                         f"Error running processor for task {t_id}"
                                     )
                                 finally:
+                                    # Close any old connections after processing as a cleanup
+                                    # step to avoid leaking connections across long-running
+                                    # asyncio tasks.
+                                    try:
+                                        close_old_connections()
+                                    except Exception:
+                                        # Be defensive: don't let cleanup failures break logic
+                                        self.logger.debug(
+                                            "close_old_connections failed in cleanup"
+                                        )
                                     # remove from active mapping when done
                                     self._processing_tasks.pop(t_id, None)
 

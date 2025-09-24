@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands, tasks
 
 # Django
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, close_old_connections, connection
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
@@ -37,6 +37,7 @@ class General(commands.Cog):
     @tasks.loop(hours=1)
     async def status_checker(self):
         guilds = len(self.bot.guilds)
+        close_old_connections()
         if not await self.db_health_check():
             await self.bot.change_presence(
                 activity=discord.Activity(
