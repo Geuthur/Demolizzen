@@ -151,21 +151,3 @@ class BankConfig(commands.Cog):
         await ctx.guild_bank_settings.asave()
 
         await ctx.respond(f"Interest rate set to {rate}%.")
-
-    # on guild join
-    @commands.Cog.listener()
-    async def on_guild_join(self, guild: discord.Guild):
-        try:
-            guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
-        except models.GuildProfile.DoesNotExist:
-            logger.warning(
-                f"Guild profile for guild {guild} ({guild.id}) does not exist."
-            )
-
-        try:
-            await models.GuildBankSettings.objects.aget_or_create(guild=guild_profile)
-            logger.info(f"Created bank settings for {guild_profile} guild(s).")
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.exception(
-                f"Error creating bank settings for guild {guild.name} ({guild.id}): {e}"
-            )

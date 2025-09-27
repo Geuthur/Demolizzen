@@ -287,15 +287,3 @@ class EveOnline(commands.Cog):
         em.add_field(name="Sell", value=f"`{formatted_price}`", inline=True)
         em.add_field(name="Buy", value=f"`{formatted_buy}`", inline=True)
         await ctx.respond(embed=em)
-
-    # ---------------------------- Listener ----------------------------
-    # ---------------------------- Listener ----------------------------
-    # ---------------------------- Listener ----------------------------
-
-    @commands.Cog.listener()
-    async def on_guild_join(self, guild):  # pylint: disable=unused-argument
-        """Event when a guild is joined."""
-
-    @commands.Cog.listener()
-    async def on_guild_remove(self, guild):  # pylint: disable=unused-argument
-        """Event when a guild is removed."""

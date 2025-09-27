@@ -278,7 +278,20 @@ class Guild(commands.Cog):
             logger.info(
                 f"{guild_profile} has joined and created with {len(new_user_profiles)} members successfully."
             )
-            return
+
+        # Bank System - only execute if Bank cog is loaded
+        bank_cog = self.bot.get_cog("Bank")
+        if bank_cog is not None:
+            try:
+                guild_profile = await models.GuildProfile.objects.aget(
+                    guild_id=guild.id
+                )
+                # TODO: Add bank system initialization logic here
+            except models.GuildProfile.DoesNotExist:
+                logger.warning(
+                    f"Guild profile for guild {guild} ({guild.id}) does not exist."
+                )
+                return
 
     # on guild leave
     @commands.Cog.listener()
