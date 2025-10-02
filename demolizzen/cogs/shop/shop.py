@@ -8,7 +8,7 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 
 # Django
-from django.db import close_old_connections, transaction
+from django.db import transaction
 
 # Demolizzen
 from demolizzen import models
@@ -37,7 +37,6 @@ class Shop(commands.Cog):
     @tasks.loop(minutes=120)
     async def shop_data(self):
         """Fetch and update shop data from the database every 2 hours."""
-        close_old_connections()
         await self.fetch_shop_data()
 
     @shop_data.before_loop

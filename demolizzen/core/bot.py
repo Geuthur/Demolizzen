@@ -15,7 +15,6 @@ import discord
 from discord.ext import commands
 
 # Django
-from django.db import close_old_connections
 from django.utils import timezone
 
 # Demolizzen
@@ -100,11 +99,9 @@ class Demolizzen(commands.Bot):
 
     async def on_interaction(self, interaction: discord.Interaction):
         try:
-            close_old_connections()
             await self.process_application_commands(interaction)
         except Exception as e:
             self.logger.error(f"Interaction Failed {e}", stack_info=True)
-        close_old_connections()
 
     async def on_connect(self):
         if hasattr(self, "launch_time"):
@@ -205,7 +202,6 @@ class Demolizzen(commands.Bot):
             await context.respond(
                 "Something Went Wrong, Please try again Later.", ephemeral=True
             )
-        close_old_connections()
 
     async def on_guild_join(self, guild: discord.Guild):
         owner = guild.owner

@@ -18,19 +18,15 @@ INSTALLED_APPS = [
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.mysql",
+        # "ENGINE": "django.db.backends.mysql",
+        "ENGINE": "demolizzen",
         "NAME": config.DATABASE_NAME,
         "USER": config.DATABASE_USER,
         "PASSWORD": config.DATABASE_PASSWORD,
         "HOST": config.DATABASE_HOST,
         "PORT": config.DATABASE_PORT,
-        "OPTIONS": {
-            "charset": "utf8mb4",
-            "init_command": "SET SESSION wait_timeout=28800",
-            "connect_timeout": 10,
-        },
-        # Keep connections open for a short time so long-running processes
-        "CONN_MAX_AGE": 300,  # 5 Minuten
+        "CONN_HEALTH_CHECKS": True,
+        "CONN_MAX_AGE": 300,  # 5 Minutes
     }
 }
 
