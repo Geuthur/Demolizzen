@@ -7,9 +7,6 @@ from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 
-# Django
-from django.db import close_old_connections
-
 # Demolizzen
 from demolizzen import models
 from demolizzen.config import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_XP_COLOUR
@@ -43,7 +40,6 @@ class Guild(commands.Cog):
     @tasks.loop(minutes=120)
     async def check_guild(self):
         """Periodic check for guilds and members in the bot's presence."""
-        close_old_connections()
         await self.check()
 
     @check_guild.before_loop
