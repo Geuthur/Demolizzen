@@ -180,7 +180,9 @@ class Levelsystem(commands.Cog):
                     "settings"
                 ).acreate(
                     user_id=ctx.author.id,
-                    user_name=ctx.author.global_name,
+                    user_name=(
+                        ctx.author.name if ctx.author.name else ctx.author.display_name
+                    ),
                     guild_id=ctx.guild.id,
                 )
                 self.bot.logger.info(
