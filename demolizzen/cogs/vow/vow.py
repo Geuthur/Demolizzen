@@ -3,7 +3,6 @@ import logging
 
 # Discord
 import discord
-from discord.commands import SlashCommandGroup
 from discord.ext import commands
 from discord.ui import Button, View
 
@@ -20,12 +19,40 @@ class Vow(commands.Cog):
         self.title = "Voice of War"
         self.alias = "vow"
         self.access = 476405195585355776
+        self.bot.add_view(
+            self.PersistentTicketView(bot)
+        )  # Add the persistent view to the bot
 
-    vow = SlashCommandGroup(
-        name="vow", description="VoiceofWar", guild_ids=[476405195585355776]
-    )
+    # --------- Persistent Ticket Button ---------
+    class PersistentTicketView(View):
+        def __init__(self, bot):
+            super().__init__(timeout=None)
+            self.bot = bot
+            self.add_item(self.TicketButton())
 
-    @commands.slash_command(guild_ids=[476405195585355776])
+        class TicketButton(Button):
+            def __init__(self):
+                super().__init__(
+                    label="Ticket eröffnen",
+                    style=discord.ButtonStyle.green,
+                    custom_id="persistent_ticket_button",
+                )
+
+            async def callback(self, interaction: discord.Interaction):
+                # TicketSystem-Instanz holen
+                ticket_cog = interaction.client.get_cog("TicketSystem")
+                if not ticket_cog:
+                    await interaction.response.send_message(
+                        "Ticketsystem nicht geladen.", ephemeral=True
+                    )
+                    return
+                # open_ticket aufrufen (async, wie im Original)
+                ctx = await interaction.client.get_application_context(interaction)
+                # GuildSettings laden wie im TicketSystem
+                await ticket_cog.cog_before_invoke(ctx)
+                await ticket_cog.open_ticket(ctx)
+
+    @commands.slash_command(guild_ids=[476405195585355776, 518052275076464640])
     @commands.guild_only()
     @commands.cooldown(
         5, 600, commands.BucketType.user
@@ -67,6 +94,18 @@ class Vow(commands.Cog):
         view.add_item(button3)
         view.add_item(button4)
         await ctx.respond("Was genau möchtest du wissen?", view=view)
+
+    @commands.slash_command(guild_ids=[476405195585355776, 518052275076464640])
+    @commands.is_owner()
+    async def create_ticket_button(self, ctx: discord.ApplicationContext):
+        """Create a persistent ticket button."""
+        view = self.PersistentTicketView(self.bot)
+        embed = discord.Embed(
+            title="Support-Ticket eröffnen",
+            description="Klicke auf den Button, um ein privates Ticket mit dem Team zu eröffnen.",
+            color=discord.Color.green(),
+        )
+        await ctx.respond(embed=embed, view=view)
 
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
