@@ -39,7 +39,7 @@ dependencies = [
     "oauthlib==3.3.1",
     "pillow==11.3",
     "pre-commit==4.3",
-    "py-cord==2.7.0rc1",
+    "py-cord==2.7.0rc2",
     "pycolorise==1",
     "python-dotenv==1.1.1",
     "python-jose==3.5",
