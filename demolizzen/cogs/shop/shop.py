@@ -67,10 +67,15 @@ class Shop(commands.Cog):
                 "bank_account", "bags"
             ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
             ctx.user_profile = user
+            ctx.user_bank_account = user.bank_account
             self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
         except models.UserProfile.DoesNotExist as exc:
             raise commands.CheckFailure(
                 f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
+            ) from exc
+        except models.UserBankAccount.DoesNotExist as exc:
+            raise commands.CheckFailure(
+                f"UserBankAccount does not exist. Please create a bank account first. {get_command_mention(bot=self.bot, cog='Bank', slash_command='bank', slash_command_group='create')} "
             ) from exc
 
     @shop.command(name="price")
