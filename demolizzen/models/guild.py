@@ -16,6 +16,12 @@ class GuildProfile(models.Model):
     def __str__(self):
         return f"{self.guild_name} ({self.guild_id})"
 
+    def create_settings(self):
+        """Create default settings for the guild."""
+        GuildSettings.objects.get_or_create(guild=self)
+        GuildBankSettings.objects.get_or_create(guild=self)
+        GuildTicketSettings.objects.get_or_create(guild=self)
+
 
 class GuildSettings(models.Model):
     guild = models.OneToOneField(
