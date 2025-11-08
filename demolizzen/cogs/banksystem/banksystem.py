@@ -37,12 +37,21 @@ class Bank(commands.Cog):
     )
 
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
+        try:
+            await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
+        except models.GuildProfile.DoesNotExist:
+            guild = await models.GuildProfile.objects.acreate(
+                guild_id=ctx.guild.id, guild_name=ctx.guild.name
+            )
+            guild.create_settings()
+            logger.info(f"Created Guild Profile for guild {ctx.guild}")
+
         user, created = await models.UserProfile.objects.select_related(
             "guild"
         ).aget_or_create(
             user_id=ctx.author.id,
             user_name=ctx.author.display_name,
-            guild__guild_id=ctx.guild.id,
+            guild=guild,
         )
         ctx.user_profile = user
         logger.debug(f"User Profile loaded for {ctx.author} in guild {ctx.guild}")
