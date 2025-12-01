@@ -245,4 +245,9 @@ class Demolizzen(commands.Bot):
             value="Support Discord: https://discord.gg/WrHzA4rnxA",
             inline=False,
         )
-        await owner.send(embed=em)
+        try:
+            await owner.send(embed=em)
+        except discord.Forbidden:
+            self.logger.warning(
+                f"Could not send guild join message to owner of guild {guild.name} ({guild.id})"
+            )
