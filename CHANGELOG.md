@@ -1,5 +1,73 @@
 # Changelog
 
+## [2.0.2] - 2025-12-02
+
+### Added
+
+- Makefile ([6fb9b66](https://github.com/Geuthur/Demolizzen/commit/6fb9b66))
+- Guild Bank Settings ([32b7f32](https://github.com/Geuthur/Demolizzen/commit/32b7f32))
+- Application Command Mention Function ([95c131a](https://github.com/Geuthur/Demolizzen/commit/95c131a))
+- Guild Name Change Checker on Bot load ([3bd8c1e](https://github.com/Geuthur/Demolizzen/commit/3bd8c1e))
+- `close_old_connections` to each loop & Command ([65b8e6a](https://github.com/Geuthur/Demolizzen/commit/65b8e6a))
+- Create Persistant Ticket Button for Voices of War ([d3a7a6b](https://github.com/Geuthur/Demolizzen/commit/d3a7a6b))
+- CheckFailure for non existing BankAccounts ([32be212](https://github.com/Geuthur/Demolizzen/commit/32be212))
+- `create_settings` for Guild ([a0fa41c](https://github.com/Geuthur/Demolizzen/commit/a0fa41c))
+
+### Changed
+
+- Killmails are now fetched from ESI instead of zKB. ([42c8deb](https://github.com/Geuthur/Demolizzen/commit/42c8deb))
+- Optimize Ticket System ([85ad479](https://github.com/Geuthur/Demolizzen/commit/85ad479))
+- Ticket Loader loads only once ([b718375](https://github.com/Geuthur/Demolizzen/commit/b718375))
+- Update Bank System ([c7fa936](https://github.com/Geuthur/Demolizzen/commit/c7fa936))
+- Added `set-interest-rate` & moved Bank Commands ([8ea50fa](https://github.com/Geuthur/Demolizzen/commit/8ea50fa))
+- Update Admin Cog ([f21c97e](https://github.com/Geuthur/Demolizzen/commit/f21c97e))
+- Only show help for available Commands ([eec1123](https://github.com/Geuthur/Demolizzen/commit/eec1123))
+- Update Checks ([f53443f](https://github.com/Geuthur/Demolizzen/commit/f53443f))
+- moved Guild Commands to `Guild` Cog ([8127237](https://github.com/Geuthur/Demolizzen/commit/8127237))
+- make `killmail` Commands only available for Guild Manager or above ([be2fceb](https://github.com/Geuthur/Demolizzen/commit/be2fceb))
+- Update LevelSystem Cog ([6fa57df](https://github.com/Geuthur/Demolizzen/commit/6fa57df))
+- Update Ticket System ([5e9c817](https://github.com/Geuthur/Demolizzen/commit/5e9c817))
+- Add Commands Permission ([e3a1ec5](https://github.com/Geuthur/Demolizzen/commit/e3a1ec5))
+- Update Mission Cog ([ea8dd04](https://github.com/Geuthur/Demolizzen/commit/ea8dd04))
+- Notify Owner if no Permission for Level UP Notification ([fc76667](https://github.com/Geuthur/Demolizzen/commit/fc76667))
+- Added for each Command hint the mention for the Command ([6f57b8b](https://github.com/Geuthur/Demolizzen/commit/6f57b8b))
+- moved `on_guild_join`, `on_guild_remove` listener to Guild Cog ([c0231f3](https://github.com/Geuthur/Demolizzen/commit/c0231f3))
+- Level System Cog ([048ae1d](https://github.com/Geuthur/Demolizzen/commit/048ae1d))
+- Update Bot Message ([4d7203b](https://github.com/Geuthur/Demolizzen/commit/4d7203b))
+- move Guild, Member Worker to `Guild` Cog ([095e5e0](https://github.com/Geuthur/Demolizzen/commit/095e5e0))
+- Commands & Logic ([42cac8d](https://github.com/Geuthur/Demolizzen/commit/42cac8d))
+- Refactor Ticket Process ([f09ebb1](https://github.com/Geuthur/Demolizzen/commit/f09ebb1))
+
+### Fixed
+
+- Use old insurance instead of new one ([5fca949](https://github.com/Geuthur/Demolizzen/commit/5fca949))
+- Create Counter wrong position ([2ef28f0](https://github.com/Geuthur/Demolizzen/commit/2ef28f0))
+- AttributeError: 'UserRaidMission' object has no attribute 'get_dock_story' ([df3bd8e](https://github.com/Geuthur/Demolizzen/commit/df3bd8e))
+- Missing ValueError Catch ([ee4a4f8](https://github.com/Geuthur/Demolizzen/commit/ee4a4f8))
+- use `id` since it is channel_id ([661eaff](https://github.com/Geuthur/Demolizzen/commit/661eaff))
+- async to sync Error ([49dbf1d](https://github.com/Geuthur/Demolizzen/commit/49dbf1d))
+- Ensure Commands can only used in right Context ([2d4dc42](https://github.com/Geuthur/Demolizzen/commit/2d4dc42))
+- DNS Error ([4c4943a](https://github.com/Geuthur/Demolizzen/commit/4c4943a))
+- Out of range value for column 'threshold' ([97c1390](https://github.com/Geuthur/Demolizzen/commit/97c1390))
+- Race Conditions ([53e3758](https://github.com/Geuthur/Demolizzen/commit/53e3758))
+- Column 'user_name' cannot be null ([ae0fa5e](https://github.com/Geuthur/Demolizzen/commit/ae0fa5e))
+- Pre-Commit ([3072709](https://github.com/Geuthur/Demolizzen/commit/3072709))
+- IntegrityError ([87c22d0](https://github.com/Geuthur/Demolizzen/commit/87c22d0))
+- discord.errors.Forbidden: 403 Forbidden (error code: 50007): Cannot send messages to this user ([58aa6de](https://github.com/Geuthur/Demolizzen/commit/58aa6de))
+
+### Removed
+
+- Queue Channel Function ([f898fda](https://github.com/Geuthur/Demolizzen/commit/f898fda))
+- Watcher Cog ([162e9be](https://github.com/Geuthur/Demolizzen/commit/162e9be))
+- Unnecessary Functions ([e267da5](https://github.com/Geuthur/Demolizzen/commit/e267da5))
+- `is_in_channel` Check deprecated, use Discord Implementation ([941ce95](https://github.com/Geuthur/Demolizzen/commit/941ce95))
+
+### Other
+
+- Merge commits and dependency bumps, notable items:
+  - Merge pull requests for various fixes and improvements (e.g. [6de7040](https://github.com/Geuthur/Demolizzen/commit/6de7040), [23575ab](https://github.com/Geuthur/Demolizzen/commit/23575ab), [f67754c](https://github.com/Geuthur/Demolizzen/commit/f67754c), ...)
+  - Dependency bumps (django, py-cord, etc.) and test/workflow updates.
+
 ## [2.0.1] - 2025-09-13
 
 ### Added
@@ -7,6 +75,7 @@
 - Ticket System Cog
 - Guild Settings, Guild Ticket, Guild Ticket Settings Model
 - [Django Migration Command (Bot Owner)](https://github.com/Geuthur/Demolizzen/commit/93f829a2c468e37f6db0c3ea0be389f6e930c335)
+- [ADD] Private Policy ([d4dd877](https://github.com/Geuthur/Demolizzen/commit/d4dd877))
 
 ### Changed
 
@@ -25,6 +94,7 @@
 - [Use correct async call `.aget` instead of `.get`](https://github.com/Geuthur/Demolizzen/commit/fe0d555129bb8c5b7d605864cc5a4ee6272526b0)
 - [get() returned more than one ZKillboard -- it returned 2!](https://github.com/Geuthur/Demolizzen/commit/183b364dcb0e74fd03fdd669d16f7de09e84427c)
 - [Register Command work on DM's](https://github.com/Geuthur/Demolizzen/commit/e1d5f12e10fd9c08c207eec47803723884bf5967)
+- Fixing Stuff ([cf34ed1](https://github.com/Geuthur/Demolizzen/commit/cf34ed1))
 
 ### Removed
 
