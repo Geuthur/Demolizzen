@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 from discord.ui import View
 
 # Demolizzen
-from demolizzen import __github_url__, __title__, __version__, models
+from demolizzen import __user_agent__, models
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 
@@ -170,7 +170,7 @@ class Killmail(commands.Cog):
 
     def process_mail(self, killmail_data):
         killmail = KillmailManager._create_from_zkb(
-            zkb_package=killmail_data, esi_data=self.bot.esi_data
+            zkb_package=killmail_data, bot=self.bot
         )
         if killmail and killmail.zkb.is_npc:
             return
@@ -199,7 +199,7 @@ class Killmail(commands.Cog):
             "ttw": TTW_TIMEOUT,
         }
         headers = {
-            "User-Agent": f"{__title__}/{__version__} ({__github_url__})",
+            "User-Agent": f"{__user_agent__})",
         }
 
         if MAIL_LOCK.locked():

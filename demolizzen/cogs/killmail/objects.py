@@ -3,7 +3,10 @@ import asyncio
 import datetime
 import logging
 from dataclasses import asdict, dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+# Third Party
+import requests
 
 # Discord
 import discord
@@ -12,9 +15,14 @@ import discord
 from django.utils import timezone
 
 # Demolizzen
-from demolizzen import __package_name__, models
+from demolizzen import __package_name__, __user_agent__, models
 from demolizzen.core.esi import ESI
 from demolizzen.utils.functions import make_embed
+
+if TYPE_CHECKING:
+    # pylint: disable=import-outside-toplevel
+    # Demolizzen
+    from demolizzen.core.bot import Demolizzen
 
 logger = logging.getLogger(f"{__package_name__}")
 
@@ -404,16 +412,38 @@ class KillmailManager(_KillmailBase):
         return KillmailZkb(**params)
 
     @classmethod
+    def _get_killmail_data_from_ccp(cls, href: str) -> dict | None:
+        """Fetch killmail data from CCP using the href provided by zKillboard."""
+        headers = {"User-Agent": __user_agent__, "Content-Type": "application/json"}
+        try:
+            response = requests.get(url=href, headers=headers, timeout=5)
+            response.raise_for_status()
+            killmail_data = response.json()
+            return killmail_data
+        except requests.RequestException as exc:
+            logger.error("Error fetching killmail data from href %s: %s", href, exc)
+            return None
+
+    @classmethod
     def _create_from_zkb(
-        cls, zkb_package: dict, esi_data: ESI
+        cls, zkb_package: dict, bot: "Demolizzen"
     ) -> Optional["KillmailManager"]:
         """Create a Killmail from zKillboard data."""
         if not zkb_package:
             return None
 
         killmail = None
-        if "killmail" in zkb_package:
-            killmail_data = zkb_package["killmail"]
+        if (
+            zkb_package
+            and "zkb" in zkb_package
+            and zkb_package["zkb"]
+            and "href" in zkb_package["zkb"]
+        ):
+            # Fetch killmail data from CCP using the href provided by zKillboard
+            killmail_data = cls._get_killmail_data_from_ccp(zkb_package["zkb"]["href"])
+            # If no data is returned, return None
+            if not killmail_data:
+                return None
             victim, position = cls._extract_victim_and_position(killmail_data)
             attackers = cls._extract_attackers(killmail_data)
             zkb = cls._extract_zkb(zkb_package)
@@ -432,7 +462,7 @@ class KillmailManager(_KillmailBase):
                 params["solar_system_id"] = killmail_data["solar_system_id"]
 
             killmail = KillmailManager(**params)
-            killmail._esi = esi_data
+            killmail._esi = bot.esi_data
         return killmail
 
 
