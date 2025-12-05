@@ -33,7 +33,6 @@ dynamic = [
     "version",
 ]
 dependencies = [
-    "asyncmy==0.2.10",
     "django==5.2.8",
     "mysqlclient==2.2.7",
     "oauthlib==3.3.1",
