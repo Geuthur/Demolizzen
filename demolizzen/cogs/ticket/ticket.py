@@ -57,9 +57,18 @@ class TicketSystem(commands.Cog):
         ctx: discord.ApplicationContext,
     ):
         """Ticket system to contact Server staff."""
+
+        async def send_ephemeral(message: str):
+            if ctx.interaction and ctx.interaction.response.is_done():
+                return await ctx.followup.send(content=message, ephemeral=True)
+            return await ctx.respond(content=message, ephemeral=True)
+
+        if ctx.interaction and not ctx.interaction.response.is_done():
+            await ctx.defer(ephemeral=True)
+
         if not ctx.guild_settings.category_id:
-            return await ctx.respond(
-                content=f"No help category is set for this server. Please inform the admins to set a help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command.",
+            return await send_ephemeral(
+                f"No help category is set for this server. Please inform the admins to set a help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command."
             )
 
         ticket_number = ctx.guild_settings.ticket_count
@@ -68,8 +77,8 @@ class TicketSystem(commands.Cog):
         )
 
         if not category_channel:
-            return await ctx.respond(
-                content=f"The configured help category does not exist anymore. Please inform the admins to set a new help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command.",
+            return await send_ephemeral(
+                f"The configured help category does not exist anymore. Please inform the admins to set a new help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command."
             )
 
         # Channel-Name generieren
@@ -98,8 +107,8 @@ class TicketSystem(commands.Cog):
             ]
             staff_mentions = " ".join(role.mention for role in staff_roles)
         else:
-            return await ctx.respond(
-                content=f"No staff roles are set for this server. Please inform the admins to set at least one staff role using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='staff')} command.",
+            return await send_ephemeral(
+                f"No staff roles are set for this server. Please inform the admins to set at least one staff role using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='staff')} command."
             )
         # Bot
         overwrites[ctx.guild.me] = discord.PermissionOverwrite(
@@ -124,8 +133,8 @@ class TicketSystem(commands.Cog):
             ctx.guild_settings.ticket_count += 1
             await ctx.guild_settings.asave()
         except discord.Forbidden:
-            return await ctx.respond(
-                content="I do not have permission to create ticket channels. Please inform the admins.",
+            return await send_ephemeral(
+                "I do not have permission to create ticket channels. Please inform the admins."
             )
 
         ticket_view = TicketControlView(ticket_channel, ctx.user, ticket_number)
@@ -141,7 +150,6 @@ class TicketSystem(commands.Cog):
             channel_id=ticket_channel.id,
             user_id=ctx.user.id,
         )
-        return await ctx.respond(
-            content=f"Check the ticket channel created! {ticket_channel.mention}!",
-            ephemeral=True,
+        return await send_ephemeral(
+            f"Check the ticket channel created! {ticket_channel.mention}!"
         )
