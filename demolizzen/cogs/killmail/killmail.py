@@ -47,7 +47,7 @@ class Killmail(commands.Cog):
         self.bot = bot
         self.title = "zKillboard"
         self.alias = "killmail"
-        self.subs = {}
+        self.subs: dict[int, Subscription] = {}
         self.ws_task = None
         self.km_counter = 0
         self.km_fetched = 0
@@ -79,12 +79,25 @@ class Killmail(commands.Cog):
     @tasks.loop(hours=23)
     async def clean_subscriptions(self):
         """Check if the channels for the subscriptions still exists."""
+        cached_ids = [sub.channel.id for sub in self.subs.values()]
         killmail_subs = [
             s
             async for s in models.ZKillboard.objects.select_related(
                 "guild", "owner"
             ).all()
         ]
+        existing_ids = [sub.channel_id for sub in killmail_subs]
+
+        # Remove subscriptions from memory that no longer exist in the database
+        for cid in cached_ids:
+            if cid not in existing_ids:
+                rm_ids = [
+                    sub_id for sub_id, sub in self.subs.items() if sub.channel.id == cid
+                ]
+                for rm_id in rm_ids:
+                    logger.info(f"Removing stale subscription {rm_id} from memory.")
+                    del self.subs[rm_id]
+
         if killmail_subs:
             for subscription in killmail_subs:
                 channel = self.bot.get_channel(subscription.channel_id)

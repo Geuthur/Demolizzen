@@ -474,7 +474,7 @@ class Subscription:
     def __init__(
         self,
         id_: int,
-        channel,
+        channel: discord.TextChannel,
         threshold: int = None,
         losses: bool = True,
         group_id: int = None,
