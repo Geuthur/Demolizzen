@@ -19,14 +19,14 @@ ci:
   autoupdate_schedule: monthly
   submodules: false
 
+# https://pre-commit.com/#pre-commit-configyaml---top-level
 exclude: |
   (?x)(
     .github/|
     LICENSE|
     .min(.css|.css.map|.js|.js.map)|
     locale/|
-    static/(.*)/libs/|
-    tools/(.*)
+    static/(.*)/libs/
   )
 
 # pre-commit setup
@@ -140,20 +140,20 @@ repos:
         description: Enforce that python3.6+ type annotations are used instead of type comments.
 
   - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
-    rev: 3.4.0
+    rev: 3.6.0
     hooks:
       - id: editorconfig-checker
         name: EditorConfig Checker
         description: Check for compliance with the definitions in the EditorConfig file.
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.20.0
+    rev: v3.21.2
     hooks:
       - id: pyupgrade
         name: PyUpgrade
         description: Upgrade syntax to newer versions of Python.
         args:
-          - --py310-plus  # Minimum required Python version for AA. Update as needed.
+          - --py310-plus # Minimum required Python version
 
   - repo: https://github.com/pycqa/flake8
     rev: 7.3.0
@@ -170,7 +170,7 @@ repos:
         description: Check for extraneous `# noqa` comments.
 
   - repo: https://github.com/PyCQA/isort
-    rev: 6.0.1
+    rev: 7.0.0
     hooks:
       - id: isort
         name: Isort
@@ -183,67 +183,65 @@ repos:
         name: Black disable checker
         description: Check for black disable comments.
 
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.1.0
     hooks:
       - id: black
         name: Black
         description: Format Python code.
         args:
-          - --target-version=py310  # Minimum required Python version for AA. Update as needed.
+          - --target-version=py310 # Minimum required Python version
 
   - repo: https://github.com/asottile/blacken-docs
-    rev: 1.19.1
+    rev: 1.20.0
     hooks:
       - id: blacken-docs
         name: Blacken docs
         description: Format Python code in documentation files.
         additional_dependencies:
-          - black==25.1.0  # https://github.com/psf/black/releases/latest
+          - black==25.9.0  # https://github.com/psf/black/releases/latest
         args:
-          - --target-version=py310  # Minimum required Python version for AA. Update as needed.
+          - --target-version=py310 # Minimum required Python version
 
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.22
+    rev: 1.0.0
     hooks:
       - id: mdformat
         name: Mdformat
         description: Format Markdown files.
         additional_dependencies:
-          - mdformat-gfm==0.4.1  # Mdformat plugin for GitHub Flavored Markdown compatibility » https://github.com/hukkin/mdformat-gfm/tags
-          - mdformat-toc==0.3.0  # Mdformat plugin to generate a table of contents » https://github.com/hukkin/mdformat-toc/tags
+          - mdformat-gfm==1.0.0  # Mdformat plugin for GitHub Flavored Markdown compatibility » https://github.com/hukkin/mdformat-gfm/tags
+          - mdformat-toc==0.5.0  # Mdformat plugin to generate a table of contents » https://github.com/hukkin/mdformat-toc/tags
           - mdformat-black==0.1.1  # Mdformat plugin to Blacken Python code blocks » https://github.com/hukkin/mdformat-black/tags
-          - mdformat-shfmt==0.1.0  # Mdformat plugin to format shell code blocks » https://github.com/hukkin/mdformat-shfmt/tags
+          - mdformat-shfmt==0.2.0  # Mdformat plugin to format shell code blocks » https://github.com/hukkin/mdformat-shfmt/tags
 
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: v2.6.0
+    rev: v2.12.1
     hooks:
       - id: pyproject-fmt
         name: pyproject.toml formatter
         description: Format the pyproject.toml file.
         args:
           - --indent=4
-        additional_dependencies:
-          - tox==4.25.0  # https://github.com/tox-dev/tox/releases/latest
 
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.24.1
+    rev: v0.25
     hooks:
       - id: validate-pyproject
         name: Validate pyproject.toml
         description: Validate the pyproject.toml file.
 
   - repo: https://github.com/pylint-dev/pylint
-    rev: v3.3.8
+    rev: v4.0.4
     hooks:
       - id: pylint
         name: Pylint
         description: Check for errors and code smells in Python code.
         args:
-          - --py-version=3.10  # Minimum required Python version for AA. Update as needed.
+          - --py-version=3.10  # Minimum required Python version
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.33.3
+    rev: 0.36.1
     hooks:
       - id: check-github-actions
         name: Check GitHub Actions
