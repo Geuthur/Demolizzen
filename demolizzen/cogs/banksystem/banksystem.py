@@ -50,8 +50,8 @@ class Bank(commands.Cog):
             "guild"
         ).aget_or_create(
             user_id=ctx.author.id,
-            user_name=ctx.author.display_name,
             guild=guild,
+            defaults={"user_name": ctx.author.display_name},
         )
 
         ctx.user_profile = user

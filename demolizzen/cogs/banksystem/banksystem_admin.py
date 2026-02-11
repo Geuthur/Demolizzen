@@ -42,8 +42,8 @@ class BankAdmin(commands.Cog):
             "guild"
         ).aget_or_create(
             user_id=ctx.author.id,
-            user_name=ctx.author.display_name,
             guild__guild_id=ctx.guild.id,
+            defaults={"user_name": ctx.author.display_name},
         )
         ctx.user_profile = user
         logger.debug(f"User Profile loaded for {ctx.author} in guild {ctx.guild}")
