@@ -16,6 +16,7 @@ from django.db import IntegrityError
 
 # Demolizzen
 from demolizzen import __user_agent__, models
+from demolizzen.core.esi_context import UniverseName
 
 log = logging.getLogger(__name__)
 
@@ -59,34 +60,26 @@ class ESI:
         self._corporation_lock = asyncio.Lock()
         self._alliance_lock = asyncio.Lock()
         # Batch Name Resolver
-        self._batch_queues = {"character": {}, "corporation": {}, "alliance": {}}
-        self._batch_task = self.loop.create_task(self._batch_name_worker())
+        self._batch_entity_queues = {
+            "character": {},
+            "corporation": {},
+            "alliance": {},
+            "station": {},
+        }
+        self._batch_entity_retry_count = {}  # Track retry attempts per ID
+        self._entity_task = self.loop.create_task(self._entity_name_worker())
 
-    async def close_batch_task(self):
-        """Close the batch task."""
-        if self._batch_task:
-            self._batch_task.cancel()
-            try:
-                await self._batch_task
-            except asyncio.CancelledError:
-                pass
-            self._batch_task = None
-
-    async def start_batch_task(self):
-        """Start the batch task if not already running."""
-        if self._batch_task is None or self._batch_task.done():
-            self._batch_task = self.loop.create_task(self._batch_name_worker())
-
-    async def _batch_name_worker(self):
-        """Worker to handle batch name resolution."""
+    async def _entity_name_worker(self):
+        """Worker to handle batch entity name resolution."""
         while True:
             await asyncio.sleep(30)
             # Alle IDs aus allen Kategorien sammeln
             all_ids = set()
-            for category in ["character", "corporation", "alliance"]:
-                all_ids.update(self._batch_queues[category].keys())
+            for category in ["character", "corporation", "alliance", "station"]:
+                all_ids.update(self._batch_entity_queues[category].keys())
             if not all_ids:
                 continue
+
             try:
                 names = await self.universe_names(list(all_ids))
             except Exception as e:  # pylint: disable=broad-except
@@ -98,29 +91,99 @@ class ESI:
                 log.warning(
                     f"universe_names returned None or empty. Retrying all IDs in next batch: {list(all_ids)}"
                 )
-                # Die Warteschlangen werden nicht geleert, damit die Futures offen bleiben
                 continue
 
-            # Ergebnisse den jeweiligen Futures zuordnen
-            for category in ["character", "corporation", "alliance"]:
-                queue = self._batch_queues[category]
-                remove_ids = []
-                for eid, fut in queue.items():
-                    name = names.get(eid, "Unknown")
-                    if name == "Unknown":
-                        log.warning(
-                            f"Unknown name for ID {eid} in category {category}. universe_names result: {names}"
-                        )
-                        # ID bleibt in der Warteschlange, Future bleibt offen
-                        continue
-                    if not fut.done():
-                        fut.set_result(name)
-                    self._entity_name_cache[eid] = name
-                    log.debug("Saving name for ID %s: %s", eid, name)
-                    remove_ids.append(eid)
-                # Nur erfolgreich aufgelöste IDs entfernen
-                for eid in remove_ids:
-                    queue.pop(eid, None)
+            # Prüfe auf Fehler bei ungültigen IDs
+            if (
+                isinstance(names, dict)
+                and names.get("error") == "Ensure all IDs are valid before resolving."
+            ):
+                await self._handle_entity_error(all_ids)
+                continue
+
+            # Verarbeite Ergebnisse
+            await self._process_batch_results(names)
+
+    async def _handle_entity_error(self, all_ids: set):
+        """Handle error when batch contains invalid IDs. Remove first ID and retry."""
+        log.warning(
+            f"Invalid IDs detected in batch. Removing first ID: {list(all_ids)}"
+        )
+        for category in ["character", "corporation", "alliance", "station"]:
+            queue = self._batch_entity_queues[category]
+            if queue:
+                # Erste ID aus der Queue entfernen
+                first_eid = next(iter(queue))
+                first_fut = queue[first_eid]
+
+                retry_count = self._batch_entity_retry_count.get(first_eid, 0) + 1
+                self._batch_entity_retry_count[first_eid] = retry_count
+
+                if retry_count >= 3:
+                    log.warning(
+                        f"ID {first_eid} in category {category} failed 3 times. Marking as Unknown without saving."
+                    )
+                    if not first_fut.done():
+                        first_fut.set_result("Unknown")
+                    queue.pop(first_eid, None)
+                    self._batch_entity_retry_count.pop(first_eid, None)
+                else:
+                    log.warning(
+                        f"ID {first_eid} in category {category} caused error. Retry {retry_count}/3 in next batch."
+                    )
+                # Nur eine Kategorie pro Durchlauf
+                break
+
+    async def _process_batch_results(self, names: list[UniverseName]):
+        """Process batch results and update futures and cache."""
+        for category in ["character", "corporation", "alliance", "station"]:
+            queue = self._batch_entity_queues[category]
+            remove_ids = []
+            for eid, fut in queue.items():
+                await self._resolve_id_name(eid, fut, names, category, remove_ids)
+
+            # Nur erfolgreich aufgelöste oder 3x fehlgeschlagene IDs entfernen
+            for eid in remove_ids:
+                queue.pop(eid, None)
+
+    async def _resolve_id_name(
+        self,
+        eid: int,
+        fut: asyncio.Future,
+        names: list[UniverseName],
+        category: str,
+        remove_ids: list,
+    ):
+        """Resolve name for a single ID with retry logic."""
+        name = next(
+            (n.name for n in names if n.id == eid and n.category == category), "Unknown"
+        )
+        if name == "Unknown":
+            # Retry-Counter erhöhen
+            retry_count = self._batch_entity_retry_count.get(eid, 0) + 1
+            self._batch_entity_retry_count[eid] = retry_count
+
+            # Nach 3 Versuchen: als Unknown markieren und nicht speichern
+            if retry_count >= 3:
+                log.warning(
+                    f"ID {eid} in category {category} failed 3 times. Marking as Unknown without saving."
+                )
+                if not fut.done():
+                    fut.set_result("Unknown")
+                remove_ids.append(eid)
+            else:
+                log.warning(
+                    f"Unknown name for ID {eid} in category {category}. Retry {retry_count}/3."
+                )
+                # ID bleibt in der Warteschlange, Future bleibt offen
+        else:
+            # Erfolgreich aufgelöst: speichern
+            if not fut.done():
+                fut.set_result(name)
+            self._entity_name_cache[eid] = name
+            log.debug("Saving name for ID %s: %s", eid, name)
+            remove_ids.append(eid)
+            self._batch_entity_retry_count.pop(eid, None)
 
     async def fetch_char_name(self):
         results = [r async for r in models.EveEntityCache.objects.all()]
@@ -422,23 +485,15 @@ class ESI:
         url = f"{ESI_URL}/characters/{character_id}/"
         return await self.get_data(url)
 
-    async def character_corp_id(self, character_id):
-        data = await self.character_info(character_id)
-        if not data:
-            return None
-        return data.get("corporation_id")
-
     async def corporation_info(self, corporation_id):
         url = f"{ESI_URL}/corporations/{corporation_id}/"
         return await self.get_data(url)
 
-    async def character_alliance_id(self, character_id):
-        data = await self.character_info(character_id)
-        if not data:
-            return None
-        return data.get("alliance_id")
-
     async def alliance_info(self, alliance_id):
+        url = f"{ESI_URL}/alliances/{alliance_id}/"
+        return await self.get_data(url)
+
+    async def notifications(self, alliance_id):
         url = f"{ESI_URL}/alliances/{alliance_id}/"
         return await self.get_data(url)
 
@@ -455,10 +510,10 @@ class ESI:
             return query.entity_name
         except models.EveEntityCache.DoesNotExist:
             # Batch-Queue
-            future = self._batch_queues["character"].get(character_id)
+            future = self._batch_entity_queues["character"].get(character_id)
             if not future:
                 future = asyncio.get_event_loop().create_future()
-                self._batch_queues["character"][character_id] = future
+                self._batch_entity_queues["character"][character_id] = future
             name = await future
 
             # DB persist
@@ -489,10 +544,10 @@ class ESI:
             self._entity_name_cache[corporation_id] = query.entity_name
             return query.entity_name
         except models.EveEntityCache.DoesNotExist:
-            future = self._batch_queues["corporation"].get(corporation_id)
+            future = self._batch_entity_queues["corporation"].get(corporation_id)
             if not future:
                 future = asyncio.get_event_loop().create_future()
-                self._batch_queues["corporation"][corporation_id] = future
+                self._batch_entity_queues["corporation"][corporation_id] = future
             name = await future
             try:
                 await models.EveEntityCache.objects.acreate(
@@ -518,10 +573,10 @@ class ESI:
             self._entity_name_cache[alliance_id] = query.entity_name
             return query.entity_name
         except models.EveEntityCache.DoesNotExist:
-            future = self._batch_queues["alliance"].get(alliance_id)
+            future = self._batch_entity_queues["alliance"].get(alliance_id)
             if not future:
                 future = asyncio.get_event_loop().create_future()
-                self._batch_queues["alliance"][alliance_id] = future
+                self._batch_entity_queues["alliance"][alliance_id] = future
             name = await future
 
             if not name == "Unknown":
@@ -562,9 +617,14 @@ class ESI:
             log.warning(f"universe_names returned None or error. Data: {data}")
             return {}
 
-        return {
-            item["id"]: item["name"] for item in data if "id" in item and "name" in item
-        }
+        # Return list of UniverseName
+        universe_names = [
+            UniverseName(category=item["category"], id=item["id"], name=item["name"])
+            for item in data
+            if "id" in item and "name" in item
+        ]
+
+        return universe_names
 
     async def item_info(self, item_id, allow_cache=True):
         if allow_cache:
@@ -661,10 +721,6 @@ class ESI:
         # example: like `return data[category]`
 
         return data
-
-    async def notifications(self, alliance_id):
-        url = f"{ESI_URL}/alliances/{alliance_id}/"
-        return await self.get_data(url)
 
     async def market_data(self, item_name, station, character_id):
         results = await self.esi_search(item_name, character_id, "inventory_type")
