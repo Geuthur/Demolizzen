@@ -174,10 +174,53 @@ class Demolizzen(commands.Bot):
     async def send_resp(
         self, ctx: discord.ApplicationContext, exp: discord.DiscordException
     ):
+        """
+        Send a response to the user based on the exception type.
+
+        Parameters
+        ----------
+        ctx : discord.ApplicationContext
+            The context of the interaction.
+        exp : discord.DiscordException
+            The exception that occurred.
+        """
+        await self._safe_respond(ctx, str(exp), ephemeral=True)
+
+    async def _safe_respond(
+        self,
+        ctx: discord.ApplicationContext,
+        content: str,
+        ephemeral: bool = True,
+    ) -> None:
+        """
+        Safely respond to an interaction, checking if it has already been responded to.
+
+        Parameters
+        ----------
+        ctx : discord.ApplicationContext
+            The context of the interaction.
+        content : str
+            The content to send in the response.
+        ephemeral : bool, optional
+            Whether the response should be ephemeral (only visible to the user), by default True.
+        """
+        interaction = getattr(ctx, "interaction", None)
+        if not interaction:
+            return
+
         try:
-            await ctx.send_response(exp, ephemeral=True)
-        except RuntimeError:
-            await ctx.send_followup(exp, ephemeral=True)
+            if interaction.is_expired():
+                return
+        except AttributeError:
+            pass
+
+        try:
+            if interaction.response.is_done():
+                await ctx.followup.send(content=content, ephemeral=ephemeral)
+            else:
+                await ctx.respond(content=content, ephemeral=ephemeral)
+        except (discord.errors.NotFound, discord.errors.InteractionResponded):
+            return
 
     async def on_application_command_error(
         self, context: discord.ApplicationContext, exception: discord.DiscordException
@@ -191,6 +234,17 @@ class Demolizzen(commands.Bot):
         elif isinstance(exception, discord.errors.CheckFailure):
             pass  # Silently ignore these errors.
         else:  # Catch everything, and close out the interactions gracefully.
+            cmd_name = getattr(
+                getattr(context, "command", None), "qualified_name", None
+            )
+            user_id = getattr(getattr(context, "user", None), "id", None)
+            guild_id = getattr(getattr(context, "guild", None), "id", None)
+            interaction_data = getattr(
+                getattr(context, "interaction", None), "data", None
+            )
+            self.logger.error(
+                f"Application Command failed cmd={cmd_name} user={user_id} guild={guild_id} data={interaction_data}"
+            )
             self.logger.error(f"Unknown Error {exception}")
             self.logger.error(
                 "".join(
@@ -199,8 +253,10 @@ class Demolizzen(commands.Bot):
                     )
                 )
             )
-            await context.respond(
-                "Something Went Wrong, Please try again Later.", ephemeral=True
+            await self._safe_respond(
+                context,
+                "Something Went Wrong, Please try again Later.",
+                ephemeral=True,
             )
 
     async def on_guild_join(self, guild: discord.Guild):
