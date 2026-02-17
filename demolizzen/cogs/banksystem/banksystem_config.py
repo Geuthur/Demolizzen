@@ -1,4 +1,5 @@
 # Standard Library
+import asyncio
 import logging
 
 # Discord
@@ -38,6 +39,31 @@ class BankConfig(commands.Cog):
 
     def cog_unload(self):
         self.deposits.cancel()
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                guild_profile = await models.GuildProfile.objects.aget(
+                    guild_id=guild.id
+                )
+                _, created = await models.GuildBankSettings.objects.aget_or_create(
+                    guild=guild_profile
+                )
+                if created:
+                    logger.info(
+                        f"Guild {guild_profile} has joined and bank settings created successfully."
+                    )
+                return
+            except models.GuildProfile.DoesNotExist:
+                if attempt < max_retries:
+                    await asyncio.sleep(5)
+                    continue
+                logger.warning(
+                    f"Guild profile for guild {guild} ({guild.id}) does not exist after {max_retries} retries."
+                )
+                return
 
     @commands.Cog.listener()
     async def on_ready(self):
