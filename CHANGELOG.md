@@ -1,5 +1,38 @@
 # Changelog
 
+## [In Development] - Unreleased
+
+<!--
+Section Order:
+
+### Added
+### Fixed
+### Changed
+### Removed
+-->
+
+## Added
+
+- Guild Join Event for Bank Cog [da1006a](https://github.com/Geuthur/Demolizzen/commit/da1006a3875be34bce98866184de7db1209afea5)
+- Guild Join Event for Bank Cog [c020a25](https://github.com/Geuthur/Demolizzen/commit/c020a25e6edb9686c46803ff482b0f836efc0ada)
+- Implement UniverseName dataclass for ESI data representation [dcd6248](https://github.com/Geuthur/Demolizzen/commit/dcd62480115b6787487d5e38069ff414db70697d)
+
+## Fixed
+
+- Multiple Objects Returned [t7fa7fe8t](https://github.com/Geuthur/Demolizzen/commit/7fa7fe879105d2f34b4e3aa1f95b3906fd39fca9)
+- Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
+- Refine subscription handling and type hinting for better clarity and maintenance [2778692](https://github.com/Geuthur/Demolizzen/commit/277869204bd8f3ce8dd45957bacfaead4526a32c)
+- Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
+
+## Changed
+
+- update classifiers to include Python 3.14 [9c0efb9](https://github.com/Geuthur/Demolizzen/commit/9c0efb9f1c38701015b8baa7a5d3b09db317d5dd)
+- pre-commit configuration: enhance hooks, update versions, and adjust exclusions [](https://github.com/Geuthur/Demolizzen/commit/7c623e3bcdad0dca970dc190bb5d24301cd98c85)
+
+## Removed
+
+- [Unused Package](https://github.com/Geuthur/Demolizzen/commit/498e3292cbb85144d7b5a30a3b0762b5e5cc13b8)
+
 ## [2.0.2] - 2025-12-02
 
 ### Added
@@ -173,3 +206,8 @@
 
 - Moved Price List to PriceHandler Class
 - Price List now supports (Rifter x1 Format)
+
+[2.0.0]: https://github.com/Geuthur/Demolizzen/compare/v1.0.1...v2.0.0 "2.0.0"
+[2.0.1]: https://github.com/Geuthur/Demolizzen/compare/v2.0.0...v2.0.1 "2.0.1"
+[2.0.2]: https://github.com/Geuthur/Demolizzen/compare/v2.0.1...v2.0.2 "2.0.2"
+[in development]: https://github.com/Geuthur/Demolizzen/compare/v2.0.2...HEAD "In Development"
