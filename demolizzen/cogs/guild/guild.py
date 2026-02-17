@@ -275,20 +275,6 @@ class Guild(commands.Cog):
                 f"{guild_profile} has joined and created with {len(new_user_profiles)} members successfully."
             )
 
-        # Bank System - only execute if Bank cog is loaded
-        bank_cog = self.bot.get_cog("Bank")
-        if bank_cog is not None:
-            try:
-                guild_profile = await models.GuildProfile.objects.aget(
-                    guild_id=guild.id
-                )
-                # TODO: Add bank system initialization logic here
-            except models.GuildProfile.DoesNotExist:
-                logger.warning(
-                    f"Guild profile for guild {guild} ({guild.id}) does not exist."
-                )
-                return
-
     # on guild leave
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
@@ -297,7 +283,22 @@ class Guild(commands.Cog):
             guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
             if guild_profile is not None:
                 logger.info(f"Guild {guild_profile} has left and deleted successfully.")
-                await guild_profile.adelete()
+                await guild_profile.adelete()  # Will also delete related UserProfiles and UserSettings due to cascade delete
         except models.GuildProfile.DoesNotExist:
             logger.debug(f"Guild {guild.name} ({guild.id}) does not exist.")
+            return
+
+    # on guild update
+    @commands.Cog.listener()
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
+        # Update GuildProfile with new guild information
+        try:
+            guild_profile = await models.GuildProfile.objects.aget(guild_id=before.id)
+            if guild_profile is not None:
+                if guild_profile.guild_name != after.name:
+                    guild_profile.guild_name = after.name
+                    await guild_profile.asave()
+                    logger.info(f"Guild {guild_profile} has been updated successfully.")
+        except models.GuildProfile.DoesNotExist:
+            logger.debug(f"Guild {after.name} ({after.id}) does not exist.")
             return
