@@ -298,7 +298,28 @@ class Guild(commands.Cog):
                 if guild_profile.guild_name != after.name:
                     guild_profile.guild_name = after.name
                     await guild_profile.asave()
-                    logger.info(f"Guild {guild_profile} has been updated successfully.")
+                    logger.info(
+                        f"Guild {before.name} ({guild_profile.guild_id}) changed to {guild_profile.guild_name} has been updated successfully."
+                    )
         except models.GuildProfile.DoesNotExist:
             logger.debug(f"Guild {after.name} ({after.id}) does not exist.")
+            return
+
+    # on member update
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        # Update UserProfile with new member information
+        try:
+            user_profile = await models.UserProfile.objects.aget(
+                user_id=before.id, guild_id=before.guild.id
+            )
+            if user_profile is not None:
+                if user_profile.user_name != after.name:
+                    user_profile.user_name = after.name
+                    await user_profile.asave()
+                    logger.info(
+                        f"User {before.name}({user_profile.user_id}) changed to {user_profile.user_name} in guild {before.guild.name} ({before.guild.id}) has been updated successfully."
+                    )
+        except models.UserProfile.DoesNotExist:
+            logger.debug(f"User {after.name} ({after.id}) does not exist.")
             return
