@@ -2,7 +2,10 @@
 import asyncio
 import json
 import logging
-from urllib.parse import quote_plus
+from http import HTTPStatus
+
+# Third Party
+from aiohttp import ClientResponse, ClientTimeout
 
 # Discord
 import discord
@@ -11,17 +14,22 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 from discord.ui import View
 
+# Django
+from django.core.cache import cache
+from django.utils import timezone
+
 # Demolizzen
-from demolizzen import __user_agent__, models
+from demolizzen import __title__, __user_agent__, models
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 
-from .objects import KillmailManager, Subscription
+from .killmailmanager import KillmailManager, Subscription
 
-REQUESTS_TIMEOUT = 30
-REDISQ_LOCK_TIMEOUT = 5
-TTW_TIMEOUT = 5  # Time to wait for new mails in seconds
-ZKILLBOARD_URL = "https://zkillredisq.stream/listen.php"
+REQUESTS_TIMEOUT = ClientTimeout(connect=5, total=30)
+RETRY_DELAY = 10
+ZKILLBOARD_R2Z2_SEQUENCE_URL = "https://r2z2.zkillboard.com/ephemeral/sequence.json"
+ZKILLBOARD_R2Z2_URL = "https://r2z2.zkillboard.com/ephemeral/"
+USER_AGENT = {"User-Agent": f"{__user_agent__})"}
 
 MAIL_LOCK = asyncio.Lock()
 
@@ -47,13 +55,14 @@ class Killmail(commands.Cog):
         self.bot = bot
         self.title = "zKillboard"
         self.alias = "killmail"
+        # ZKB R2Z2 Tracking
         self.subs: dict[int, Subscription] = {}
-        self.ws_task = None
         self.km_counter = 0
-        self.km_fetched = 0
-        self.prepare = self.bot.loop.create_task(self.prepare_subs())
+        self.sequence_id = None
+        # Loops
         self.cleanup_killmail_storage.start()
         self.clean_subscriptions.start()
+        self.zkillboard_watcher.start()
 
     killmail = SlashCommandGroup(
         "killmail",
@@ -65,7 +74,7 @@ class Killmail(commands.Cog):
     def cog_unload(self):
         self.cleanup_killmail_storage.cancel()
         self.clean_subscriptions.cancel()
-        self.ws_task.cancel()
+        self.zkillboard_watcher.cancel()
 
     @tasks.loop(minutes=360)
     async def cleanup_killmail_storage(self):
@@ -115,53 +124,17 @@ class Killmail(commands.Cog):
         await self.bot.wait_until_ready()
         logger.info("Killmail Memory Cleaner Ready")
 
-    async def add_sub(
-        self,
-        channel_id: int,
-        user_profile: models.UserProfile,
-        group_id: int = 6,
-        losses: bool = True,
-        threshold: int = None,
-    ):
-        if threshold is None:
-            threshold = 1  # Default threshold if not provided
-
+    @tasks.loop(seconds=30, reconnect=True, overlap=False)
+    async def zkillboard_watcher(self):
+        """Watches the zKillboard R2Z2 endpoint for new killmails and processes them."""
         try:
-            guild_profile = await models.GuildProfile.objects.aget(
-                pk=user_profile.guild_id
-            )
+            await self.listen_for_mails()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.exception(f"Error in zkillboard_watcher loop: {e}")
 
-        except models.GuildProfile.DoesNotExist:
-            logger.error(f"GuildProfile not found for user {user_profile}")
-            return False
-
-        sub_obj = await models.ZKillboard.objects.acreate(
-            channel_id=channel_id,
-            losses=losses,
-            threshold=threshold,
-            owner=user_profile,
-            guild=guild_profile,
-            group_id=group_id,
-        )
-        if sub_obj is None:
-            logger.error(
-                f"Failed to add subscription for channel {channel_id} with group {group_id} and threshold {threshold}"
-            )
-            return False
-
-        sub = Subscription(
-            sub_obj.pk,
-            self.bot.get_channel(channel_id),
-            threshold,
-            losses,
-            group_id,
-        )
-        self.subs[sub.id] = sub
-        return True
-
-    async def prepare_subs(self):
+    @zkillboard_watcher.before_loop
+    async def before_zkillboard_watcher(self):
         await self.bot.wait_until_ready()
-        logger.debug("Preparing killmail subs.")
 
         killmail_subs = [s async for s in models.ZKillboard.objects.all()]
         for subscription in killmail_subs:
@@ -178,8 +151,76 @@ class Killmail(commands.Cog):
                 subscription.group_id,
             )
             self.subs[sub.id] = sub
+        logger.info("ZKillboard Watcher Ready")
 
-        self.ws_task = self.bot.loop.create_task(self.listen_for_mails())
+    @zkillboard_watcher.error
+    async def zkillboard_watcher_error(self, error):
+        logger.error(f"Error in zkillboard_watcher loop: {error}")
+        self.sequence_id = (
+            None  # Reset sequence ID to fetch a new one on next loop iteration
+        )
+
+    @staticmethod
+    def _too_many_requests_delay(response: ClientResponse) -> bool:
+        """
+        Handles HTTP 429 Too Many Requests responses from ZKB.
+        If the response includes a 'Retry-After' header, sets a delay in the cache and returns True to indicate the operation should be retried later.
+        If the header is missing, uses a default delay value.
+        Returns False if the response status is not 429, indicating the operation can continue.
+        """
+        if response.status == HTTPStatus.TOO_MANY_REQUESTS:
+            try:
+                wait_time = int(response.headers.get("Retry-After"))
+                logger.debug(
+                    "Received 429 Too Many Requests. Retrying after %s seconds.",
+                    wait_time,
+                )
+            except KeyError:
+                logger.debug(
+                    "Received 429 Too Many Requests without Retry-After header. Waiting default %s seconds.",
+                    RETRY_DELAY,
+                )
+                wait_time = RETRY_DELAY
+            # Set the retry after time in cache
+            cache.set(
+                f"{__title__.upper()}_R2Z2_LAST_REQUEST_RETRY_AFTER",
+                timezone.now() + timezone.timedelta(seconds=wait_time),
+            )
+            return True
+        return False
+
+    async def listen_for_mails(self):
+        """Continuously listens for new killmails from the ZKB R2Z2 endpoint and processes them."""
+        logger.debug("Listening for killmails.")
+        self.sequence_id = await self.get_sequence_from_r2z2()
+
+        if not self.sequence_id:
+            logger.debug("No Sequence ID received from zKB R2Z2.")
+            return
+
+        while True:
+            if cache.get(f"{__title__.upper()}_{self.sequence_id}"):
+                logger.debug(
+                    "Killmail with sequence ID %s already processed recently; skipping",
+                    self.sequence_id,
+                )
+                self.sequence_id += 1
+                continue
+
+            try:
+                await asyncio.sleep(0.2)  # Small delay to avoid rate limiting
+                result = await self.create_zkb_from_sequence(
+                    sequence_id=self.sequence_id
+                )
+                if result == 0:
+                    logger.debug("No new killmails. Pausing for 10 seconds.")
+                    logger.debug(f"Killmails Processed: {self.km_counter:,}")
+                    self.km_counter = 0
+                    await asyncio.sleep(10)
+            except (json.JSONDecodeError, KeyError):
+                logger.exception("Killmail data was badly formed.")
+            except MailProcessingError as e:
+                logger.exception(f"Killmail Error: {e}")
 
     def process_mail(self, killmail_data):
         killmail = KillmailManager._create_from_zkb(
@@ -190,31 +231,38 @@ class Killmail(commands.Cog):
         if killmail:
             asyncio.gather(*[sub.mail(killmail) for sub in self.subs.values()])
 
-    async def listen_for_mails(self):
-        logger.debug("Listening for killmails.")
-        while True:
-            try:
-                result = await self.get_new_mail_with_status()
-                await asyncio.sleep(1)  # Small delay to avoid rate limiting
-                if result == 0:
-                    logger.info("No new killmails. Pausing for 1 minute.")
-                    logger.info(f"Killmails Processed: {self.km_counter:,}")
-                    self.km_fetched = 0
-                    await asyncio.sleep(60)
-            except (json.JSONDecodeError, KeyError):
-                logger.exception("Killmail data was badly formed.")
-            except MailProcessingError as e:
-                logger.exception(f"Killmail Error: {e}")
+    async def get_sequence_from_r2z2(self) -> int | None:
+        """Fetches and returns a sequence ID from ZKB R2Z2 endpoint.
 
-    async def get_new_mail_with_status(self):
-        params = {
-            "queueID": quote_plus(f"demolizzen_{self.bot.user.id}"),
-            "ttw": TTW_TIMEOUT,
-        }
-        headers = {
-            "User-Agent": f"{__user_agent__})",
-        }
+        Returns None if no sequence is received.
+        """
+        await asyncio.sleep(delay=0.5)
+        logger.debug("Trying to fetch sequence from ZKB R2Z2...")
+        try:
+            async with self.bot.session.get(
+                ZKILLBOARD_R2Z2_SEQUENCE_URL,
+                headers=USER_AGENT,
+                timeout=REQUESTS_TIMEOUT,
+            ) as response:
+                data = await response.json()
 
+                if self._too_many_requests_delay(response=response):
+                    return None
+
+                if data and "sequence" in data:
+                    sequence_id = data["sequence"]
+                    logger.debug("Received sequence from ZKB R2Z2: %s", sequence_id)
+                    return sequence_id
+        except asyncio.TimeoutError:
+            logger.warning("Timeout while fetching sequence from ZKB R2Z2.")
+            return None
+        except Exception as exc:
+            logger.error(f"Error while fetching sequence from ZKB R2Z2: {exc}")
+            return None
+        logger.debug("No sequence received from ZKB R2Z2.")
+        return None
+
+    async def create_zkb_from_sequence(self, sequence_id: int):
         if MAIL_LOCK.locked():
             logger.debug("Killmail: Lock is active, skipping get_new_mail call.")
             return None
@@ -223,34 +271,41 @@ class Killmail(commands.Cog):
             async with MAIL_LOCK:
                 try:
                     async with self.bot.session.get(
-                        ZKILLBOARD_URL,
-                        params=params,
-                        headers=headers,
+                        ZKILLBOARD_R2Z2_URL + str(sequence_id) + ".json",
                         timeout=REQUESTS_TIMEOUT,
-                    ) as resp:
-                        status_code = resp.status
-                        if status_code == 200:
-                            data = await resp.json()
-                            # logger.debug(json.dumps(data.get("package", {}), indent=4))
+                        headers=USER_AGENT,
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            # logger.debug(json.dumps(data, indent=4))
 
-                            if data["package"]:
+                            if data and "killmail_id" in data:
+                                self.process_mail(data)
                                 self.km_counter += 1
-                                self.km_fetched += 1
-                                self.process_mail(data["package"])
+                                self.sequence_id += 1
                             return 200
 
-                        if status_code == 0:
+                        if response.status == HTTPStatus.NOT_FOUND:
+                            logger.debug(
+                                f"Killmail with sequence ID {sequence_id} not found (404)."
+                            )
                             return 0
 
-                        if status_code in [522, 504, 502, 500]:  # Server errors
-                            logger.info(f"HTTP-Statuscode {status_code}")
+                        if response.status in [
+                            HTTPStatus.GATEWAY_TIMEOUT,
+                            HTTPStatus.SERVICE_UNAVAILABLE,
+                            HTTPStatus.BAD_GATEWAY,
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                        ]:  # Server errors
+                            logger.info(
+                                f"Server error with status code {response.status} when fetching killmail with sequence ID {sequence_id}. Retrying after delay."
+                            )
                             return 0
 
-                        if status_code == 429:
-                            logger.info(f"HTTP-Statuscode {status_code}")
-                            logger.info(f"{resp}")
+                        if self._too_many_requests_delay(response=response):
                             return 0
-                        logger.info(f"Unbekannter HTTP-Statuscode: {status_code}")
+
+                        logger.info(f"Unknown HTTP-Statuscode: {response.status}")
                         return 0
                 except asyncio.TimeoutError:
                     pass
@@ -380,6 +435,51 @@ class Killmail(commands.Cog):
             )
             await ctx.respond(embed=em, ephemeral=True)
             return
+
+    async def add_sub(
+        self,
+        channel_id: int,
+        user_profile: models.UserProfile,
+        group_id: int = 6,
+        losses: bool = True,
+        threshold: int = None,
+    ):
+        """Add a new killmail subscription to the database and memory."""
+        if threshold is None:
+            threshold = 1  # Default threshold if not provided
+
+        try:
+            guild_profile = await models.GuildProfile.objects.aget(
+                pk=user_profile.guild_id
+            )
+
+        except models.GuildProfile.DoesNotExist:
+            logger.error(f"GuildProfile not found for user {user_profile}")
+            return False
+
+        sub_obj = await models.ZKillboard.objects.acreate(
+            channel_id=channel_id,
+            losses=losses,
+            threshold=threshold,
+            owner=user_profile,
+            guild=guild_profile,
+            group_id=group_id,
+        )
+        if sub_obj is None:
+            logger.error(
+                f"Failed to add subscription for channel {channel_id} with group {group_id} and threshold {threshold}"
+            )
+            return False
+
+        sub = Subscription(
+            sub_obj.pk,
+            self.bot.get_channel(channel_id),
+            threshold,
+            losses,
+            group_id,
+        )
+        self.subs[sub.id] = sub
+        return True
 
     @killmail.command(name="add")
     @checks.is_guild_manager()
@@ -515,11 +615,3 @@ class Killmail(commands.Cog):
                 ephemeral=True,
             )
             return
-
-    @killmail.command(name="counter")
-    @checks.is_guild_manager()
-    async def killmail_counter(self, ctx):
-        """
-        Show how many Killmails already Processed
-        """
-        await ctx.respond(f"Killmails Processed: `{self.km_counter:,}`")
