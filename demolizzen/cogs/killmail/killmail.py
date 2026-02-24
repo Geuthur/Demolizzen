@@ -37,8 +37,6 @@ MAIL_LOCK = asyncio.Lock()
 EMBED_LIMIT = 4096
 PAGE_SIZE = 15  # ca. 15 Zeilen pro Embed, je nach Länge
 
-# ------------- Fork from Firetail and continued Coding ---------------
-
 logger = logging.getLogger(__name__)
 
 

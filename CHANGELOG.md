@@ -26,11 +26,13 @@ Section Order:
 
 ## Changed
 
+- Moving to R2Z2 Endpoint, as RedisQ will be discontinued on May 31, 2026 [R2Z2](<https://github.com/zKillboard/zKillboard/wiki/API-(R2Z2)>).
 - update classifiers to include Python 3.14 [9c0efb9](https://github.com/Geuthur/Demolizzen/commit/9c0efb9f1c38701015b8baa7a5d3b09db317d5dd)
 - pre-commit configuration: enhance hooks, update versions, and adjust exclusions [](https://github.com/Geuthur/Demolizzen/commit/7c623e3bcdad0dca970dc190bb5d24301cd98c85)
 
 ## Removed
 
+- Removed [FireTail](https://github.com/scragly/Firetail) Code Base @ Credits for inspiration
 - [Unused Package](https://github.com/Geuthur/Demolizzen/commit/498e3292cbb85144d7b5a30a3b0762b5e5cc13b8)
 
 ## [2.0.2] - 2025-12-02
