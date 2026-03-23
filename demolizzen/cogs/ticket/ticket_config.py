@@ -65,14 +65,23 @@ class TicketSystemConfig(commands.Cog):
 
         for ticket in tickets:
             guild = discord.utils.get(self.bot.guilds, id=ticket.guild_id)
-            opener = discord.utils.get(guild.members, id=ticket.user_id)
-            channel = discord.utils.get(opener.guild.channels, id=ticket.channel_id)
+            ticket_owner = discord.utils.get(guild.members, id=ticket.user_id)
+            # Skip if Opener has left the guild or cannot be found, keep the ticket
+            if not ticket_owner:
+                continue
+            channel = discord.utils.get(
+                ticket_owner.guild.channels, id=ticket.channel_id
+            )
             # Ensure not adding views for deleted channels
             if not channel:
                 deleted_views += 1
                 await ticket.adelete()
                 continue
-            view = TicketControlView(channel, opener, ticket.ticket_number)
+            view = TicketControlView(
+                channel=channel,
+                ticket_owner=ticket_owner,
+                ticket_number=ticket.ticket_number,
+            )
             added_views += 1
             self.bot.add_view(view)
         logger.info(
