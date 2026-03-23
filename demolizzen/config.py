@@ -89,12 +89,12 @@ XP_PER_LEVEL = 100
 # The default background for each user when they get added to the database || Please do not leave this as nothing!! If you get errors, it means the url is invalid.
 # I recommend using imgur to get the link for your background.
 DEFAULT_BACKGROUND = (
-    "https://hell-rider.de/static/images/discord/standardbackground.png"
+    "https://hrz.geuthur.de/static/images/discord/standardbackground.png"
 )
 # Default XP Colour for each user when they get added to the database
 DEFAULT_XP_COLOUR = "#ffffff"
 # Default Border
-DEFAULT_BORDER = "https://hell-rider.de/static/images/discord/standardborder.png"
+DEFAULT_BORDER = "https://hrz.geuthur.de/static/images/discord/standardborder.png"
 
 # ======================================================================================
 #                                   RANK
@@ -104,8 +104,8 @@ DEFAULT_BORDER = "https://hell-rider.de/static/images/discord/standardborder.png
 LEVEL_UP_PING = True
 
 # The background image for the level up card
-LEVEL_UP_BACKGROUND = "https://hell-rider.de/static/images/discord/Background.png"
-LEVEL_UP_BACKGROUND_SHADE = "https://hell-rider.de/static/images/discord/Leftshade.png"
+LEVEL_UP_BACKGROUND = "https://hrz.geuthur.de/static/images/discord/Background.png"
+LEVEL_UP_BACKGROUND_SHADE = "https://hrz.geuthur.de/static/images/discord/Leftshade.png"
 
 # The amount of blur on the background image for the level up card
 LEVEL_UP_BLUR = 0
