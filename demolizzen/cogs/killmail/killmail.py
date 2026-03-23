@@ -441,7 +441,7 @@ class Killmail(commands.Cog):
         group_id: int = 6,
         losses: bool = True,
         threshold: int = None,
-    ):
+    ) -> tuple[bool, bool]:
         """Add a new killmail subscription to the database and memory."""
         if threshold is None:
             threshold = 1  # Default threshold if not provided
@@ -453,21 +453,27 @@ class Killmail(commands.Cog):
 
         except models.GuildProfile.DoesNotExist:
             logger.error(f"GuildProfile not found for user {user_profile}")
-            return False
+            return False, False
 
-        sub_obj = await models.ZKillboard.objects.acreate(
+        sub_obj, created = await models.ZKillboard.objects.aget_or_create(
             channel_id=channel_id,
-            losses=losses,
-            threshold=threshold,
+            group_id=group_id,
             owner=user_profile,
             guild=guild_profile,
-            group_id=group_id,
+            defaults={"losses": losses, "threshold": threshold},
         )
+
         if sub_obj is None:
-            logger.error(
+            logger.debug(
                 f"Failed to add subscription for channel {channel_id} with group {group_id} and threshold {threshold}"
             )
-            return False
+            return False, created
+
+        if not created:
+            logger.debug(
+                f"Subscription already exists for channel {channel_id} with group {group_id} and threshold {threshold}"
+            )
+            return True, created
 
         sub = Subscription(
             sub_obj.pk,
@@ -477,7 +483,7 @@ class Killmail(commands.Cog):
             group_id,
         )
         self.subs[sub.id] = sub
-        return True
+        return True, created
 
     @killmail.command(name="add")
     @checks.is_guild_manager()
@@ -520,16 +526,24 @@ class Killmail(commands.Cog):
                 ephemeral=True,
             )
 
-        added = await self.add_sub(
+        added, created = await self.add_sub(
             channel_id=channel.id,
             user_profile=user_profile,
             group_id=match_id,
             losses=losses,
             threshold=threshold,
         )
+
         if not added:
             await ctx.respond(
                 "Failed to add killmail subscription, please try again later.",
+                ephemeral=True,
+            )
+            return
+
+        if not created:
+            await ctx.respond(
+                "A subscription with the same parameters already exists for this channel.",
                 ephemeral=True,
             )
             return
