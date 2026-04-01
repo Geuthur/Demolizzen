@@ -1,0 +1,40 @@
+{
+    'killmail_id': 134398778,
+    'hash': '6b9681d6860f9ac9df634659231448017c977edb',
+    'esi': {
+        'attackers': [{'character_id': 2118452166, 'corporation_id': 98828892, 'damage_done': 489, 'faction_id': 500004, 'final_blow': True, 'security_status': 0.4, 'ship_type_id': 4306, 'weapon_type_id': 3090}],
+        'killmail_id': 134398778,
+        'killmail_time': '2026-03-31T09:23:11Z',
+        'solar_system_id': 30004993,
+        'victim':
+            {
+                'character_id': 2124253410,
+                'corporation_id': 98828892,
+                'damage_taken': 489,
+                'items': [],
+                'position':
+                    {
+                    'x': 1500660092924.493,
+                    'y': -296175083365.2572,
+                    'z': -1870466919191.3386},
+                    'ship_type_id': 11129
+                }
+            },
+    'zkb':
+        {
+            'locationID': 60009928,
+            'hash': '6b9681d6860f9ac9df634659231448017c977edb',
+            'fittedValue': 16107.17,
+            'droppedValue': 0,
+            'destroyedValue': 16107.17,
+            'totalValue': 16107.17,
+            'points': 1,
+            'npc': False,
+            'solo': False,
+            'awox': True,
+            'labels': ['tz:au', 'padding', 'cat:6', '#:1', 'awox', 'loc:highsec'],
+            'attackerCount': 1,
+            'href': 'https://esi.evetech.net/killmails/134398778/6b9681d6860f9ac9df634659231448017c977edb/'},
+            'uploaded_at': 1774949044,
+            'sequence_id': 96695606
+    }

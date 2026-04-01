@@ -5,9 +5,6 @@ import logging
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-# Third Party
-import requests
-
 # Discord
 import discord
 
@@ -15,7 +12,7 @@ import discord
 from django.utils import timezone
 
 # Demolizzen
-from demolizzen import __package_name__, __user_agent__, models
+from demolizzen import __package_name__, models
 from demolizzen.core.esi import ESI
 from demolizzen.utils.functions import make_embed
 
@@ -119,6 +116,7 @@ class KillmailZkb(_KillmailBase):
     is_npc: bool | None = None
     is_solo: bool | None = None
     is_awox: bool | None = None
+    attacker_count: int | None = None
 
 
 @dataclass
@@ -153,18 +151,6 @@ class KillmailManager(_KillmailBase):
             if attacker.is_final_blow:
                 self.final_attacker = attacker
                 return attacker
-
-    async def attackers_count(self):
-        """Count the number of unique attackers."""
-        if not self.attackers:
-            return 0
-        return len(
-            {
-                attacker.character_id
-                for attacker in self.attackers
-                if attacker.character_id
-            }
-        )
 
     async def attackers_corporation_ids(self):
         """Get a list of unique corporation IDs from the attackers."""
@@ -260,18 +246,17 @@ class KillmailManager(_KillmailBase):
     async def info_victim(self):
         """Collect additional information about the victim."""
         info = [
-            f"**[{self.victim.character_name}](https://zkillboard.com/character/{self.victim.character_id}/)** ([{self.victim.corporation_name}](https://zkillboard.com/corporation/{self.victim.corporation_id}/)) lost their **`{self.victim.ship_name}`** in **`{self.solar_system_name}`** worth **`{self.zkb.total_value:,}`** ISK",
+            f"**[{self.victim.character_name}](https://zkillboard.com/character/{self.victim.character_id}/)** ([{self.victim.corporation_name}](https://zkillboard.com/corporation/{self.victim.corporation_id}/)) lost their **`{self.victim.ship_name}`** in **`{self.solar_system_name}`** worth **`{self.zkb.total_value or 0:,}`** ISK",
         ]
         if self.final_attacker:
             info.append(
                 f"Final Blow by **[{self.final_attacker.character_name}](https://zkillboard.com/character/{self.final_attacker.character_id}/)** ([{self.final_attacker.corporation_name}](https://zkillboard.com/corporation/{self.final_attacker.corporation_id}/)) in a `{self.final_attacker.ship_name}`"
             )
         if self.attackers:
-            attackers = await self.attackers_count()
-            if attackers == 1:
+            if self.zkb.attacker_count == 1:
                 info.append("**SOLO KILL**")
             else:
-                info.append(f"**Attackers: `{attackers}`**")
+                info.append(f"**Attackers: `{self.zkb.attacker_count}`**")
         return "\n".join(info)
 
     async def send_embed(self, channel: discord.TextChannel, is_loss=False):
@@ -337,7 +322,7 @@ class KillmailManager(_KillmailBase):
             logger.info(f"Channel {channel.name} ({channel.id}) was deleted.")
             await models.ZKillboard.objects.filter(channel_id=channel.id).adelete()
             logger.info(f"Removed Subscription for deleted channel {channel.id}.")
-            return
+            raise
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"Failed to send killmail embed: {e}", exc_info=True)
             return
@@ -385,11 +370,7 @@ class KillmailManager(_KillmailBase):
         return attackers
 
     @classmethod
-    def _extract_zkb(cls, package_data):
-        if "zkb" not in package_data:
-            return KillmailZkb()
-
-        zkb_data = package_data["zkb"]
+    def _extract_zkb(cls, zkb_data):
         params = {}
         for prop, mapping in (
             ("locationID", "location_id"),
@@ -402,6 +383,7 @@ class KillmailManager(_KillmailBase):
             ("npc", "is_npc"),
             ("solo", "is_solo"),
             ("awox", "is_awox"),
+            ("attackerCount", "attacker_count"),
         ):
             if prop in zkb_data:
                 if mapping:
@@ -412,19 +394,6 @@ class KillmailManager(_KillmailBase):
         return KillmailZkb(**params)
 
     @classmethod
-    def _get_killmail_data_from_ccp(cls, href: str) -> dict | None:
-        """Fetch killmail data from CCP using the href provided by zKillboard."""
-        headers = {"User-Agent": __user_agent__, "Content-Type": "application/json"}
-        try:
-            response = requests.get(url=href, headers=headers, timeout=5)
-            response.raise_for_status()
-            killmail_data = response.json()
-            return killmail_data
-        except requests.RequestException as exc:
-            logger.error("Error fetching killmail data from href %s: %s", href, exc)
-            return None
-
-    @classmethod
     def _create_from_zkb(
         cls, zkb_package: dict, bot: "Demolizzen"
     ) -> Optional["KillmailManager"]:
@@ -433,42 +402,38 @@ class KillmailManager(_KillmailBase):
             return None
 
         killmail = None
-        if (
-            zkb_package
-            and "zkb" in zkb_package
-            and zkb_package["zkb"]
-            and "href" in zkb_package["zkb"]
-        ):
-            # Fetch killmail data from CCP using the href provided by zKillboard
-            killmail_data = cls._get_killmail_data_from_ccp(zkb_package["zkb"]["href"])
-            # If no data is returned, return None
-            if not killmail_data:
-                return None
-            victim, position = cls._extract_victim_and_position(killmail_data)
-            attackers = cls._extract_attackers(killmail_data)
-            zkb = cls._extract_zkb(zkb_package)
+        try:
+            killmail_id = zkb_package["killmail_id"]
+            esi_data = zkb_package["esi"]
+            zkb = zkb_package["zkb"]
+            killmail_time = esi_data["killmail_time"]
+        except KeyError:
+            logger.warning("Incomplete Response: %s", zkb_package)
+            return None
 
-            params = {
-                "id": killmail_data.get("killmail_id"),
-                "time": timezone.datetime.strptime(
-                    killmail_data.get("killmail_time"), "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=datetime.timezone.utc),
-                "victim": victim,
-                "attackers": attackers,
-                "position": position,
-                "zkb": zkb,
-            }
-            if "solar_system_id" in killmail_data:
-                params["solar_system_id"] = killmail_data["solar_system_id"]
+        victim, position = cls._extract_victim_and_position(esi_data)
+        attackers = cls._extract_attackers(esi_data)
+        zkb = cls._extract_zkb(zkb)
 
-            killmail = KillmailManager(**params)
-            killmail._esi = bot.esi_data
+        params = {
+            "id": killmail_id,
+            "time": timezone.datetime.strptime(
+                killmail_time, "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=datetime.timezone.utc),
+            "victim": victim,
+            "attackers": attackers,
+            "position": position,
+            "zkb": zkb,
+        }
+        if "solar_system_id" in esi_data:
+            params["solar_system_id"] = esi_data["solar_system_id"]
+
+        killmail = KillmailManager(**params)
+        killmail._esi = bot.esi_data
         return killmail
 
 
 class Subscription:
-    __slots__ = ("id", "channel", "losses", "threshold", "group_id", "killmail_sent")
-
     killmail_sent_per_channel = {}
 
     def __init__(
@@ -486,6 +451,7 @@ class Subscription:
         self.threshold = threshold
 
         self.group_id = group_id if group_id != 6 else None
+        self.disabled = False
 
     def __repr__(self):
         id_ = self.id
@@ -496,6 +462,9 @@ class Subscription:
         return f"<Subscription {id_} channel={chan} threshold={th}{loss}{grp}>"
 
     async def mail(self, killmail: KillmailManager):
+        if self.disabled:
+            return
+
         if await self.valid(killmail):
             if self.group_id:
                 is_loss = self.group_id in [
@@ -514,7 +483,27 @@ class Subscription:
                 not in Subscription.killmail_sent_per_channel[self.channel.id]
             ):
                 Subscription.killmail_sent_per_channel[self.channel.id].add(killmail.id)
-                asyncio.create_task(killmail.send_embed(self.channel, is_loss))
+                asyncio.create_task(self._send_embed(killmail, is_loss))
+
+    async def _send_embed(self, killmail: KillmailManager, is_loss: bool):
+        """Send embed and disable this subscription permanently if the channel was deleted."""
+        try:
+            await killmail.send_embed(self.channel, is_loss)
+        except discord.errors.NotFound:
+            await self._disable_deleted_channel()
+
+    async def _disable_deleted_channel(self):
+        if self.disabled:
+            return
+
+        self.disabled = True
+        await models.ZKillboard.objects.filter(id=self.id).adelete()
+        Subscription.killmail_sent_per_channel.pop(self.channel.id, None)
+        logger.info(
+            "Disabled stale subscription %s because channel %s no longer exists.",
+            self.id,
+            self.channel.id,
+        )
 
     async def valid(self, killmail: KillmailManager):
         if killmail.zkb.total_value:
