@@ -16,26 +16,23 @@ from discord.ui import View
 
 # Django
 from django.core.cache import cache
-from django.utils import timezone
 
 # Demolizzen
 from demolizzen import __title__, __user_agent__, models
+from demolizzen.constants import (
+    PAGE_SIZE,
+    RETRY_DELAY,
+    ZKILLBOARD_R2Z2_SEQUENCE_URL,
+    ZKILLBOARD_R2Z2_URL,
+)
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 
 from .killmailmanager import KillmailManager, Subscription
 
 REQUESTS_TIMEOUT = ClientTimeout(connect=5, total=30)
-RETRY_DELAY = 10
-ZKILLBOARD_R2Z2_SEQUENCE_URL = "https://r2z2.zkillboard.com/ephemeral/sequence.json"
-ZKILLBOARD_R2Z2_URL = "https://r2z2.zkillboard.com/ephemeral/"
 USER_AGENT = {"User-Agent": f"{__user_agent__})"}
-
 MAIL_LOCK = asyncio.Lock()
-
-# Discord Embed Limit: 4096 Zeichen pro description, 25 Felder pro Embed
-EMBED_LIMIT = 4096
-PAGE_SIZE = 15  # ca. 15 Zeilen pro Embed, je nach Länge
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +156,17 @@ class Killmail(commands.Cog):
         )
 
     @staticmethod
+    async def _wait_for_free_slot():
+        """Waits for a free slot in the killmail processing to respect rate limits before making a new request."""
+        retry_after = cache.get(f"{__title__.upper()}_RETRY_AT")
+        if retry_after is not None:
+            logger.debug(
+                f"Waiting for {retry_after:.2f} seconds before retrying killmail fetch due to previous rate limit."
+            )
+            await asyncio.sleep(retry_after)
+        await asyncio.sleep(0)  # No wait needed, return immediately
+
+    @staticmethod
     def _too_many_requests_delay(response: ClientResponse) -> bool:
         """
         Handles HTTP 429 Too Many Requests responses from ZKB.
@@ -168,12 +176,12 @@ class Killmail(commands.Cog):
         """
         if response.status == HTTPStatus.TOO_MANY_REQUESTS:
             try:
-                wait_time = int(response.headers.get("Retry-After"))
+                wait_time = int(response.headers.get("Retry-After", RETRY_DELAY))
                 logger.debug(
                     "Received 429 Too Many Requests. Retrying after %s seconds.",
                     wait_time,
                 )
-            except KeyError:
+            except (TypeError, ValueError):
                 logger.debug(
                     "Received 429 Too Many Requests without Retry-After header. Waiting default %s seconds.",
                     RETRY_DELAY,
@@ -181,8 +189,9 @@ class Killmail(commands.Cog):
                 wait_time = RETRY_DELAY
             # Set the retry after time in cache
             cache.set(
-                f"{__title__.upper()}_R2Z2_LAST_REQUEST_RETRY_AFTER",
-                timezone.now() + timezone.timedelta(seconds=wait_time),
+                key=f"{__title__.upper()}_RETRY_AT",
+                value=wait_time,
+                timeout=wait_time + 60,
             )
             return True
         return False
@@ -190,6 +199,7 @@ class Killmail(commands.Cog):
     async def listen_for_mails(self):
         """Continuously listens for new killmails from the ZKB R2Z2 endpoint and processes them."""
         logger.debug("Listening for killmails.")
+        await self._wait_for_free_slot()  # Ensure we respect any existing rate limit before starting
         self.sequence_id = await self.get_sequence_from_r2z2()
 
         if not self.sequence_id:
@@ -214,6 +224,9 @@ class Killmail(commands.Cog):
                     logger.debug("No new killmails. Pausing for 10 seconds.")
                     logger.debug(f"Killmails Processed: {self.km_counter:,}")
                     self.km_counter = 0
+                    cache.set(
+                        f"{__title__.upper()}_{self.sequence_id}", True, timeout=3600
+                    )  # Cache the fact that this sequence ID has no mail to prevent repeated requests
                     await asyncio.sleep(10)
             except (json.JSONDecodeError, KeyError):
                 logger.exception("Killmail data was badly formed.")
@@ -275,8 +288,6 @@ class Killmail(commands.Cog):
                     ) as response:
                         if response.status == 200:
                             data = await response.json()
-                            # logger.debug(json.dumps(data, indent=4))
-
                             if data and "killmail_id" in data:
                                 self.process_mail(data)
                                 self.km_counter += 1
