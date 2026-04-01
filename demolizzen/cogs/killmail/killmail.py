@@ -207,14 +207,6 @@ class Killmail(commands.Cog):
             return
 
         while True:
-            if cache.get(f"{__title__.upper()}_{self.sequence_id}"):
-                logger.debug(
-                    "Killmail with sequence ID %s already processed recently; skipping",
-                    self.sequence_id,
-                )
-                self.sequence_id += 1
-                continue
-
             try:
                 await asyncio.sleep(0.2)  # Small delay to avoid rate limiting
                 result = await self.create_zkb_from_sequence(
@@ -224,9 +216,6 @@ class Killmail(commands.Cog):
                     logger.debug("No new killmails. Pausing for 10 seconds.")
                     logger.debug(f"Killmails Processed: {self.km_counter:,}")
                     self.km_counter = 0
-                    cache.set(
-                        f"{__title__.upper()}_{self.sequence_id}", True, timeout=3600
-                    )  # Cache the fact that this sequence ID has no mail to prevent repeated requests
                     await asyncio.sleep(10)
             except (json.JSONDecodeError, KeyError):
                 logger.exception("Killmail data was badly formed.")
@@ -296,7 +285,7 @@ class Killmail(commands.Cog):
 
                         if response.status == HTTPStatus.NOT_FOUND:
                             logger.debug(
-                                f"Killmail with sequence ID {sequence_id} not found (404)."
+                                f"No new Killmail with sequence ID {sequence_id} found."
                             )
                             return 0
 
