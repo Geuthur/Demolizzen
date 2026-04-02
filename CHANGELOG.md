@@ -13,12 +13,16 @@ Section Order:
 
 ## Added
 
+-
+- Open API Log
+- On Member Update Listener
 - Guild Join Event for Bank Cog [da1006a](https://github.com/Geuthur/Demolizzen/commit/da1006a3875be34bce98866184de7db1209afea5)
 - Guild Join Event for Bank Cog [c020a25](https://github.com/Geuthur/Demolizzen/commit/c020a25e6edb9686c46803ff482b0f836efc0ada)
 - Implement UniverseName dataclass for ESI data representation [dcd6248](https://github.com/Geuthur/Demolizzen/commit/dcd62480115b6787487d5e38069ff414db70697d)
 
 ## Fixed
 
+- Update add_sub method to ensure only 1 km tracker per `group_id` [PR](https://github.com/Geuthur/Demolizzen/commit/027723e34b576f81c2c0b969c38c95b25590d1fe)
 - Multiple Objects Returned [t7fa7fe8t](https://github.com/Geuthur/Demolizzen/commit/7fa7fe879105d2f34b4e3aa1f95b3906fd39fca9)
 - Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
 - Refine subscription handling and type hinting for better clarity and maintenance [2778692](https://github.com/Geuthur/Demolizzen/commit/277869204bd8f3ce8dd45957bacfaead4526a32c)
@@ -26,12 +30,16 @@ Section Order:
 
 ## Changed
 
+- Update ticket handling to skip missing ticket owners and ensure proper view assignment [PR](https://github.com/Geuthur/Demolizzen/commit/8a37063068848fd695b9303e1844a3bf0563c827)
+- Refactor Killmail handling
+- Refactor ESI System
 - Moving to R2Z2 Endpoint, as RedisQ will be discontinued on May 31, 2026 [R2Z2](<https://github.com/zKillboard/zKillboard/wiki/API-(R2Z2)>).
 - update classifiers to include Python 3.14 [9c0efb9](https://github.com/Geuthur/Demolizzen/commit/9c0efb9f1c38701015b8baa7a5d3b09db317d5dd)
 - pre-commit configuration: enhance hooks, update versions, and adjust exclusions [](https://github.com/Geuthur/Demolizzen/commit/7c623e3bcdad0dca970dc190bb5d24301cd98c85)
 
 ## Removed
 
+- Removed Cache Logic in Killmail Cog
 - Removed [FireTail](https://github.com/scragly/Firetail) Code Base @ Credits for inspiration
 - [Unused Package](https://github.com/Geuthur/Demolizzen/commit/498e3292cbb85144d7b5a30a3b0762b5e5cc13b8)
 
