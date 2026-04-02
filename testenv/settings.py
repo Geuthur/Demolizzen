@@ -14,6 +14,7 @@ ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
     "demolizzen",
+    "esi",
 ]
 
 # Use the USE_MYSQL environment variable to select the database backend (MySQL or Memcached).

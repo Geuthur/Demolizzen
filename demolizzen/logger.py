@@ -62,6 +62,20 @@ def init_logger(debug_flag=None):
             False  # Ensure no propagation to root logger (no console)
         )
 
+        # Own Handler für aiopenapi3
+        openapi_fh = RotatingFileHandler(
+            filename=Path(LOG_PATH, "openapi.log"),
+            encoding="utf-8",
+            mode="a",
+            maxBytes=400000,
+            backupCount=10,
+        )
+        openapi_fh.setFormatter(LOG_FORMAT)
+        openapi_logger = logging.getLogger("esi")
+        openapi_logger.handlers.clear()
+        openapi_logger.addHandler(openapi_fh)
+        # openapi_logger.propagate = False  # Ensure no propagation to root logger (no console)
+
     # Level je nach debug_flag
     if debug_flag == "debug":
         level = logging.DEBUG
@@ -74,9 +88,11 @@ def init_logger(debug_flag=None):
 
     root_logger.setLevel(level)
     logging.getLogger("discord").setLevel(level)
+    logging.getLogger("esi").setLevel(level)
 
     if TESTMODE == "True":
-        root_logger.setLevel(logging.DEBUG)
+        root_logger.setLevel(logging.INFO)
         logging.getLogger("discord").setLevel(logging.INFO)
+        logging.getLogger("esi").setLevel(logging.DEBUG)
         root_logger.debug("Logger initialized in TESTMODE with DEBUG level.")
     return root_logger
