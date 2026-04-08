@@ -33,6 +33,9 @@ Section Order:
 - Update ticket handling to skip missing ticket owners and ensure proper view assignment [PR](https://github.com/Geuthur/Demolizzen/commit/8a37063068848fd695b9303e1844a3bf0563c827)
 - Refactor Killmail handling
 - Refactor ESI System and Use OpenAPI from `django-esi` [PR](https://github.com/Geuthur/Demolizzen/pull/58)
+- Add django-esi dependency to pyproject.toml and requirements.txt [PR](https://github.com/Geuthur/Demolizzen/pull/58)
+- Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)
+- Enable debug mode for coverage tests in tox configuration [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Moving to R2Z2 Endpoint, as RedisQ will be discontinued on May 31, 2026 [R2Z2](<https://github.com/zKillboard/zKillboard/wiki/API-(R2Z2)>).
 - update classifiers to include Python 3.14 [9c0efb9](https://github.com/Geuthur/Demolizzen/commit/9c0efb9f1c38701015b8baa7a5d3b09db317d5dd)
 - pre-commit configuration: enhance hooks, update versions, and adjust exclusions [](https://github.com/Geuthur/Demolizzen/commit/7c623e3bcdad0dca970dc190bb5d24301cd98c85)
