@@ -5,7 +5,12 @@ import logging
 from http import HTTPStatus
 
 # Third Party
-from aiohttp import ClientResponse, ClientTimeout
+from aiohttp import (
+    ClientResponse,
+    ClientTimeout,
+    ServerConnectionError,
+    ServerTimeoutError,
+)
 
 # Discord
 import discord
@@ -275,9 +280,10 @@ class Killmail(commands.Cog):
                     sequence_id = data["sequence"]
                     logger.debug("Received sequence from ZKB R2Z2: %s", sequence_id)
                     return sequence_id
-        except asyncio.TimeoutError:
+        except ServerTimeoutError:
             logger.warning("Timeout while fetching sequence from ZKB R2Z2.")
-            return None
+        except ServerConnectionError:
+            logger.error("Connection error while fetching sequence from ZKB R2Z2.")
         except Exception as exc:
             logger.error(f"Error while fetching sequence from ZKB R2Z2: {exc}")
             return None
@@ -327,8 +333,12 @@ class Killmail(commands.Cog):
 
                         logger.info(f"Unknown HTTP-Statuscode: {response.status}")
                         return 0
-                except asyncio.TimeoutError:
-                    pass
+                except ServerTimeoutError:
+                    logger.warning("Timeout while fetching killmail from ZKB R2Z2.")
+                except ServerConnectionError:
+                    logger.error(
+                        "Connection error while fetching killmail from ZKB R2Z2."
+                    )
                 except Exception as exc:
                     raise MailProcessingError from exc
             return None
