@@ -42,3 +42,7 @@ else:
     }
 
 USE_TZ = True
+
+# Custom User Model
+AUTH_USER_MODEL = "demolizzen.UserProfile"
+ESI_USER_CONTACT_EMAIL = config.ESI_USER_CONTACT_EMAIL

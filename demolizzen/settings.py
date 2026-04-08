@@ -13,8 +13,8 @@ DEBUG = True
 ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
-    "demolizzen",
     "esi",
+    "demolizzen",
 ]
 
 DATABASES = {
