@@ -3,6 +3,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+# Django
+from django.utils import timezone
+
 # Demolizzen
 from demolizzen.config import LOGS_DIR, TESTMODE
 
@@ -17,6 +20,14 @@ class ProjectPathFormatter(logging.Formatter):
             record.pathname = record.pathname[len(project_root) + 1 :]
         record.module = record.module.capitalize()
         return super().format(record)
+
+    def formatTime(self, record, datefmt=None):
+        ct = timezone.localtime(
+            timezone.make_aware(timezone.datetime.fromtimestamp(record.created))
+        )
+        if datefmt:
+            return ct.strftime(datefmt)
+        return ct.isoformat()
 
 
 # Format: [YYYY-MM-DD HH:MM:SS] [LEVEL] [COG] [MESSAGE]
@@ -76,6 +87,14 @@ def init_logger(debug_flag=None):
         openapi_logger.addHandler(openapi_fh)
         # openapi_logger.propagate = False  # Ensure no propagation to root logger (no console)
 
+        # Own Handler für httpx (ESI HTTP requests)
+        httpx_logger = logging.getLogger("httpx")
+        httpx_logger.handlers.clear()
+        httpx_logger.addHandler(openapi_fh)
+        httpx_logger.propagate = (
+            False  # Ensure no propagation to root logger (no console)
+        )
+
     # Level je nach debug_flag
     if debug_flag == "debug":
         level = logging.DEBUG
@@ -89,10 +108,12 @@ def init_logger(debug_flag=None):
     root_logger.setLevel(level)
     logging.getLogger("discord").setLevel(level)
     logging.getLogger("esi").setLevel(level)
+    logging.getLogger("httpx").setLevel(logging.ERROR)
 
     if TESTMODE == "True":
         root_logger.setLevel(logging.INFO)
         logging.getLogger("discord").setLevel(logging.INFO)
         logging.getLogger("esi").setLevel(logging.DEBUG)
+        logging.getLogger("httpx").setLevel(logging.DEBUG)
         root_logger.debug("Logger initialized in TESTMODE with DEBUG level.")
     return root_logger

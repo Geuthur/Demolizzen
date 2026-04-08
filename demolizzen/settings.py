@@ -32,6 +32,7 @@ DATABASES = {
 }
 
 USE_TZ = True
+TIME_ZONE = "Europe/Berlin"
 
 # Custom User Model
 AUTH_USER_MODEL = "demolizzen.UserProfile"

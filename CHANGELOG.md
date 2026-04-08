@@ -29,6 +29,7 @@ Section Order:
 
 ## Changed
 
+- Enhance logging configuration by adding custom handler for httpx and improving time formatting [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Update ticket handling to skip missing ticket owners and ensure proper view assignment [PR](https://github.com/Geuthur/Demolizzen/commit/8a37063068848fd695b9303e1844a3bf0563c827)
 - Refactor Killmail handling
