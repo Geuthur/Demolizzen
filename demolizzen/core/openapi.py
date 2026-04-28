@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING, Union
 
 # Third Party
 import aiohttp
+from asgiref.sync import sync_to_async
 from esi.exceptions import HTTPClientError
 from esi.openapi_clients import ESIClientProvider
 
 # Django
 from django.db import IntegrityError
+from django.db.transaction import TransactionManagementError
 
 # Demolizzen
 from demolizzen import (
@@ -60,6 +62,7 @@ esi = ESIClientProvider(
         "GetUniverseStationsStationId",
         "GetUniverseTypesTypeId",
         "GetKillmailsKillmailIdKillmailHash",
+        "GetStatus",
     ],
 )
 
@@ -83,13 +86,39 @@ class OpenAPI:
 
     async def _queue_entity_task(self, entity_id: int, category: str):
         """Persist entity resolution task if it does not exist yet."""
-        try:
-            await models.EveEntityTask.objects.aget_or_create(
-                entity_id=entity_id,
-                category=category,
-            )
-        except IntegrityError:
-            pass
+
+        async def _create_task():
+            """Try to create the task, handling transaction errors gracefully."""
+            try:
+                # First try with the default behavior
+                await models.EveEntityTask.objects.aget_or_create(
+                    entity_id=entity_id,
+                    category=category,
+                )
+            except IntegrityError:
+                # Task already exists, which is fine
+                pass
+            except TransactionManagementError:
+                # Transaction is broken, try with a clean transaction using sync_to_async
+                try:
+
+                    @sync_to_async(thread_sensitive=False)
+                    def _sync_create():
+                        try:
+                            models.EveEntityTask.objects.get_or_create(
+                                entity_id=entity_id,
+                                category=category,
+                            )
+                        except IntegrityError:
+                            pass
+
+                    await _sync_create()
+                except Exception as sync_error:  # pylint: disable=broad-except
+                    log.debug(
+                        f"Failed to queue entity task for {entity_id} ({category}): {sync_error}"
+                    )
+
+        await _create_task()
 
     def _get_or_create_entity_future(
         self, category: str, entity_id: int
@@ -596,6 +625,15 @@ class OpenAPI:
         data = esi.client.Killmails.GetKillmailsKillmailIdKillmailHash(
             killmail_id=killmail_id, killmail_hash=killmail_hash
         ).result(use_etag=False)
+        if data:
+            return data
+        return None
+
+    @esi_request_handler()
+    async def server_info(self):
+        """Fetch ESI server status info."""
+
+        data = esi.client.Status.GetStatus().result(use_etag=False)
         if data:
             return data
         return None
