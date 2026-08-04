@@ -50,7 +50,7 @@ class Admin(commands.Cog):
     @option("limit", description="How many")
     async def clear(self, ctx: discord.ApplicationContext, limit: int):
         """Clear Message from a Channel."""
-        # await ctx.defer(ephemeral=True)
+        await ctx.defer(ephemeral=True)
 
         if limit > 100:
             embed = discord.Embed(

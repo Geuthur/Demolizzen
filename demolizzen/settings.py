@@ -13,6 +13,7 @@ DEBUG = True
 ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
+    "esi",
     "demolizzen",
 ]
 
@@ -31,3 +32,8 @@ DATABASES = {
 }
 
 USE_TZ = True
+TIME_ZONE = "Europe/Berlin"
+
+# Custom User Model
+AUTH_USER_MODEL = "demolizzen.UserProfile"
+ESI_USER_CONTACT_EMAIL = config.ESI_USER_CONTACT_EMAIL

@@ -26,6 +26,8 @@ DATABASE_USER_WEBSITE = os.getenv("DATABASE_USER_WEBSITE")
 DATABASE_PASSWORD_WEBSITE = os.getenv("DATABASE_PASSWORD_WEBSITE")
 DATABASE_NAME_WEBSITE = os.getenv("DATABASE_NAME_WEBSITE")
 
+ESI_USER_CONTACT_EMAIL = os.getenv("ESI_USER_CONTACT_EMAIL")
+
 SETTINGS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SETTINGS_DIR)
 # DATA_DIR = os.path.join(ROOT_DIR, 'data')
@@ -60,7 +62,7 @@ PRELOAD_EXTENSIONS = [
     # "automod",                                 # Automod Module
     # "token",                                   # Must be activated if Modules are enabled in this section
     # "vow"                                      # Voices of War Module
-    # "test",                                    # Testing Module
+    "test",  # Testing Module
 ]
 
 # ESI API - Here you need to setup your Application

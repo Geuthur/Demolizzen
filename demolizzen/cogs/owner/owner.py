@@ -154,7 +154,10 @@ class Owner(commands.Cog):
         description="Choose Log Level",
         choices=["debug", "info", "warning", "error", "critical"],
     )
-    async def setloglevel(self, ctx: discord.ApplicationContext, level: str):
+    @option(
+        "logs", description="Log Type", choices=["all", "demolizzen", "esi", "discord"]
+    )
+    async def setloglevel(self, ctx: discord.ApplicationContext, level: str, logs: str):
         """Set log level dynamically."""
         log_level_map = {
             "debug": logging.DEBUG,
@@ -169,9 +172,17 @@ class Owner(commands.Cog):
         if log_level is None:
             await ctx.respond("Invalid log level.")
             return
-
-        self.bot.logger.setLevel(log_level)
-        await ctx.respond(f"Log level set to {level.upper()}.", ephemeral=True)
+        if logs == "all":
+            self.bot.logger.setLevel(log_level)
+        elif logs == "demolizzen":
+            logging.getLogger("demolizzen").setLevel(log_level)
+        elif logs == "esi":
+            logging.getLogger("esi").setLevel(log_level)
+        elif logs == "discord":
+            logging.getLogger("discord").setLevel(log_level)
+        await ctx.respond(
+            f"Log level set to {level.upper()} for {logs} logs.", ephemeral=True
+        )
 
     @owner.command(name="activity", description="Set the bot's activity")
     @commands.is_owner()

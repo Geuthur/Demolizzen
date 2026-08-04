@@ -5,7 +5,12 @@ import logging
 from http import HTTPStatus
 
 # Third Party
-from aiohttp import ClientResponse, ClientTimeout
+from aiohttp import (
+    ClientResponse,
+    ClientTimeout,
+    ServerConnectionError,
+    ServerTimeoutError,
+)
 
 # Discord
 import discord
@@ -18,7 +23,7 @@ from discord.ui import View
 from django.core.cache import cache
 
 # Demolizzen
-from demolizzen import __title__, __user_agent__, models
+from demolizzen import USER_AGENT_TEXT, __title__, models
 from demolizzen.constants import (
     PAGE_SIZE,
     RETRY_DELAY,
@@ -31,7 +36,7 @@ from demolizzen.core.bot import Demolizzen
 from .killmailmanager import KillmailManager, Subscription
 
 REQUESTS_TIMEOUT = ClientTimeout(connect=5, total=30)
-USER_AGENT = {"User-Agent": f"{__user_agent__})"}
+USER_AGENT = {"User-Agent": f"{USER_AGENT_TEXT})"}
 MAIL_LOCK = asyncio.Lock()
 
 logger = logging.getLogger(__name__)
@@ -70,6 +75,28 @@ class Killmail(commands.Cog):
         self.cleanup_killmail_storage.cancel()
         self.clean_subscriptions.cancel()
         self.zkillboard_watcher.cancel()
+
+    @commands.Cog.listener()
+    async def on_guild_leave(self, guild: discord.Guild):
+        """Remove all subscriptions for a guild when the bot leaves it."""
+        try:
+            subscriptions = [
+                s
+                async for s in models.ZKillboard.objects.filter(
+                    guild__guild_id=guild.id
+                )
+            ]
+            for sub in subscriptions:
+                await sub.adelete()
+                if sub.id in self.subs:
+                    del self.subs[sub.id]
+            logger.info(
+                f"Removed {len(subscriptions)} killmail subscriptions for guild {guild.name} ({guild.id}) on leave."
+            )
+        except Exception as e:
+            logger.error(
+                f"Error while removing killmail subscriptions for guild {guild.name} ({guild.id}) on leave: {e}"
+            )
 
     @tasks.loop(minutes=360)
     async def cleanup_killmail_storage(self):
@@ -253,9 +280,10 @@ class Killmail(commands.Cog):
                     sequence_id = data["sequence"]
                     logger.debug("Received sequence from ZKB R2Z2: %s", sequence_id)
                     return sequence_id
-        except asyncio.TimeoutError:
+        except ServerTimeoutError:
             logger.warning("Timeout while fetching sequence from ZKB R2Z2.")
-            return None
+        except ServerConnectionError:
+            logger.error("Connection error while fetching sequence from ZKB R2Z2.")
         except Exception as exc:
             logger.error(f"Error while fetching sequence from ZKB R2Z2: {exc}")
             return None
@@ -305,8 +333,12 @@ class Killmail(commands.Cog):
 
                         logger.info(f"Unknown HTTP-Statuscode: {response.status}")
                         return 0
-                except asyncio.TimeoutError:
-                    pass
+                except ServerTimeoutError:
+                    logger.warning("Timeout while fetching killmail from ZKB R2Z2.")
+                except ServerConnectionError:
+                    logger.error(
+                        "Connection error while fetching killmail from ZKB R2Z2."
+                    )
                 except Exception as exc:
                     raise MailProcessingError from exc
             return None
