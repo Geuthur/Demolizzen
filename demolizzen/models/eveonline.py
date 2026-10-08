@@ -52,6 +52,19 @@ class EveEntityCache(models.Model):
         default_permissions = ()
 
 
+class EveEntityTask(models.Model):
+    task_id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255, null=True)
+    entity_id = models.IntegerField()
+    category = models.CharField(max_length=64)
+    retry_count = models.IntegerField(default=0)
+    last_attempt = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "eve_entity_tasks"
+        default_permissions = ()
+
+
 class EvePricecache(models.Model):
     class TradehubChoices(models.TextChoices):
         JITA = "Jita IV - Moon 4 - Caldari Navy Assembly Plant", _("Jita")

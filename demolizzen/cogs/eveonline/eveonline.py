@@ -167,12 +167,12 @@ class EveOnline(commands.Cog):
         await ctx.defer()
 
         data = await ctx.bot.esi_data.server_info()
-        start_time = data.get("start_time") if data else None
+        start_time = data.start_time if data else None
         em = discord.Embed(
             title="Server Status", color=discord.Color.teal(), description=""
         )
         if start_time:
-            player_count = data.get("players")
+            player_count = data.players
             # Embed erstellen
             em.set_thumbnail(
                 url="https://image.eveonline.com/Alliance/434243723_64.png"

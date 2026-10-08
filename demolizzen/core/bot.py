@@ -19,7 +19,7 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import config, logger
-from demolizzen.core.esi import ESI
+from demolizzen.core.openapi import OpenAPI
 from demolizzen.models.guild import GuildProfile
 
 
@@ -38,8 +38,12 @@ class Demolizzen(commands.Bot):
         self.token = config.BOT_TOKEN
         self.req_perms = discord.Permissions(config.BOT_PERMISSIONS)
         self.preload_ext = config.PRELOAD_EXTENSIONS
+        self.loop = asyncio.get_event_loop()
         self.session = aiohttp.ClientSession(loop=self.loop)
-        self.esi_data = ESI(self.session)
+        # Initialize OpenAPI CCP Client
+        self.esi_data = OpenAPI(self.session)
+        self._entity_task = self.loop.create_task(self.esi_data._entity_name_worker())
+        # Initialize the logger
         self.logger = logger.init_logger(debug_flag="info")
         self.launch_time = timezone.now()
 
@@ -53,12 +57,11 @@ class Demolizzen(commands.Bot):
                 self.logger.exception(f"Failed to load extension {ext}", exc_info=e)
                 print(Blue(f"- {ext.capitalize()} ❌ {e}"))
         print(Green("-------- Finished Loading --------\n"))
-        loop = asyncio.get_event_loop()
         if self.token is None:
             self.logger.critical("Token must be set in order to login.")
             sys.exit(1)
         try:
-            loop.run_until_complete(self.start(self.token))
+            self.loop.run_until_complete(self.start(self.token))
         # pylint: disable=broad-except
         except Exception as e:
             self.logger.critical("Fatal exception", exc_info=e)

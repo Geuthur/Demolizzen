@@ -13,7 +13,7 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import __package_name__, models
-from demolizzen.core.esi import ESI
+from demolizzen.core.openapi import OpenAPI
 from demolizzen.utils.functions import make_embed
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ class _KillmailCharacter(_KillmailBase):
     ship_type_id: int | None = None
     ship_name: str | None = None
 
-    async def fetch_name(self, esi: ESI):
+    async def fetch_name(self, esi: OpenAPI):
         """Fetch the name from ESI."""
         if self.character_id and not self.character_name:
             self.character_name = await esi.get_or_create_character_name(
@@ -66,12 +66,12 @@ class _KillmailCharacter(_KillmailBase):
         if self.alliance_id and not self.alliance_name:
             self.alliance_name = await esi.get_or_create_alliance_name(self.alliance_id)
 
-    async def fetch_ship_name(self, esi: ESI):
+    async def fetch_ship_name(self, esi: OpenAPI):
         """Fetch the ship name from ESI."""
         if self.ship_type_id and not self.ship_name:
             ship = await esi.item_info_db(self.ship_type_id)
             if ship:
-                self.ship_name = ship.get("typeName")
+                self.ship_name = ship.name
 
 
 @dataclass
@@ -135,7 +135,7 @@ class KillmailManager(_KillmailBase):
     region_id: int | None = None
     region_name: str | None = None
     celestial: str | None = None
-    _esi: ESI = field(default=None, init=False, repr=False)
+    _esi: OpenAPI = field(default=None, init=False, repr=False)
     _celestial_lock: asyncio.Lock = field(
         default_factory=asyncio.Lock, init=False, repr=False
     )
@@ -192,9 +192,9 @@ class KillmailManager(_KillmailBase):
             if not self.celestial:
                 if not self.zkb.location_id:
                     return "Unknown"
-                celestial = await self._esi.celestial_info(self.zkb.location_id)
+                celestial = await self._esi.get_celestial_info(self.zkb.location_id)
                 if celestial:
-                    self.celestial = celestial.get("name", "Unknown")
+                    self.celestial = celestial.name
                 else:
                     self.celestial = "Unknown"
 

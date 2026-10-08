@@ -10,7 +10,9 @@ from demolizzen.core.bot import Demolizzen
 
 
 class BotStartupTest(TestCase):
-    @patch("demolizzen.core.esi.ESI")  # Mock the ESI class to avoid real HTTP calls
+    @patch(
+        "demolizzen.core.openapi.OpenAPI"
+    )  # Mock the OpenAPI class to avoid real HTTP calls
     @patch(
         "aiohttp.ClientSession"
     )  # Mock the aiohttp ClientSession to avoid real HTTP calls
