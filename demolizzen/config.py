@@ -42,6 +42,13 @@ BOT_PERMISSIONS = 405807557744
 
 EVENTS_SERVER = {}
 
+# Shorter cooldowns for test accounts: guild id -> member id -> seconds.
+_TEST_ACCOUNTS = (784546720935182357, 240850566002114561)
+COOLDOWN_OVERRIDES = {
+    518052275076464640: dict.fromkeys(_TEST_ACCOUNTS, 10),
+    337275567487320064: dict.fromkeys(_TEST_ACCOUNTS, 10),
+}
+
 # load extensions on start/restart
 PRELOAD_EXTENSIONS = [
     "core",  # Core Module - Must be loaded first

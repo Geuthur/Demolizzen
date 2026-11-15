@@ -128,3 +128,39 @@ class ItemNotOwned(ShopError):
 
 class NotEnoughItems(ShopError):
     """The member has fewer of the item than they want to use."""
+
+
+class MissionError(ServiceError):
+    """Base class of daily, work and mission errors. ``message`` is for the user."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class OnCooldown(MissionError):
+    """The action is not available yet. ``remaining`` says for how long."""
+
+    def __init__(self, remaining):
+        self.remaining = remaining
+        super().__init__("This is not available yet.")
+
+
+class NoShip(MissionError):
+    """The member has no ship for this kind of mission."""
+
+
+class NoActiveMission(MissionError):
+    """There is no active mission to act on."""
+
+
+class AlreadySettled(MissionError):
+    """The mission was reported already; it is paid out only once."""
+
+
+class ShipNotFound(MissionError):
+    """No such ship is for sale in this category."""
+
+
+class ShipAlreadyOwned(MissionError):
+    """The member already flies this ship."""
