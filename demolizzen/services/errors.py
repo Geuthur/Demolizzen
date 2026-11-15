@@ -76,3 +76,31 @@ class TicketNotConfigured(TicketError):
 
 class InvalidTicketSetting(TicketError):
     """A ticket setting was given an unknown name or an invalid value."""
+
+
+class BankError(ServiceError):
+    """Base class of bank errors. ``message`` is meant to be shown to the user."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class InvalidAmount(BankError):
+    """The amount is not a whole number within the allowed range."""
+
+
+class InsufficientFunds(BankError):
+    """The account does not hold enough money for the booking."""
+
+
+class BankActionDisabled(BankError):
+    """The guild has switched deposits or withdrawals off."""
+
+
+class InvalidTransfer(BankError):
+    """Money cannot be sent this way, for example to oneself."""
+
+
+class InvalidBankSetting(BankError):
+    """A bank setting was given an unknown name or an invalid value."""
