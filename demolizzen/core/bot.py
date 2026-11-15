@@ -167,6 +167,30 @@ class Demolizzen(commands.Bot):
         except Exception as e:
             self.logger.error(f"Interaction Failed {e}", stack_info=True)
 
+    async def on_unknown_application_command(self, interaction: discord.Interaction):
+        """Answer a click on a command entry Discord no longer has.
+
+        Without this the member only sees "The application did not respond".
+        """
+        data = interaction.data or {}
+        command = self.command_scope.resolve_stale(
+            data.get("name"), interaction.guild_id
+        )
+        if interaction.type is discord.InteractionType.auto_complete:
+            if command is not None:
+                self.dispatch("application_command_auto_complete", interaction, command)
+            return
+        if command is None:
+            await interaction.response.send_message(
+                "This command is not available here any more. If it is still "
+                "listed, restart Discord (Ctrl+R).",
+                ephemeral=True,
+            )
+            return
+        interaction.command = command
+        ctx = await self.get_application_context(interaction)
+        await self.invoke_application_command(ctx)
+
     async def on_connect(self):
         if self._connected_once:
             return print("Reconnected.")

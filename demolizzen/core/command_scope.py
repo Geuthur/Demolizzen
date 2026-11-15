@@ -148,6 +148,26 @@ class CommandScope:
             return int(command.id) if command.id is not None else None
         return self._ids.get(guild_id, {}).get((command.name, command.type))
 
+    def resolve_stale(self, name: str, guild_id: int | None):
+        """The loaded command behind a click that arrived under an unknown id.
+
+        A Discord client can keep listing an entry that is registered no more:
+        the global one from before commands went per server, or one of a
+        module that was just switched off. Running the command lets its own
+        checks answer, including "this module is switched off".
+        """
+        for command in self.bot.pending_application_commands:
+            if command.name != name:
+                continue
+            if command.guild_ids is None:
+                return command
+            if guild_id is None:
+                return None
+            if module_key(command) is not None or guild_id in command.guild_ids:
+                return command
+            return None
+        return None
+
     async def _wanted(self) -> dict[int, frozenset[str]]:
         """Every server of the bot with the switchable modules active there."""
         states = await cog_settings.fresh_states(guild.id for guild in self.bot.guilds)

@@ -393,6 +393,116 @@ class RoutingTest(ScopeTestCase):
         self.assertIs(found, command(self.bot, "eve"))
 
 
+class StaleEntryTest(ScopeTestCase):
+    """A Discord client can still list a command that is registered no more:
+    the global entry from before commands went per server, or one of a module
+    that was just switched off. Its click arrives under an id the bot has no
+    route for."""
+
+    def stale_click(self, name: str, guild_id: int | None = BRAVO):
+        interaction = MagicMock()
+        interaction.type = discord.InteractionType.application_command
+        # A global entry: Discord sends no guild_id inside the data.
+        interaction.data = {"id": "1", "name": name}
+        interaction.guild_id = guild_id
+        interaction.command = None
+        interaction.response.send_message = AsyncMock()
+        return interaction
+
+    async def handle(self, interaction):
+        with (
+            patch.object(self.bot, "get_application_context", AsyncMock()) as context,
+            patch.object(self.bot, "invoke_application_command", AsyncMock()) as run,
+        ):
+            await self.bot.on_unknown_application_command(interaction)
+        return context, run
+
+    async def test_py_cord_has_no_route_for_the_old_global_entry(self):
+        await self.scope.sync_all()
+        interaction = self.stale_click("eve")
+
+        with patch.object(self.bot, "dispatch") as dispatch:
+            await self.bot.process_application_commands(interaction)
+
+        dispatch.assert_called_once_with("unknown_application_command", interaction)
+
+    async def test_old_entry_of_a_per_server_command_still_runs_it(self):
+        await self.scope.sync_all()
+        interaction = self.stale_click("eve")
+
+        context, run = await self.handle(interaction)
+
+        self.assertIs(interaction.command, command(self.bot, "eve"))
+        run.assert_awaited_once_with(context.return_value)
+        interaction.response.send_message.assert_not_awaited()
+
+    async def test_old_entry_of_a_switched_off_module_reaches_its_refusal(self):
+        # Running it is what answers "this module is switched off": the cog
+        # check refuses. Silence would be "The application did not respond".
+        await self.switch_elsewhere(BRAVO, "eveonline")
+        await self.scope.sync_all()
+        interaction = self.stale_click("eve")
+
+        _, run = await self.handle(interaction)
+
+        self.assertIs(interaction.command, command(self.bot, "eve"))
+        run.assert_awaited_once()
+
+    async def test_command_nobody_knows_is_answered_not_ignored(self):
+        await self.scope.sync_all()
+        interaction = self.stale_click("gone")
+
+        _, run = await self.handle(interaction)
+
+        run.assert_not_awaited()
+        text = interaction.response.send_message.await_args.args[0]
+        self.assertIn("not available", text)
+        self.assertTrue(
+            interaction.response.send_message.await_args.kwargs["ephemeral"]
+        )
+
+    async def test_single_server_command_is_not_run_on_another_server(self):
+        await self.scope.sync_all()
+        interaction = self.stale_click("transport", BRAVO)
+
+        _, run = await self.handle(interaction)
+
+        run.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+
+    async def test_per_server_command_is_not_run_outside_a_server(self):
+        await self.scope.sync_all()
+        interaction = self.stale_click("eve", None)
+
+        _, run = await self.handle(interaction)
+
+        run.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+
+    async def test_suggestions_of_an_old_entry_keep_working(self):
+        await self.scope.sync_all()
+        interaction = self.stale_click("eve")
+        interaction.type = discord.InteractionType.auto_complete
+
+        with patch.object(self.bot, "dispatch") as dispatch:
+            _, run = await self.handle(interaction)
+
+        run.assert_not_awaited()
+        dispatch.assert_called_once_with(
+            "application_command_auto_complete", interaction, command(self.bot, "eve")
+        )
+
+    async def test_suggestions_of_an_unknown_command_are_left_alone(self):
+        # A text answer is not allowed while the member is still typing.
+        await self.scope.sync_all()
+        interaction = self.stale_click("gone")
+        interaction.type = discord.InteractionType.auto_complete
+
+        await self.handle(interaction)
+
+        interaction.response.send_message.assert_not_awaited()
+
+
 class ManagedCommandsTest(SimpleTestCase):
     def test_only_commands_of_switchable_modules_are_managed(self):
         bot = load(MODULES)
