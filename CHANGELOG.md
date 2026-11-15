@@ -121,6 +121,7 @@ Section Order:
 
 ## Removed
 
+- `/eve price` no longer offers Rens and Hek: the price service does not know these markets and answered with an error
 - `/admin economy mode`, `/admin economy set`, `/auth register` and `/owner force-ship-update`
 - Unused price list window of the EVE Online module and `utils/pricehandler.py`
 - ESI name task queue (`EveEntityTask`, migration `0012`) and the 6-hour killmail memory cleanup

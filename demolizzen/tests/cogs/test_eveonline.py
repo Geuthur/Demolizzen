@@ -97,13 +97,24 @@ class PriceCommandTest(EveOnlineTestCase):
         self.assertFalse(mentions.everyone or mentions.users or mentions.roles)
 
     async def test_unavailable_service_gets_a_clear_message(self):
-        self.quotes.side_effect = PriceUnavailable("hek")
+        self.quotes.side_effect = PriceUnavailable("Dodixie")
 
-        await self.price(tradehub="Hek")
+        await self.price(tradehub="Dodixie")
 
         self.assertEqual(
             self.ctx.respond.await_args.args[0],
-            "The price service did not answer for Hek. Please try again later.",
+            "The price service did not answer for Dodixie. Please try again later.",
+        )
+
+    def test_only_markets_the_price_service_knows_are_offered(self):
+        (tradehub,) = (
+            option
+            for option in EveOnline.priceinfo.options
+            if option.name == "tradehub"
+        )
+
+        self.assertEqual(
+            [choice.name for choice in tradehub.choices], ["Jita", "Amarr", "Dodixie"]
         )
 
     def test_price_service_uses_the_bot_session(self):

@@ -25,6 +25,7 @@ class Tradehub:
     station: str
 
 
+# Only markets the price service knows: it answers 400 for Rens and Hek.
 TRADEHUBS = {
     hub.key: hub
     for hub in (
@@ -35,8 +36,6 @@ TRADEHUBS = {
             "Dodixie",
             "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
         ),
-        Tradehub("rens", "Rens", "Rens VI - Moon 8 - Brutor Tribe Treasury"),
-        Tradehub("hek", "Hek", "Hek VIII - Moon 12 - Boundless Creation Factory"),
     )
 }
 DEFAULT_TRADEHUB = TRADEHUBS["jita"]

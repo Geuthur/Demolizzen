@@ -37,9 +37,8 @@ class TradehubTest(SimpleTestCase):
         self.assertEqual(prices.tradehub("nowhere"), JITA)
 
     def test_tradehubs(self):
-        self.assertEqual(
-            sorted(prices.TRADEHUBS), ["amarr", "dodixie", "hek", "jita", "rens"]
-        )
+        # Only markets the price service knows: it answers 400 for Rens and Hek.
+        self.assertEqual(sorted(prices.TRADEHUBS), ["amarr", "dodixie", "jita"])
         self.assertEqual(
             (JITA.key, JITA.title, JITA.station),
             ("jita", "Jita", "Jita IV - Moon 4 - Caldari Navy Assembly Plant"),
