@@ -1,5 +1,4 @@
 # Standard Library
-import asyncio
 import traceback
 from collections import Counter
 from functools import cached_property
@@ -46,7 +45,6 @@ class Demolizzen(commands.Bot):
         # Created in start(), once the event loop is running.
         self.session: aiohttp.ClientSession | None = None
         self.esi_data: OpenAPI | None = None
-        self._entity_task: asyncio.Task | None = None
 
     def load_preload_extensions(self) -> dict[str, Exception | None]:
         """Load every configured extension.
@@ -87,14 +85,13 @@ class Demolizzen(commands.Bot):
 
         self.session = aiohttp.ClientSession()
         self.esi_data = OpenAPI(self.session)
-        self._entity_task = asyncio.create_task(self.esi_data._entity_name_worker())
         await super().start(token, reconnect=reconnect)
 
     async def close(self) -> None:
         """Stop background work and release the HTTP session. Safe to call twice."""
-        if self._entity_task is not None:
-            self._entity_task.cancel()
-            self._entity_task = None
+        if self.esi_data is not None:
+            self.esi_data.close()
+            self.esi_data = None
         if self.session is not None:
             await self.session.close()
             self.session = None

@@ -21,9 +21,7 @@ def _fake_session():
 
 
 def _fake_openapi():
-    openapi = MagicMock()
-    openapi._entity_name_worker = AsyncMock()
-    return openapi
+    return MagicMock()
 
 
 class BotConstructionTest(SimpleTestCase):
@@ -103,6 +101,20 @@ class BotStartTest(SimpleTestCase):
 
         session.close.assert_awaited_once()
         self.assertIsNone(bot.session)
+        self.assertIsNone(bot.esi_data)
+
+    async def test_close_stops_the_esi_worker_threads(self):
+        bot = Demolizzen()
+        openapi = _fake_openapi()
+        with (
+            patch(f"{MODULE}.aiohttp.ClientSession", return_value=_fake_session()),
+            patch(f"{MODULE}.OpenAPI", return_value=openapi),
+            patch("discord.ext.commands.Bot.start", new_callable=AsyncMock),
+        ):
+            await bot.start("tok")
+            await bot.close()
+
+        openapi.close.assert_called_once()
 
     async def test_close_before_start_is_safe(self):
         bot = Demolizzen()

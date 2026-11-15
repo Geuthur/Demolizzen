@@ -1,19 +1,18 @@
 # Standard Library
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Union
 
 # Third Party
 import aiohttp
-from asgiref.sync import sync_to_async
 from esi.exceptions import HTTPClientError
 from esi.openapi_clients import ESIClientProvider
 
 # Django
 from django.db import IntegrityError
-from django.db.transaction import TransactionManagementError
 
 # Demolizzen
 from demolizzen import (
@@ -71,156 +70,147 @@ esi = ESIClientProvider(
 class OpenAPI:
     """Data manager for requesting and returning ESI data."""
 
+    # Seconds to wait for ESI to answer a name lookup, and ids per request.
+    NAME_TIMEOUT = 15
+    NAME_BATCH = 1000
+
     def __init__(
         self,
         session: aiohttp.ClientSession,
     ):
         self.session = session
-        # Keep only waiting futures in memory; tasks/retries are persisted in DB.
-        self._entity_futures = {
-            "character": {},
-            "corporation": {},
-            "alliance": {},
-            "station": {},
-        }
+        # django-esi's client is synchronous; its calls run in these threads so
+        # they never block the event loop.
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="esi")
+        self._regions: dict[int, int] = {}
 
-    async def _queue_entity_task(self, entity_id: int, category: str):
-        """Persist entity resolution task if it does not exist yet."""
+    def close(self) -> None:
+        """Stop the worker threads. Calls that are still running are not waited for."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
-        async def _create_task():
-            """Try to create the task, handling transaction errors gracefully."""
-            try:
-                # First try with the default behavior
-                await models.EveEntityTask.objects.aget_or_create(
-                    entity_id=entity_id,
-                    category=category,
-                )
-            except IntegrityError:
-                # Task already exists, which is fine
-                pass
-            except TransactionManagementError:
-                # Transaction is broken, try with a clean transaction using sync_to_async
-                try:
+    async def _call(self, operation):
+        """Run an ESI operation without blocking the event loop.
 
-                    @sync_to_async(thread_sensitive=False)
-                    def _sync_create():
-                        try:
-                            models.EveEntityTask.objects.get_or_create(
-                                entity_id=entity_id,
-                                category=category,
-                            )
-                        except IntegrityError:
-                            pass
-
-                    await _sync_create()
-                except Exception as sync_error:  # pylint: disable=broad-except
-                    log.debug(
-                        f"Failed to queue entity task for {entity_id} ({category}): {sync_error}"
-                    )
-
-        await _create_task()
-
-    def _get_or_create_entity_future(
-        self, category: str, entity_id: int
-    ) -> asyncio.Future:
-        """Return existing pending future or create a new one for the entity."""
-        future = self._entity_futures[category].get(entity_id)
-        if not future or future.done():
-            future = asyncio.get_event_loop().create_future()
-            self._entity_futures[category][entity_id] = future
-        return future
-
-    async def _entity_name_worker(self):
-        """Worker to handle batch entity name resolution."""
-        while True:
-            await asyncio.sleep(30)
-            categories = ["character", "corporation", "alliance", "station"]
-            tasks = [
-                task
-                async for task in models.EveEntityTask.objects.filter(
-                    category__in=categories
-                )
-            ]
-
-            all_ids = {task.entity_id for task in tasks}
-
-            if not all_ids:
-                continue
-
-            try:
-                names = await self.get_universe_names(list(all_ids))
-            except HTTPClientError as e:
-                log.error(f"Batch universe_names HTTP error: {e.status_code}")
-                if e.status_code == HTTPStatus.NOT_FOUND:
-                    await self._handle_entity_error(tasks)
-                    continue
-                names = None
-
-            # Wenn universe_names None oder leer, alle IDs erneut in die Warteschlange
-            if not names:
-                log.warning(
-                    f"universe_names returned None or empty. Retrying all IDs in next batch: {list(all_ids)}"
-                )
-                continue
-
-            # Verarbeite Ergebnisse
-            for task in tasks:
-                await self._resolve_id_name(task.entity_id, names, task.category)
-
-    async def _handle_entity_error(self, tasks: list[models.EveEntityTask]):
-        """Handle error when batch contains invalid IDs. Remove first ID and retry."""
-        if not tasks:
-            return
-
-        first_task = min(tasks, key=lambda task: task.task_id)
-        retry_count = first_task.retry_count + 1
-        first_task.retry_count = retry_count
-
-        if retry_count >= 3:
-            log.warning(
-                "ID %s in category %s failed 3 times. Marking as Unknown without saving.",
-                first_task.entity_id,
-                first_task.category,
-            )
-            future = self._entity_futures[first_task.category].get(first_task.entity_id)
-            if future and not future.done():
-                future.set_result("Unknown")
-
-            self._entity_futures[first_task.category].pop(first_task.entity_id, None)
-            await models.EveEntityTask.objects.filter(
-                entity_id=first_task.entity_id,
-                category=first_task.category,
-            ).adelete()
-        else:
-            log.warning(
-                "ID %s in category %s caused error. Retry %s/3 in next batch.",
-                first_task.entity_id,
-                first_task.category,
-                retry_count,
-            )
-            await first_task.asave(update_fields=["retry_count", "last_attempt"])
-
-    async def _resolve_id_name(
-        self,
-        eid: int,
-        names: list[UniverseName],
-        category: str,
-    ):
-        """Resolve name for a single ID with retry logic."""
-        name = next(
-            (n.name for n in names if n.id == eid and n.category == category), None
+        ``operation`` is a function without arguments that builds the ESI
+        operation. django-esi's client is synchronous, so building and
+        executing both happen in a worker thread.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, lambda: operation().result(use_etag=False)
         )
-        if name:
-            # Erfolgreich aufgelöst: speichern
-            future = self._entity_futures[category].get(eid)
-            if future and not future.done():
-                future.set_result(name)
-            log.debug("Saving name for ID %s: %s", eid, name)
-            self._entity_futures[category].pop(eid, None)
-            await models.EveEntityTask.objects.filter(
-                entity_id=eid,
-                category=category,
-            ).adelete()
+
+    # ------------------------------------------------------------------ names
+
+    async def _fetch_names(self, ids: list[int]) -> list[UniverseName]:
+        data = await self._call(lambda: esi.client.Universe.PostUniverseNames(body=ids))
+        return [
+            UniverseName(category=item.category, id=item.id, name=item.name)
+            for item in data or []
+        ]
+
+    async def _fetch_names_safely(self, ids: list[int]) -> list[UniverseName]:
+        """Ask ESI for names. Never raises and never waits longer than the limit."""
+        try:
+            return await asyncio.wait_for(self._fetch_names(ids), self.NAME_TIMEOUT)
+        except HTTPClientError as error:
+            if error.status_code != HTTPStatus.NOT_FOUND or len(ids) == 1:
+                if error.status_code != HTTPStatus.NOT_FOUND:
+                    log.warning("ESI refused the name lookup for %s: %s", ids, error)
+                return []
+            # ESI rejects the whole request when one id is invalid; ask one by
+            # one so the valid ids still get their names.
+            results = await asyncio.gather(
+                *[self._fetch_names_safely([entity_id]) for entity_id in ids]
+            )
+            return [name for result in results for name in result]
+        except asyncio.TimeoutError:
+            log.warning("ESI name lookup timed out for %s id(s).", len(ids))
+        except Exception as error:  # pylint: disable=broad-except
+            log.warning("ESI name lookup failed for %s id(s): %r", len(ids), error)
+        return []
+
+    async def resolve_names(self, ids) -> dict[int, str]:
+        """Return the names of characters, corporations, alliances and stations.
+
+        Names come from the database cache; everything missing is asked from ESI
+        in one request and stored. Ids that cannot be resolved are returned as
+        ``"Unknown"`` and are not stored, so they are tried again next time.
+        """
+        wanted = list(dict.fromkeys(entity_id for entity_id in ids if entity_id))
+        if not wanted:
+            return {}
+
+        names = {
+            entry.entity_id: entry.entity_name
+            async for entry in models.EveEntityCache.objects.filter(
+                entity_id__in=wanted
+            )
+        }
+        missing = [entity_id for entity_id in wanted if entity_id not in names]
+        if missing:
+            batches = [
+                missing[start : start + self.NAME_BATCH]
+                for start in range(0, len(missing), self.NAME_BATCH)
+            ]
+            fetched = [
+                name
+                for batch in await asyncio.gather(
+                    *[self._fetch_names_safely(batch) for batch in batches]
+                )
+                for name in batch
+            ]
+            new = {name.id: name for name in fetched if name.id in missing}
+            if new:
+                await models.EveEntityCache.objects.abulk_create(
+                    [
+                        models.EveEntityCache(
+                            entity_id=name.id,
+                            entity_name=name.name[:64],
+                            category=name.category,
+                        )
+                        for name in new.values()
+                    ],
+                    ignore_conflicts=True,
+                )
+            for entity_id in missing:
+                names[entity_id] = (
+                    new[entity_id].name if entity_id in new else "Unknown"
+                )
+        return {entity_id: names[entity_id] for entity_id in wanted}
+
+    async def _name_of(self, entity_id: int | None) -> str | None:
+        if not entity_id:
+            return None
+        return (await self.resolve_names([entity_id]))[entity_id]
+
+    async def get_or_create_character_name(self, character_id: int):
+        """Get the name of a character."""
+        return await self._name_of(character_id)
+
+    async def get_or_create_corporation_name(self, corporation_id: int):
+        """Get the name of a corporation."""
+        return await self._name_of(corporation_id)
+
+    async def get_or_create_alliance_name(self, alliance_id: int):
+        """Get the name of an alliance."""
+        return await self._name_of(alliance_id)
+
+    async def get_region_id(self, system_id: int | None) -> int | None:
+        """Return the region of a solar system. Regions never change, so each
+        system is read from the database once."""
+        if not system_id:
+            return None
+        if system_id not in self._regions:
+            system = await models.MapSolarSystems.objects.filter(
+                solarSystemID=system_id
+            ).afirst()
+            if system is None or system.regionID is None:
+                return None
+            self._regions[system_id] = system.regionID
+        return self._regions[system_id]
+
+    # ------------------------------------------------------------------ universe
 
     @esi_request_handler("system_id")
     async def get_or_create_solar_system(
@@ -232,9 +222,11 @@ class OpenAPI:
             return query
         except models.MapSolarSystems.DoesNotExist:
             log.debug(f"Fetching solar system info for ID: {system_id}")
-            data = esi.client.Universe.GetUniverseSystemsSystemId(
-                system_id=system_id
-            ).result(use_etag=False)
+            data = await self._call(
+                lambda: esi.client.Universe.GetUniverseSystemsSystemId(
+                    system_id=system_id
+                )
+            )
             if data:
                 # Create a new MapSolarSystems instance
                 new_system = await models.MapSolarSystems.objects.acreate(
@@ -266,86 +258,6 @@ class OpenAPI:
             pass
         return None
 
-    async def get_or_create_character_name(self, character_id: int):
-        """Get or create character name with batch resolution."""
-        if not character_id:
-            return None
-
-        try:
-            query = await models.EveEntityCache.objects.aget(entity_id=character_id)
-            return query.entity_name
-        except models.EveEntityCache.DoesNotExist:
-            await self._queue_entity_task(character_id, "character")
-            future = self._get_or_create_entity_future("character", character_id)
-            name = await future
-
-            # DB persist
-            if not name == "Unknown":
-                try:
-                    await models.EveEntityCache.objects.acreate(
-                        entity_id=character_id,
-                        entity_name=name,
-                        category="character",
-                    )
-                except IntegrityError:
-                    pass
-                except Exception as e:  # pylint: disable=broad-except
-                    log.error(f"Error adding Character to Database: {e}")
-        return name
-
-    async def get_or_create_corporation_name(self, corporation_id: int):
-        """Get corporation name by ID with batch resolution."""
-        if not corporation_id:
-            return None
-
-        try:
-            query = await models.EveEntityCache.objects.aget(entity_id=corporation_id)
-            return query.entity_name
-        except models.EveEntityCache.DoesNotExist:
-            await self._queue_entity_task(corporation_id, "corporation")
-            future = self._get_or_create_entity_future("corporation", corporation_id)
-            name = await future
-            if not name == "Unknown":
-                try:
-                    await models.EveEntityCache.objects.acreate(
-                        entity_id=corporation_id,
-                        entity_name=name,
-                        category="corporation",
-                    )
-                except IntegrityError:
-                    pass
-                except Exception as e:  # pylint: disable=broad-except
-                    log.error(f"Error adding Corporation to Database: {e}")
-        return name
-
-    async def get_or_create_alliance_name(self, alliance_id: int):
-        """Get or create alliance name with batch resolution."""
-        if not alliance_id:
-            return None
-
-        try:
-            query = await models.EveEntityCache.objects.aget(entity_id=alliance_id)
-            return query.entity_name
-        except models.EveEntityCache.DoesNotExist:
-            await self._queue_entity_task(alliance_id, "alliance")
-            future = self._get_or_create_entity_future("alliance", alliance_id)
-            name = await future
-
-            if not name == "Unknown":
-                try:
-                    await models.EveEntityCache.objects.acreate(
-                        entity_id=alliance_id,
-                        entity_name=name,
-                        category="alliance",
-                    )
-                    log.debug(f"Added Alliance to Database: {name}")
-                except IntegrityError:
-                    pass
-                except Exception as e:  # pylint: disable=broad-except
-                    log.error(f"Error adding Alliance to Database: {e}")
-        return name
-
-    # Catch all for unknown ID
     async def get_celestial_info(self, celestial_id):
         """Fetch celestial info by ID from OpenAPI with DB caching."""
         # DB-Cache prüfen
@@ -386,27 +298,11 @@ class OpenAPI:
             log.debug(f"No celestial info found for ID: {celestial_id}")
             return None
 
-    @esi_request_handler("ids")
-    async def get_universe_names(self, ids):
-        """Fetches names for a list of IDs from the ESI universe names endpoint."""
-        if not ids:
-            return None
-
-        data = esi.client.Universe.PostUniverseNames(body=ids).result(use_etag=False)
-
-        # Return list of UniverseName
-        universe_names = [
-            UniverseName(category=item.category, id=item.id, name=item.name)
-            for item in data
-        ]
-
-        return universe_names
-
     @esi_request_handler("system_id")
     async def get_system_name(self, system_id):
-        data = esi.client.Universe.GetUniverseSystemsSystemId(
-            system_id=system_id
-        ).result(use_etag=False)
+        data = await self._call(
+            lambda: esi.client.Universe.GetUniverseSystemsSystemId(system_id=system_id)
+        )
         if data:
             return data.name
         return None
@@ -426,9 +322,11 @@ class OpenAPI:
             region_id (int): The ID of the region the constellation is in.
             systems (list): A list of solar system IDs in the constellation.
         """
-        return esi.client.Universe.GetUniverseConstellationsConstellationId(
-            constellation_id=constellation_id
-        ).result(use_etag=False)
+        return await self._call(
+            lambda: esi.client.Universe.GetUniverseConstellationsConstellationId(
+                constellation_id=constellation_id
+            )
+        )
 
     @esi_request_handler("planet_id")
     async def get_planet_info(
@@ -445,9 +343,9 @@ class OpenAPI:
             system_id (int): The ID of the solar system the planet is in.
             type_id (int): The ID of the planet type.
         """
-        return esi.client.Universe.GetUniversePlanetsPlanetId(
-            planet_id=planet_id
-        ).result(use_etag=False)
+        return await self._call(
+            lambda: esi.client.Universe.GetUniversePlanetsPlanetId(planet_id=planet_id)
+        )
 
     @esi_request_handler("moon_id")
     async def get_moon_info(self, moon_id) -> Union["UniverseMoonsMoonIdGet", None]:
@@ -461,8 +359,8 @@ class OpenAPI:
             position (Object): X, Y, Z coordinates of the moon.
             system_id (int): The ID of the solar system the moon is in.
         """
-        return esi.client.Universe.GetUniverseMoonsMoonId(moon_id=moon_id).result(
-            use_etag=False
+        return await self._call(
+            lambda: esi.client.Universe.GetUniverseMoonsMoonId(moon_id=moon_id)
         )
 
     @esi_request_handler("asteroid_id")
@@ -478,9 +376,11 @@ class OpenAPI:
             position (Object): X, Y, Z coordinates of the asteroid belt.
             system_id (int): The ID of the solar system the asteroid belt is in.
         """
-        return esi.client.Universe.GetUniverseAsteroidBeltsAsteroidBeltId(
-            asteroid_id=asteroid_id
-        ).result(use_etag=False)
+        return await self._call(
+            lambda: esi.client.Universe.GetUniverseAsteroidBeltsAsteroidBeltId(
+                asteroid_id=asteroid_id
+            )
+        )
 
     @esi_request_handler("stargate_id")
     async def get_stargate_info(
@@ -498,9 +398,11 @@ class OpenAPI:
             system_id (int): The ID of the solar system the stargate is in.
             type_id (int): The ID of the stargate type.
         """
-        return esi.client.Universe.GetUniverseStargatesStargateId(
-            stargate_id=stargate_id
-        ).result(use_etag=False)
+        return await self._call(
+            lambda: esi.client.Universe.GetUniverseStargatesStargateId(
+                stargate_id=stargate_id
+            )
+        )
 
     @esi_request_handler("star_id")
     async def get_star_info(self, star_id) -> Union["UniverseStarsStarIdGet", None]:
@@ -518,8 +420,8 @@ class OpenAPI:
             temperature (int): The surface temperature of the star in Kelvin.
             type_id (int): The ID of the star type.
         """
-        return esi.client.Universe.GetUniverseStarsStarId(star_id=star_id).result(
-            use_etag=False
+        return await self._call(
+            lambda: esi.client.Universe.GetUniverseStarsStarId(star_id=star_id)
         )
 
     @esi_request_handler("station_id")
@@ -544,9 +446,11 @@ class OpenAPI:
             system_id (int): The ID of the solar system the station is in.
             type_id (int): The ID of the station type.
         """
-        return esi.client.Universe.GetUniverseStationsStationId(
-            station_id=station_id
-        ).result(use_etag=False)
+        return await self._call(
+            lambda: esi.client.Universe.GetUniverseStationsStationId(
+                station_id=station_id
+            )
+        )
 
     # Item Stuff
     @esi_request_handler("item_id")
@@ -566,8 +470,8 @@ class OpenAPI:
             published (bool): Whether the item is published in the market.
             market_group_id (int): The ID of the market group the item belongs to.
         """
-        data = esi.client.Universe.GetUniverseTypesTypeId(type_id=item_id).result(
-            use_etag=False
+        data = await self._call(
+            lambda: esi.client.Universe.GetUniverseTypesTypeId(type_id=item_id)
         )
         if data:
             return data
@@ -622,9 +526,11 @@ class OpenAPI:
         if not killmail_id:
             return None
 
-        data = esi.client.Killmails.GetKillmailsKillmailIdKillmailHash(
-            killmail_id=killmail_id, killmail_hash=killmail_hash
-        ).result(use_etag=False)
+        data = await self._call(
+            lambda: esi.client.Killmails.GetKillmailsKillmailIdKillmailHash(
+                killmail_id=killmail_id, killmail_hash=killmail_hash
+            )
+        )
         if data:
             return data
         return None
@@ -633,7 +539,7 @@ class OpenAPI:
     async def server_info(self):
         """Fetch ESI server status info."""
 
-        data = esi.client.Status.GetStatus().result(use_etag=False)
+        data = await self._call(lambda: esi.client.Status.GetStatus())
         if data:
             return data
         return None
