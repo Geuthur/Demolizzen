@@ -11,7 +11,9 @@ bot's own panel.
 Banksystem, Levelsystem and Economy have a settings page each: interest and whether members may
 deposit and withdraw, whether and where level-ups are announced, and the economy event with its payout
 factor. Ticket System has one for its categories, log channel, staff roles and limits; the
-button members open tickets with is still posted from Discord with `/panel`.
+button members open tickets with is still posted from Discord with `/panel`. zKillboard has one
+that lists the server's killmail subscriptions with what each follows, and changes, removes or
+adds them.
 
 ## What it needs
 

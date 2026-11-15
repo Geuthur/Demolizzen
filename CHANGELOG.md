@@ -11,8 +11,15 @@ Section Order:
 ### Removed
 -->
 
-## Added
+## [3.0.0] - 2026-11-15
 
+Every server now chooses its modules, in Discord with `/panel` or in the new web panel, and the
+bot was rebuilt on a tested service layer. Read
+[Upgrading from 2.x](README.md#upgrading-from-2x) before updating a running bot.
+
+### Added
+
+- A README: what the bot does, installation, first steps, updating and upgrading from 2.x
 - Web panel: alliances and corporations on the zKillboard page show their logo from EVE's image server
 - Web panel: the zKillboard page shows what a followed id is (alliance, corporation, character, region, system) and its name, asked from EVE's public API
 - Web panel: zKillboard settings list a server's killmail subscriptions and change, remove or add them; the bot re-reads subscriptions once a minute
@@ -35,7 +42,7 @@ Section Order:
 - Guild Join Event for Bank Cog [c020a25](https://github.com/Geuthur/Demolizzen/commit/c020a25e6edb9686c46803ff482b0f836efc0ada)
 - Implement UniverseName dataclass for ESI data representation [PR](https://github.com/Geuthur/Demolizzen/pull/44)
 
-## Fixed
+### Fixed
 
 - Web panel: after an update browsers styled the new pages with the old stylesheet for up to an hour; its address now changes with its content
 - A click on a command entry Discord no longer has (the global one from before commands went per server, or one of a module just switched off) ended in "The application did not respond"; the command now runs or the member is told it is gone
@@ -87,9 +94,8 @@ Section Order:
 - Multiple Objects Returned [t7fa7fe8t](https://github.com/Geuthur/Demolizzen/commit/7fa7fe879105d2f34b4e3aa1f95b3906fd39fca9)
 - Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
 - Refine subscription handling and type hinting for better clarity and maintenance [2778692](https://github.com/Geuthur/Demolizzen/commit/277869204bd8f3ce8dd45957bacfaead4526a32c)
-- Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
 
-## Changed
+### Changed
 
 - Web panel: a more futuristic look with Bootstrap Icons (shipped with the panel, MIT): every module has an icon in a lit socket, the state is a badge with icon and word, buttons and notices carry icons
 - Web panel layout for wide screens: server navigation at the side, modules as a rack with a tally, dependency hints on modules, own typeface for headings
@@ -113,13 +119,12 @@ Section Order:
 - Refactor Killmail handling
 - Refactor ESI System and Use OpenAPI from `django-esi` [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Add django-esi dependency to pyproject.toml and requirements.txt [PR](https://github.com/Geuthur/Demolizzen/pull/58)
-- Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Enable debug mode for coverage tests in tox configuration [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Moving to R2Z2 Endpoint, as RedisQ will be discontinued on May 31, 2026 [R2Z2](<https://github.com/zKillboard/zKillboard/wiki/API-(R2Z2)>).
 - update classifiers to include Python 3.14 [9c0efb9](https://github.com/Geuthur/Demolizzen/commit/9c0efb9f1c38701015b8baa7a5d3b09db317d5dd)
 - pre-commit configuration: enhance hooks, update versions, and adjust exclusions [](https://github.com/Geuthur/Demolizzen/commit/7c623e3bcdad0dca970dc190bb5d24301cd98c85)
 
-## Removed
+### Removed
 
 - `/eve price` no longer offers Rens and Hek: the price service does not know these markets and answered with an error
 - `/admin economy mode`, `/admin economy set`, `/auth register` and `/owner force-ship-update`
