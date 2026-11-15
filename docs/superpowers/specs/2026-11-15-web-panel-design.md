@@ -87,6 +87,21 @@ as a Docker container whose port the host's nginx forwards.
 - Settings can be changed while the module is off; the page says that it is off.
 - Every change is logged with the user's id.
 
+## Behaviour (step 4: tickets, channels and roles)
+
+- The panel asks Discord for a server's channels and roles with the bot's token
+  (`GET /guilds/<id>/channels`, `/roles`) and keeps the answer for one minute. The token stays on
+  the server; pages only ever contain names and ids.
+- **Ticket System** gets a settings page: ticket category, archive category (optional), log
+  channel (optional), staff roles (up to 25), whether members may close and reopen their tickets,
+  archive after … days and open tickets per member (the same choices as in the bot).
+- **Levelsystem** gains the channel for level-up posts: the system channel or a text channel.
+- Only ids Discord listed for that server are accepted. A stored channel or role that no longer
+  exists is shown as such and may be kept; nothing is reset behind the admin's back.
+- If Discord cannot be asked, or no bot token is configured, the page says so and still saves the
+  settings that need no channel or role.
+- Posting the ticket button stays in Discord (`/panel`).
+
 ## Technical decisions
 
 - `demolizzen/web/`: settings on top of the bot's, URLs, async views, templates. Runs under ASGI
