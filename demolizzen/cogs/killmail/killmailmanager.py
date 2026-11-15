@@ -12,8 +12,8 @@ import discord
 from django.utils import timezone
 
 # Demolizzen
-from demolizzen import __package_name__, models
 from demolizzen.core.openapi import OpenAPI
+from demolizzen.services.killmails import KillFacts
 from demolizzen.utils.functions import make_embed
 
 if TYPE_CHECKING:
@@ -21,7 +21,9 @@ if TYPE_CHECKING:
     # Demolizzen
     from demolizzen.core.bot import Demolizzen
 
-logger = logging.getLogger(f"{__package_name__}")
+logger = logging.getLogger(__name__)
+
+UNKNOWN = "Unknown"
 
 
 @dataclass
@@ -53,25 +55,21 @@ class _KillmailCharacter(_KillmailBase):
     ship_type_id: int | None = None
     ship_name: str | None = None
 
-    async def fetch_name(self, esi: OpenAPI):
-        """Fetch the name from ESI."""
-        if self.character_id and not self.character_name:
-            self.character_name = await esi.get_or_create_character_name(
-                self.character_id
-            )
-        if self.corporation_id and not self.corporation_name:
-            self.corporation_name = await esi.get_or_create_corporation_name(
-                self.corporation_id
-            )
-        if self.alliance_id and not self.alliance_name:
-            self.alliance_name = await esi.get_or_create_alliance_name(self.alliance_id)
+    def entity_ids(self) -> list[int]:
+        """The ids whose names the killmail message shows."""
+        return [
+            entity_id
+            for entity_id in (self.character_id, self.corporation_id, self.alliance_id)
+            if entity_id
+        ]
 
-    async def fetch_ship_name(self, esi: OpenAPI):
-        """Fetch the ship name from ESI."""
-        if self.ship_type_id and not self.ship_name:
-            ship = await esi.item_info_db(self.ship_type_id)
-            if ship:
-                self.ship_name = ship.name
+    def apply_names(self, names: dict[int, str]) -> None:
+        if self.character_id:
+            self.character_name = names.get(self.character_id, UNKNOWN)
+        if self.corporation_id:
+            self.corporation_name = names.get(self.corporation_id, UNKNOWN)
+        if self.alliance_id:
+            self.alliance_name = names.get(self.alliance_id, UNKNOWN)
 
 
 @dataclass
@@ -136,101 +134,81 @@ class KillmailManager(_KillmailBase):
     region_name: str | None = None
     celestial: str | None = None
     _esi: OpenAPI = field(default=None, init=False, repr=False)
-    _celestial_lock: asyncio.Lock = field(
-        default_factory=asyncio.Lock, init=False, repr=False
-    )
 
     def __repr__(self):
         return f"<Killmail {self.id} at {self.time} in system {self.solar_system_id}>"
 
-    async def attackers_final_attacker(self):
-        """Get the final attacker from the list of attackers."""
-        if not self.attackers:
-            return None
-        for attacker in self.attackers:
-            if attacker.is_final_blow:
-                self.final_attacker = attacker
-                return attacker
-
-    async def attackers_corporation_ids(self):
-        """Get a list of unique corporation IDs from the attackers."""
-        corp_ids = set()
-        for attacker in self.attackers:
-            if attacker.corporation_id:
-                corp_ids.add(attacker.corporation_id)
-        return list(corp_ids)
-
-    async def attackers_alliance_ids(self):
-        """Get a list of unique alliance IDs from the attackers."""
-        alliance_ids = set()
-        for attacker in self.attackers:
-            if attacker.alliance_id:
-                alliance_ids.add(attacker.alliance_id)
-        return list(alliance_ids)
-
-    async def attackers_character_ids(self):
-        """Get a list of unique character IDs from the attackers."""
-        char_ids = set()
-        for attacker in self.attackers:
-            if attacker.character_id:
-                char_ids.add(attacker.character_id)
-        return list(char_ids)
-
-    async def killmail_region_id(self):
-        """Get the unique region ID from the solar system."""
-        if self.region_id:
-            return self.region_id
-
-        self.region_id = await self.fetch_region_id()
-
-        if self.region_id is None:
-            return False
-        return self.region_id
-
-    async def fetch_celestial(self):
-        async with self._celestial_lock:
-            if not self.celestial:
-                if not self.zkb.location_id:
-                    return "Unknown"
-                celestial = await self._esi.get_celestial_info(self.zkb.location_id)
-                if celestial:
-                    self.celestial = celestial.name
-                else:
-                    self.celestial = "Unknown"
-
-    async def fetch_solar_system_name(self):
-        """Fetch the solar system name from ESI."""
-        if not self.solar_system_name:
-
-            if not self.solar_system_id:
-                return "Unknown"
-
-            system = await self._esi.get_or_create_solar_system(self.solar_system_id)
-
-            if system is not None:
-                self.solar_system_name = system.solarSystemName
-            else:
-                self.solar_system_name = "Unknown"
-
-    async def fetch_region_id(self):
-        """Fetch the region ID from the solar system ID."""
-        if not self.region_id:
-            region = await self._esi.get_region_info(self.solar_system_id)
-            if region:
-                self.region_id = region.regionID
-                return self.region_id
-            return None
-
-    async def fetch_esi_data(self):
-        """Fetch all necessary data from ESI."""
-        await asyncio.gather(
-            self.attackers_final_attacker(),
-            self.fetch_region_id(),
-            self.fetch_solar_system_name(),
-            self.fetch_celestial(),
-            self.victim.fetch_name(self._esi),
-            self.victim.fetch_ship_name(self._esi),
+    def facts(self, region_id: int | None) -> KillFacts:
+        """What the subscription rules need to know about this killmail."""
+        return KillFacts(
+            killmail_id=self.id,
+            total_value=self.zkb.total_value or 0,
+            solar_system_id=self.solar_system_id,
+            region_id=region_id,
+            victim_corporation_id=self.victim.corporation_id,
+            victim_alliance_id=self.victim.alliance_id,
+            attacker_corporation_ids=frozenset(
+                a.corporation_id for a in self.attackers if a.corporation_id
+            ),
+            attacker_alliance_ids=frozenset(
+                a.alliance_id for a in self.attackers if a.alliance_id
+            ),
+            attacker_character_ids=frozenset(
+                a.character_id for a in self.attackers if a.character_id
+            ),
         )
+
+    async def _lookup(self, what: str, awaitable):
+        """Await a lookup; a failure is logged and leaves the value unknown."""
+        try:
+            return await awaitable
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            logger.warning("Killmail %s: %s lookup failed: %r", self.id, what, error)
+            return None
+
+    async def _ship_name(self, type_id: int | None) -> str:
+        ship = await self._lookup("ship", self._esi.item_info_db(type_id))
+        return getattr(ship, "name", None) or UNKNOWN
+
+    async def _system_name(self) -> str:
+        if not self.solar_system_id:
+            return UNKNOWN
+        system = await self._lookup(
+            "solar system", self._esi.get_or_create_solar_system(self.solar_system_id)
+        )
+        return getattr(system, "solarSystemName", None) or UNKNOWN
+
+    async def _celestial_name(self) -> str | None:
+        if not self.zkb.location_id:
+            return None
+        celestial = await self._lookup(
+            "celestial", self._esi.get_celestial_info(self.zkb.location_id)
+        )
+        return getattr(celestial, "name", None) or UNKNOWN
+
+    async def enrich(self) -> None:
+        """Look up everything the message shows. Runs once per killmail.
+
+        All names of the victim and of the final attacker are resolved in a
+        single request.
+        """
+        self.final_attacker = next(
+            (attacker for attacker in self.attackers if attacker.is_final_blow), None
+        )
+        shown = [self.victim] + ([self.final_attacker] if self.final_attacker else [])
+        ids = sorted(
+            {entity_id for person in shown for entity_id in person.entity_ids()}
+        )
+
+        names, self.solar_system_name, self.celestial, *ships = await asyncio.gather(
+            self._lookup("name", self._esi.resolve_names(ids)),
+            self._system_name(),
+            self._celestial_name(),
+            *(self._ship_name(person.ship_type_id) for person in shown),
+        )
+        for person, ship_name in zip(shown, ships):
+            person.apply_names(names or {})
+            person.ship_name = ship_name
 
     def content_info(self):
         info = [
@@ -243,8 +221,8 @@ class KillmailManager(_KillmailBase):
 
         return "\n".join(info)
 
-    async def info_victim(self):
-        """Collect additional information about the victim."""
+    def info_victim(self) -> str:
+        """Describe victim, final blow and number of attackers."""
         info = [
             f"**[{self.victim.character_name}](https://zkillboard.com/character/{self.victim.character_id}/)** ([{self.victim.corporation_name}](https://zkillboard.com/corporation/{self.victim.corporation_id}/)) lost their **`{self.victim.ship_name}`** in **`{self.solar_system_name}`** worth **`{self.zkb.total_value or 0:,}`** ISK",
         ]
@@ -259,73 +237,30 @@ class KillmailManager(_KillmailBase):
                 info.append(f"**Attackers: `{self.zkb.attacker_count}`**")
         return "\n".join(info)
 
-    async def send_embed(self, channel: discord.TextChannel, is_loss=False):
-        try:
-            await self.fetch_esi_data()
+    def build_embed(self, is_loss: bool = False) -> discord.Embed:
+        """The message for an enriched killmail."""
+        if self.victim.alliance_id:
+            title = self.victim.alliance_name
+            title_icon = f"https://images.evetech.net/alliances/{self.victim.alliance_id}/logo?size=64"
+            url = f"https://zkillboard.com/alliance/{self.victim.alliance_id}/"
+        else:
+            title = self.victim.corporation_name
+            title_icon = f"https://images.evetech.net/corporations/{self.victim.corporation_id}/logo?size=64"
+            url = f"https://zkillboard.com/corporation/{self.victim.corporation_id}/"
 
-            if self.final_attacker:
-                await asyncio.gather(
-                    self.final_attacker.fetch_name(self._esi),
-                    self.final_attacker.fetch_ship_name(self._esi),
-                )
-
-            color = "red" if is_loss else "green"
-            if self.victim.alliance_id:
-                title = self.victim.alliance_name
-                title_icon = f"https://images.evetech.net/alliances/{self.victim.alliance_id}/logo?size=64"
-                url = f"https://zkillboard.com/alliance/{self.victim.alliance_id}/"
-            else:
-                title = self.victim.corporation_name
-                title_icon = f"https://images.evetech.net/corporations/{self.victim.corporation_id}/logo?size=64"
-                url = (
-                    f"https://zkillboard.com/corporation/{self.victim.corporation_id}/"
-                )
-
-            embed = make_embed(
-                title=f"{title}",
-                msg_colour=color,
-                title_url=url,
-                subtitle=f"{self.victim.ship_name} destroyed in {self.solar_system_name}",
-                subtitle_url=f"https://zkillboard.com/kill/{self.id}/",
-                content=self.content_info(),
-                icon=title_icon,
-                fields={"Information": await self.info_victim()},
-                thumbnail=f"https://image.eveonline.com/Type/{self.victim.ship_type_id}_128.png",
-                footer=f"zKillboard • {self.time.strftime('%Y-%m-%d %H:%M EVE')}",
-                footer_icon="https://zkillboard.com/img/wreck.png",
-            )
-            await channel.send(embed=embed)
-        except discord.errors.Forbidden:
-            logger.info(
-                f"Bot in {channel.guild.name} has no permission to send messages in channel {channel.name} ({channel.id})"
-            )
-            allowed_channels = [
-                c
-                for c in channel.guild.channels
-                if isinstance(c, discord.TextChannel)
-                and c.permissions_for(channel.guild.me).send_messages
-            ]
-            if allowed_channels:
-                alternative_channel = allowed_channels[0]
-                try:
-                    await alternative_channel.send(embed=embed)
-                    await alternative_channel.send(
-                        f"❌ Permission ERROR: The killmail couldn't be sent to the channel - **<#{channel.id}>**"
-                    )
-                    return
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.info(
-                        f"Berechtigungsfehler Für Alle Channels: {exc}",
-                        exc_info=True,
-                    )
-        except discord.errors.NotFound:
-            logger.info(f"Channel {channel.name} ({channel.id}) was deleted.")
-            await models.ZKillboard.objects.filter(channel_id=channel.id).adelete()
-            logger.info(f"Removed Subscription for deleted channel {channel.id}.")
-            raise
-        except Exception as e:  # pylint: disable=broad-except
-            logger.error(f"Failed to send killmail embed: {e}", exc_info=True)
-            return
+        return make_embed(
+            title=f"{title}",
+            msg_colour="red" if is_loss else "green",
+            title_url=url,
+            subtitle=f"{self.victim.ship_name} destroyed in {self.solar_system_name}",
+            subtitle_url=f"https://zkillboard.com/kill/{self.id}/",
+            content=self.content_info(),
+            icon=title_icon,
+            fields={"Information": self.info_victim()},
+            thumbnail=f"https://image.eveonline.com/Type/{self.victim.ship_type_id}_128.png",
+            footer=f"zKillboard • {self.time.strftime('%Y-%m-%d %H:%M EVE')}",
+            footer_icon="https://zkillboard.com/img/wreck.png",
+        )
 
     @classmethod
     def _extract_victim_and_position(cls, killmail_data: dict):
@@ -431,114 +366,3 @@ class KillmailManager(_KillmailBase):
         killmail = KillmailManager(**params)
         killmail._esi = bot.esi_data
         return killmail
-
-
-class Subscription:
-    killmail_sent_per_channel = {}
-
-    def __init__(
-        self,
-        id_: int,
-        channel: discord.TextChannel,
-        threshold: int = None,
-        losses: bool = True,
-        group_id: int = None,
-    ):
-        self.id = id_
-        self.channel = channel
-
-        self.losses = losses
-        self.threshold = threshold
-
-        self.group_id = group_id if group_id != 6 else None
-        self.disabled = False
-
-    def __repr__(self):
-        id_ = self.id
-        chan = self.channel
-        th = self.threshold
-        loss = f" losses={self.losses}" if self.losses else ""
-        grp = f"group_id={self.group_id}" if self.group_id else ""
-        return f"<Subscription {id_} channel={chan} threshold={th}{loss}{grp}>"
-
-    async def mail(self, killmail: KillmailManager):
-        if self.disabled:
-            return
-
-        if await self.valid(killmail):
-            if self.group_id:
-                is_loss = self.group_id in [
-                    killmail.victim.corporation_id,
-                    killmail.victim.alliance_id,
-                ]
-            else:
-                is_loss = False
-
-            # Check if Killmail is already sent on current Channel
-            if self.channel.id not in Subscription.killmail_sent_per_channel:
-                Subscription.killmail_sent_per_channel[self.channel.id] = set()
-
-            if (
-                killmail.id
-                not in Subscription.killmail_sent_per_channel[self.channel.id]
-            ):
-                Subscription.killmail_sent_per_channel[self.channel.id].add(killmail.id)
-                asyncio.create_task(self._send_embed(killmail, is_loss))
-
-    async def _send_embed(self, killmail: KillmailManager, is_loss: bool):
-        """Send embed and disable this subscription permanently if the channel was deleted."""
-        try:
-            await killmail.send_embed(self.channel, is_loss)
-        except discord.errors.NotFound:
-            await self._disable_deleted_channel()
-
-    async def _disable_deleted_channel(self):
-        if self.disabled:
-            return
-
-        self.disabled = True
-        await models.ZKillboard.objects.filter(id=self.id).adelete()
-        Subscription.killmail_sent_per_channel.pop(self.channel.id, None)
-        logger.info(
-            "Disabled stale subscription %s because channel %s no longer exists.",
-            self.id,
-            self.channel.id,
-        )
-
-    async def valid(self, killmail: KillmailManager):
-        if killmail.zkb.total_value:
-            if self.threshold and killmail.zkb.total_value < self.threshold:
-                return False
-
-        # Get Global Killmail if group ID is none
-        if not self.group_id:
-            return True
-
-        # Get System ID Killmail
-        if self.group_id == killmail.solar_system_id:
-            return True
-
-        # Check if is Loss
-        if self.losses and self.group_id in [
-            killmail.victim.corporation_id,
-            killmail.victim.alliance_id,
-        ]:
-            return True
-
-        # Get Corporation Killmail
-        if self.group_id in await killmail.attackers_corporation_ids():
-            return True
-
-        # Get Alliance Killmail
-        if self.group_id in await killmail.attackers_alliance_ids():
-            return True
-
-        # Get Region Killmail
-        if self.group_id == await killmail.killmail_region_id():
-            return True
-
-        # Get Character Killmail - Only Kills possible no Losses
-        if self.group_id in await killmail.attackers_character_ids():
-            return True
-
-        return False

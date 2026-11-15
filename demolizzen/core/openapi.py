@@ -124,7 +124,7 @@ class OpenAPI:
                 *[self._fetch_names_safely([entity_id]) for entity_id in ids]
             )
             return [name for result in results for name in result]
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("ESI name lookup timed out for %s id(s).", len(ids))
         except Exception as error:  # pylint: disable=broad-except
             log.warning("ESI name lookup failed for %s id(s): %r", len(ids), error)
@@ -539,7 +539,7 @@ class OpenAPI:
     async def server_info(self):
         """Fetch ESI server status info."""
 
-        data = await self._call(lambda: esi.client.Status.GetStatus())
+        data = await self._call(esi.client.Status.GetStatus)
         if data:
             return data
         return None

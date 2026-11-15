@@ -255,3 +255,12 @@ class KillmailFeedTest(SimpleTestCase):
 
         for _ in range(5):
             self.assertGreaterEqual(await self.feed.step(), 1)
+
+    async def test_rate_limit_never_asks_for_an_immediate_retry(self):
+        await self.started()
+        for value in ("0", "-5"):
+            with self.subTest(value=value):
+                self.session.kills[100] = Answer(
+                    status=429, headers={"Retry-After": value}
+                )
+                self.assertEqual(await self.feed.step(), 1)

@@ -1,7 +1,6 @@
 """Reads killmails from zKillboard's R2Z2 feed, one sequence number at a time."""
 
 # Standard Library
-import asyncio
 import logging
 
 # Third Party
@@ -73,9 +72,7 @@ class KillmailFeed:
         """Do one request and return the seconds to wait before the next step."""
         try:
             return await self._step()
-        except asyncio.CancelledError:
-            raise
-        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        except (aiohttp.ClientError, TimeoutError) as error:
             logger.warning("Killmail feed is unreachable: %r", error)
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Killmail feed step failed")
@@ -97,6 +94,8 @@ class KillmailFeed:
                     retry_after = int(response.headers.get("Retry-After", RETRY_DELAY))
                 except (TypeError, ValueError):
                     retry_after = RETRY_DELAY
+                # "Retry-After: 0" must not turn into a tight loop.
+                retry_after = max(retry_after, 1)
             return response.status, data, retry_after
 
     async def _current_sequence(self, session):
@@ -153,8 +152,6 @@ class KillmailFeed:
             return
         try:
             await self._handle(data)
-        except asyncio.CancelledError:
-            raise
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception(
                 "Killmail %s (sequence %s) could not be processed; skipping it.",

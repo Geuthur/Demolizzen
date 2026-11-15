@@ -27,6 +27,12 @@ Section Order:
 
 ## Fixed
 
+- ESI requests blocked the whole bot while they ran; they now run in worker threads
+- Name resolution relied on a task table and an endless loop that could die silently; names are resolved directly with one batched request and a 15 second limit, unresolved names show as `Unknown`
+- Killmail feed requested the same killmail five times per second when processing it failed, ignored `Retry-After` and lost killmails after errors; it always moves on, waits 1 to 300 seconds on server and connection errors and continues at the same killmail afterwards
+- A killmail was looked up once per subscribed channel and names could wait up to 90 seconds; a killmail is checked against all subscriptions once, looked up once with a single name request, and nothing is looked up for killmails nobody subscribed to
+- Without send permission every killmail was posted into the first other writable channel together with an error line; the subscription now pauses, the server is told once in its main channel (otherwise the system channel) and posting resumes once the permission is back
+- Killmail subscriptions were deleted when their server was temporarily unavailable during the daily check; only subscriptions of deleted channels are removed
 - `/rank` for a member without a profile ended in a generic error
 - Experience could be lost when a member wrote messages in quick succession; experience is added with a single database update
 - Level-up and rank cards blocked the whole bot while images were downloaded and drawn; downloads are asynchronous with a 10 second and 8 MB limit, static images are cached and drawing runs in a worker thread
@@ -56,6 +62,7 @@ Section Order:
 
 ## Changed
 
+- `/killmail add` needs the Embed Links permission in the channel and allows each ID once per channel, whoever added it
 - Level rules moved to `demolizzen/services/levels.py`; messages that earn no experience no longer query the database
 - Daily, work and mission rules moved to `demolizzen/services/missions.py`; `demolizzen/models` no longer imports `discord`; test account cooldown overrides moved to `config.COOLDOWN_OVERRIDES`
 - Games, shop, economy and missions book all money through the bank service; shop purchases and item use moved to `demolizzen/services/shop.py`
@@ -81,6 +88,7 @@ Section Order:
 
 ## Removed
 
+- ESI name task queue (`EveEntityTask`, migration `0012`) and the 6-hour killmail memory cleanup
 - `/levelsystem_config set-mention` and the empty `/levelsystem` command group; level-up posts and their channel are set in `/panel`
 - `/bank create` (accounts are created automatically) and the `/bank_config` commands; bank settings are changed in `/panel`
 - Ticket task queue (`guild_ticket_tasks` table, migration `0010`) and the loading of all tickets at startup
