@@ -153,7 +153,7 @@ repos:
         name: PyUpgrade
         description: Upgrade syntax to newer versions of Python.
         args:
-          - --py310-plus # Minimum required Python version
+          - --py311-plus # Minimum required Python version
 
   - repo: https://github.com/pycqa/flake8
     rev: 7.3.0
@@ -190,7 +190,7 @@ repos:
         name: Black
         description: Format Python code.
         args:
-          - --target-version=py310 # Minimum required Python version
+          - --target-version=py311 # Minimum required Python version
 
   - repo: https://github.com/asottile/blacken-docs
     rev: 1.20.0
@@ -201,7 +201,7 @@ repos:
         additional_dependencies:
           - black==25.9.0  # https://github.com/psf/black/releases/latest
         args:
-          - --target-version=py310 # Minimum required Python version
+          - --target-version=py311 # Minimum required Python version
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 1.0.0
@@ -238,7 +238,7 @@ repos:
         name: Pylint
         description: Check for errors and code smells in Python code.
         args:
-          - --py-version=3.10  # Minimum required Python version
+          - --py-version=3.11  # Minimum required Python version
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.36.1

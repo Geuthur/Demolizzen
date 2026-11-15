@@ -419,7 +419,7 @@ class KillmailManager(_KillmailBase):
             "id": killmail_id,
             "time": timezone.datetime.strptime(
                 killmail_time, "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=datetime.timezone.utc),
+            ).replace(tzinfo=datetime.UTC),
             "victim": victim,
             "attackers": attackers,
             "position": position,
