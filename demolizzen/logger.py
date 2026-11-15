@@ -41,7 +41,7 @@ def init_logger(debug_flag=None):
     root_logger = logging.getLogger()
 
     if not root_logger.handlers:
-        # File Handler für App-Logs
+        # File handler for the app's logs
         fh = RotatingFileHandler(
             filename=Path(LOG_PATH, f"{__package__}.log"),
             encoding="utf-8",
@@ -57,7 +57,7 @@ def init_logger(debug_flag=None):
         sh.setFormatter(LOG_FORMAT)
         root_logger.addHandler(sh)
 
-        # Own Handler für discord.py
+        # Own handler for discord.py
         discord_fh = RotatingFileHandler(
             filename=Path(LOG_PATH, "discord.log"),
             encoding="utf-8",
@@ -73,7 +73,7 @@ def init_logger(debug_flag=None):
             False  # Ensure no propagation to root logger (no console)
         )
 
-        # Own Handler für aiopenapi3
+        # Own handler for aiopenapi3
         openapi_fh = RotatingFileHandler(
             filename=Path(LOG_PATH, "openapi.log"),
             encoding="utf-8",
@@ -87,7 +87,7 @@ def init_logger(debug_flag=None):
         openapi_logger.addHandler(openapi_fh)
         # openapi_logger.propagate = False  # Ensure no propagation to root logger (no console)
 
-        # Own Handler für httpx (ESI HTTP requests)
+        # Own handler for httpx (ESI HTTP requests)
         httpx_logger = logging.getLogger("httpx")
         httpx_logger.handlers.clear()
         httpx_logger.addHandler(openapi_fh)
@@ -95,7 +95,7 @@ def init_logger(debug_flag=None):
             False  # Ensure no propagation to root logger (no console)
         )
 
-    # Level je nach debug_flag
+    # Level depends on debug_flag
     if debug_flag == "debug":
         level = logging.DEBUG
     elif debug_flag == "info":

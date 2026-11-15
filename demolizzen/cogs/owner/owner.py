@@ -56,6 +56,8 @@ class Owner(BaseCog):
             )
             await ctx.respond(embed=embed, ephemeral=True)
             return
+        # Tell Discord about added, changed or removed commands.
+        await self.bot.sync_commands()
         embed = discord.Embed(
             description=f"Successfully loaded the `{cog}` cog.", color=0xBEBEFE
         )
@@ -81,6 +83,8 @@ class Owner(BaseCog):
             )
             await ctx.respond(embed=embed, ephemeral=True)
             return
+        # Tell Discord about added, changed or removed commands.
+        await self.bot.sync_commands()
         embed = discord.Embed(
             description=f"Successfully unloaded the `{cog}` cog.", color=0xBEBEFE
         )
@@ -107,6 +111,8 @@ class Owner(BaseCog):
             )
             await ctx.respond(embed=embed, ephemeral=True)
             return
+        # Tell Discord about added, changed or removed commands.
+        await self.bot.sync_commands()
         embed = discord.Embed(
             description=f"Successfully reloaded the `{cog}` cog.", color=0xBEBEFE
         )

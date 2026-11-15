@@ -28,6 +28,32 @@ class OwnerTest(SimpleTestCase):
     def said(self) -> str:
         return self.ctx.respond.await_args.args[0]
 
+    async def test_loading_modules_registers_their_commands_with_discord(self):
+        self.bot.sync_commands = AsyncMock()
+        actions = [
+            (self.cog.load, self.bot.load_extension),
+            (self.cog.unload, self.bot.unload_extension),
+            (self.cog.reload, self.bot.reload_extension),
+        ]
+        for command, action in actions:
+            with self.subTest(command=command.name):
+                self.bot.sync_commands.reset_mock()
+
+                await command.callback(self.cog, self.ctx, "games")
+
+                action.assert_called_once_with("demolizzen.cogs.games")
+                self.bot.sync_commands.assert_awaited_once_with()
+
+    async def test_failed_load_registers_nothing(self):
+        self.bot.sync_commands = AsyncMock()
+        self.bot.load_extension.side_effect = RuntimeError("broken")
+
+        await self.cog.load.callback(self.cog, self.ctx, "games")
+
+        self.bot.sync_commands.assert_not_awaited()
+        embed = self.ctx.respond.await_args.kwargs["embed"]
+        self.assertEqual(embed.description, "Could not load the `games` cog.")
+
     async def test_force_deposits_update_runs_the_interest(self):
         bank = SimpleNamespace(run_interest=AsyncMock(return_value=3))
         self.bot.get_cog.return_value = bank

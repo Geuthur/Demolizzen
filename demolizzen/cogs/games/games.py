@@ -65,9 +65,7 @@ class Games(BaseCog):
 
     @games.command()
     @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(5, 600, commands.BucketType.user)  # 5 per 10 minutes per member
     @option(
         "choose", description="Choose between", choices=["Rock", "Paper", "Scissors"]
     )
@@ -95,9 +93,7 @@ class Games(BaseCog):
 
     @games.command()
     @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(5, 600, commands.BucketType.user)  # 5 per 10 minutes per member
     @option(
         "amount", description="Specify the amount of Coins to bet in the slot machine."
     )
@@ -130,9 +126,7 @@ class Games(BaseCog):
 
     @games.command()
     @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(5, 600, commands.BucketType.user)  # 5 per 10 minutes per member
     @option("amount", description="Specify the amount of Coins to dice.")
     async def dice(self, ctx: discord.ApplicationContext, amount: int):
         """
@@ -202,14 +196,14 @@ class Games(BaseCog):
     )
     @option(
         "spin_duration",
-        description="Dauer der Animation in Sekunden (z.B. 5)",
+        description="Length of the animation in seconds (e.g. 5)",
         type=float,
         required=False,
         default=5.0,
     )
     @option(
         "end_hold",
-        description="Dauer wie lange das Endbild steht in Sekunden (z.B. 2)",
+        description="How long the final picture stays, in seconds (e.g. 2)",
         type=float,
         required=False,
         default=3.0,
@@ -248,7 +242,7 @@ class Games(BaseCog):
                     if member:
                         resolved_members.append(member)
                         continue
-                # Sonst nach Namen suchen
+                # Otherwise search by name
                 member = discord.utils.find(
                     lambda m, n=name: n in (m.display_name, m.name), guild_members
                 )
@@ -258,7 +252,7 @@ class Games(BaseCog):
                 await ctx.respond("No valid members found.")
                 return
 
-            # Sortiere Namen für konstante Farbreihenfolge
+            # Sort the names so the colours stay in the same order
             names = [m.display_name for m in resolved_members]
             names_sorted = sorted(names)
             base_colors = [

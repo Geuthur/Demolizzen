@@ -53,7 +53,7 @@ We use pre-commit hooks to ensure code quality and consistency. Please make sure
    pre-commit run pylint
    ```
 
-## Branching und Contributing via Pull Requests
+## Branching and Contributing via Pull Requests
 
 Before creating a pull request, make sure that you have forked the repository and are working on your fork. This ensures that your changes are isolated and do not affect the original repository until they are reviewed and merged.
 
@@ -146,3 +146,26 @@ python runtests.py demolizzen --debug-mode
 Tests use in-memory SQLite. Set `USE_MYSQL=1` to run them against MySQL, as tox and CI do.
 Service tests go to `demolizzen/tests/services/`, cog tests to `demolizzen/tests/cogs/`;
 `demolizzen/tests/helpers.py` provides stand-ins for Discord objects.
+
+## Updating a running bot
+
+Slash commands are registered with Discord when the bot starts. The normal update is therefore:
+
+```shell
+git pull
+pip install -e .
+python manage.py migrate
+```
+
+followed by a restart of the bot. Most logic lives in `demolizzen/services/` and
+`demolizzen/core/`, which only a restart reloads.
+
+The owner commands are for small changes without a restart:
+
+- `/owner reload <cog>` reloads the code of one cog package (`demolizzen/cogs/<cog>/`), nothing
+  else.
+- `/owner load <cog>` and `/owner unload <cog>` add or remove a cog.
+- `/owner migrate` applies pending database migrations.
+
+All three load commands register added, changed or removed slash commands with Discord
+afterwards.

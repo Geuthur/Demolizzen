@@ -23,9 +23,7 @@ class Core(BaseCog):
     )
 
     @botsettings.command()
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 3 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(3, 600, commands.BucketType.user)  # 3 per 10 minutes per member
     async def uptime(self, ctx: discord.ApplicationContext):
         """
         Show how long the bot has been running for

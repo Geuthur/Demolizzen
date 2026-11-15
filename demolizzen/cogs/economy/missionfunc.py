@@ -147,7 +147,7 @@ class MissionEvent(discord.ui.View):
         # pylint: disable=broad-except
         except Exception as e:
             self.ctx.bot.logger.error(
-                f"Fehler bei Mission Trigger Interaction {e}", exc_info=True
+                f"Error in mission trigger interaction {e}", exc_info=True
             )
         return True
 

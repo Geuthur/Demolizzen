@@ -92,7 +92,7 @@ class BagTest(CommandsTestCase):
         self.assertEqual(embed.title, "McAlice's Bag")
         self.assertEqual(
             [(field.name, field.value) for field in embed.fields],
-            [("Item 00", "Anzahl: 1"), ("Item 01", "Anzahl: 2")],
+            [("Item 00", "Quantity: 1"), ("Item 01", "Quantity: 2")],
         )
         self.assertFalse(embed.footer)
 
@@ -162,3 +162,23 @@ class RichestTest(CommandsTestCase):
             ctx.respond.await_args.args[0],
             "No users found in the database. Please try again later.",
         )
+
+
+class LanguageTest(CommandsTestCase):
+    def test_donate_replaces_the_german_command_name(self):
+        names = [command.name for command in self.cog.get_commands()]
+
+        self.assertIn("donate", names)
+        self.assertNotIn("spenden", names)
+
+    async def test_using_an_item_is_reported_in_english(self):
+        ctx = await self.ctx()
+        await self.fill_bag(1)
+        await UserBagItems.objects.filter(item_name="Item 00").aupdate(
+            item_type="tools", quantity=5
+        )
+
+        await self.cog.use.callback(self.cog, ctx, "Item 00", 2)
+
+        embed = ctx.respond.await_args.kwargs["embed"]
+        self.assertEqual(embed.description, "<@10>, uses 2 x Item 00")

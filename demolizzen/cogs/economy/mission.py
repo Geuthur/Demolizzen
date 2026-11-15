@@ -357,7 +357,7 @@ class TextAdventure(BaseCog):
             await ctx.respond(embed=em)
             return
 
-        # Pagination für alle Schiffe der Kategorie
+        # Pages for all ships of the category
         items_per_page = 10
         fields = []
         for data in shop_data:

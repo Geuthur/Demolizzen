@@ -16,9 +16,9 @@ class CommandsBase:
         self.bot = bot
 
     @commands.slash_command(
-        name="spenden", contexts=[discord.InteractionContextType.guild]
+        name="donate", contexts=[discord.InteractionContextType.guild]
     )
-    async def spenden(self, ctx):
+    async def donate(self, ctx):
         """
         Support the Bot Programmer with a small donation
         """
@@ -51,7 +51,7 @@ class CommandsBase:
         # An embed holds 25 fields at most.
         for item in items[:MAX_BAG_FIELDS]:
             embed.add_field(
-                name=item.name, value=f"Anzahl: {item.quantity}", inline=False
+                name=item.name, value=f"Quantity: {item.quantity}", inline=False
             )
         if len(items) > MAX_BAG_FIELDS:
             embed.set_footer(text=f"… and {len(items) - MAX_BAG_FIELDS} more")

@@ -27,6 +27,7 @@ Section Order:
 
 ## Fixed
 
+- `/owner load`, `unload` and `reload` did not register added, changed or removed commands with Discord
 - Economy event paid 0 coins when switched on without a factor, could take money with a negative factor and was lost on restart; it is stored per server with a factor from 1 to 10 (default 2, migration `0014`)
 - `/help`, `/bag`, `/richest`, `/use` and `/spenden` demanded a registration; profile and account are created on demand
 - `/bag` showed an empty message for an empty bag and failed with more than 25 items; `/richest` changed the spelling of names and loaded every account into memory
@@ -73,6 +74,7 @@ Section Order:
 
 ## Changed
 
+- English is the language of all texts: `/spenden` is now `/donate`, and the remaining German texts of `/use`, `/bag`, `/leaderboard` and `/games wheelofnames` are translated
 - The economy event is switched and its payout factor chosen in `/panel`
 - `/killmail add` needs the Embed Links permission in the channel and allows each ID once per channel, whoever added it
 - Level rules moved to `demolizzen/services/levels.py`; messages that earn no experience no longer query the database

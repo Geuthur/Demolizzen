@@ -35,21 +35,21 @@ class CommandsEconomy:
         """
         # Random Drink Text
         drinktext = [
-            f"genießt **`{item_name.capitalize()}`**.",
-            f"trinkt **`{item_name.capitalize()}`**.",
-            f"öffnet und ex't **`{item_name.capitalize()}`**.",
-            f"tornadot **`{item_name.capitalize()}`**.",
-            "🍺, Prost!",
+            f"enjoys **`{item_name.capitalize()}`**.",
+            f"drinks **`{item_name.capitalize()}`**.",
+            f"opens **`{item_name.capitalize()}`** and downs it in one go.",
+            f"shotguns **`{item_name.capitalize()}`**.",
+            "🍺, Cheers!",
         ]
         # Random Drink Text
         drinktext2 = [
-            f"schießt sich **`{amount}`** x **`{item_name.capitalize()}`**, oweia ich glaub das war zuviel 🤮!",
-            f"kann nicht genug bekommen und fängt an **`{amount}`** x **`{item_name.capitalize()}`** zu saufen.",
-            f"hat einen Kasten voll/er **`{item_name.capitalize()}`** und fängt an zu trinken.",
-            "... liegt am boden regungslos. 🥴🥴",
+            f"knocks back **`{amount}`** x **`{item_name.capitalize()}`**, oh dear, that was too much 🤮!",
+            f"cannot get enough and starts boozing **`{amount}`** x **`{item_name.capitalize()}`**.",
+            f"has a crate full of **`{item_name.capitalize()}`** and starts drinking.",
+            "... lies motionless on the floor. 🥴🥴",
         ]
 
-        # Überprüfe, ob die Menge positiv ist
+        # The amount must be positive
         if amount <= 0:
             em = discord.Embed(
                 title="",
@@ -103,6 +103,6 @@ class CommandsEconomy:
             em = discord.Embed(
                 title="",
                 color=discord.Color.teal(),
-                description=f"{ctx.author.mention}, benutzt {amount} x {item_name.capitalize()}",
+                description=f"{ctx.author.mention}, uses {amount} x {item_name.capitalize()}",
             )
         await ctx.respond(embed=em)

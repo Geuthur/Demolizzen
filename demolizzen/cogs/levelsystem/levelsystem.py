@@ -48,9 +48,7 @@ class Levelsystem(BaseCog):
         await ctx.defer()
         board = await levels.leaderboard(ctx.guild.id)
         if not board:
-            embed = discord.Embed(
-                description="❌ Aktuell ist die Liste nicht verfügbar"
-            )
+            embed = discord.Embed(description="❌ The list is currently not available")
             return await ctx.respond(embed=embed)
 
         pages = []

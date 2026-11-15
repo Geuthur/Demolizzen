@@ -230,7 +230,7 @@ class OpenAPI:
 
     async def get_celestial_info(self, celestial_id):
         """Fetch celestial info by ID from OpenAPI with DB caching."""
-        # DB-Cache prüfen
+        # Look in the database cache first
         try:
             query = await models.EveEntityCache.objects.aget(
                 entity_id=celestial_id, category="celestial"

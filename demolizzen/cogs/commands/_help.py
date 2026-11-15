@@ -32,7 +32,7 @@ class CommandsHelp:
             "Select a category from the dropdown below to see its commands."
         )
 
-        # Dynamisch Optionen für die Kategorien generieren
+        # Build the options for the categories
         options = []
         for plugin_name, cog in sorted(self.bot.cogs.items()):
             if hasattr(cog, "hidden") and cog.hidden:

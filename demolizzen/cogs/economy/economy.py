@@ -155,7 +155,7 @@ class Economy(BaseCog):
             )
             return await ctx.respond(embed=em)
 
-        # Mißlungerner Raid: the attacker pays the victim
+        # Failed raid: the attacker pays the victim
         if random_chance <= 70:
             try:
                 await bank.transfer(ctx.guild.id, *attacker, *victim, amount)

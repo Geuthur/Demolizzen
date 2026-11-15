@@ -149,4 +149,4 @@ class UseItemCommandTest(ShopCogTestCase):
 
         await commands.use.callback(commands, ctx, "Beer", 1)
 
-        self.assertNotIn("benutzt 1 x Beer", self.said(ctx))
+        self.assertNotIn("uses 1 x Beer", self.said(ctx))
