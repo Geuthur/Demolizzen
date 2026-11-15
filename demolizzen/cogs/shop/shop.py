@@ -1,19 +1,21 @@
-# Third Party
-from asgiref.sync import sync_to_async
-
 # Discord
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands, tasks
-
-# Django
-from django.db import transaction
+from discord.ext import tasks
 
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
+from demolizzen.services import bank, guilds
+from demolizzen.services import shop as shop_service
+from demolizzen.services.errors import (
+    BankError,
+    InsufficientFunds,
+    ItemNotFound,
+    ShopError,
+)
 from demolizzen.utils.functions import get_command_mention
 
 
@@ -65,21 +67,9 @@ class Shop(BaseCog):
         return [item.name for item in self._shop if search_terms in item.name.lower()]
 
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
-        try:
-            user = await models.UserProfile.objects.select_related(
-                "bank_account", "bags"
-            ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
-            ctx.user_profile = user
-            ctx.user_bank_account = user.bank_account
-            self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
-        except models.UserProfile.DoesNotExist as exc:
-            raise commands.CheckFailure(
-                f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
-            ) from exc
-        except models.UserBankAccount.DoesNotExist as exc:
-            raise commands.CheckFailure(
-                f"UserBankAccount does not exist. Please create a bank account first. {get_command_mention(bot=self.bot, cog='Bank', slash_command='bank', slash_command_group='create')} "
-            ) from exc
+        # Members need no registration: profile and bank account are created on demand.
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        await bank.ensure_account(ctx.guild.id, ctx.author.id, ctx.author.display_name)
 
     @shop.command(name="price")
     @option(
@@ -209,74 +199,25 @@ class Shop(BaseCog):
         """
         Buy a specific item
         """
-        em = discord.Embed(
-            title="Shop",
-            color=discord.Color.teal(),
-            description="",
-        )
-
-        async def buy_item(
-            item_name,
-            user_profile: models.UserProfile,
-        ):
-            try:
-                shop_item = await models.EconomyShop.objects.aget(
-                    name__iexact=item_name
-                )
-            except models.EconomyShop.DoesNotExist:
-                return [False, 1]  # Item not found
-
-            try:
-                if user_profile.bank_account.wallet < (shop_item.price * amount):
-                    return [False, 2]  # Not enough money
-                item = await user_profile.bags.items.aget(item_name=item_name)
-                item.quantity += amount
-            except models.UserBag.DoesNotExist:
-                user_bag = await models.UserBag.objects.select_related("items").acreate(
-                    user=user_profile
-                )
-                item = user_bag.items.aget(item_name=item_name)
-            except models.UserBagItems.DoesNotExist:
-                item = await models.UserBagItems.objects.acreate(
-                    user_bag=user_profile.bags,
-                    item_name=shop_item.name,
-                    item_type=shop_item.shop_type,
-                    quantity=amount,
-                )
-
-            def save_transaction():
-                with transaction.atomic():
-                    user_profile.bank_account.wallet -= shop_item.price * amount
-                    user_profile.bank_account.save()
-                    item.save()
-                    return True
-                return False
-
-            bought = await sync_to_async(save_transaction)()
-            if bought:
-                return [True, 0]
-            return [False, 2]  # Transaction failed
-
-        response = await buy_item(item_name=item, user_profile=ctx.user_profile)
-
-        if not response[0]:
-            if response[1] == 1:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, The Item `{item}` was not found!",
-                )
-            if response[1] == 2:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You have not enough :coin: for **`{item}`**",
-                )
-
-        if response[0]:
-            em = discord.Embed(
-                title="",
-                color=discord.Color.teal(),
-                description=f"{ctx.author.mention}, Buy {amount} x **`{item}`**",
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        try:
+            purchase = await shop_service.buy(
+                ctx.guild.id, ctx.author.id, ctx.author.display_name, item, amount
             )
+        except ItemNotFound:
+            color = discord.Color.red()
+            text = f"The Item `{item}` was not found!"
+        except InsufficientFunds:
+            color = discord.Color.red()
+            text = f"You have not enough :coin: for **`{item}`**"
+        except (ShopError, BankError) as error:
+            color = discord.Color.red()
+            text = error.message
+        else:
+            color = discord.Color.teal()
+            text = f"Buy {purchase.quantity} x **`{purchase.item_name}`**"
+
+        em = discord.Embed(
+            title="", color=color, description=f"{ctx.author.mention}, {text}"
+        )
         return await ctx.respond(embed=em)

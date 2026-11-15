@@ -8,6 +8,8 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen import models
+from demolizzen.services import shop as shop_service
+from demolizzen.services.errors import ItemNotOwned, NotEnoughItems, ShopError
 
 
 # Automatische auswahl für Tasche von jeweiligen Discord User
@@ -69,47 +71,29 @@ class CommandsEconomy:
             await ctx.respond(embed=em)
             return
 
-        # Get User Bag Item
+        # Take the items out of the bag
         try:
-            user_bag_items = await models.UserBagItems.objects.aget(
-                user_bag=ctx.user_profile.bags,
-                item_name=item_name,
+            used = await shop_service.use_item(
+                ctx.guild.id, ctx.author.id, ctx.author.display_name, item_name, amount
             )
-        except models.UserBag.DoesNotExist:
+        except ItemNotOwned:
+            problem = f"You don't have `{item_name.capitalize()}` in your bag"
+        except NotEnoughItems:
+            problem = f"You don't have enough `{item_name.capitalize()}` in your bag"
+        except ShopError as error:
+            problem = error.message
+        else:
+            problem = None
+        if problem is not None:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, Your Bag is empty... Buy something with /buy",
-            )
-            await ctx.respond(embed=em)
-            return
-        except models.UserBagItems.DoesNotExist:
-            em = discord.Embed(
-                title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have `{item_name.capitalize()}` in your bag",
-            )
-            await ctx.respond(embed=em)
-            return
-
-        # Überprüfe, ob genug Items vorhanden sind
-        if user_bag_items.quantity < amount:
-            em = discord.Embed(
-                title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have enough `{item_name.capitalize()}` in your bag",
+                description=f"{ctx.author.mention}, {problem}",
             )
             await ctx.respond(embed=em)
             return
 
-        # Aktualisiere die Menge des Items im Bag
-        changed_quantity = user_bag_items.quantity - amount
-        user_bag_items.quantity = changed_quantity
-
-        # Update the item quantity in the database
-        await user_bag_items.asave()
-
-        if user_bag_items.item_type == "drink":
+        if used.item_type == "drink":
             if amount <= 1:
                 em = discord.Embed(
                     title="",
