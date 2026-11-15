@@ -1,0 +1,28 @@
+# Runs the Demolizzen bot. Settings come from .env (see .env.example).
+#
+#   docker compose -f docker-compose.bot.yml up -d --build
+#
+# Never run two bots with the same token: stop the old one first.
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    image: demolizzen-bot
+    restart: unless-stopped
+    # Passes stop signals on and cleans up after worker processes.
+    init: true
+    env_file: .env
+    extra_hosts:
+      # Lets the container reach a database on the Docker host itself:
+      # DATABASE_HOST=host.docker.internal
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Logs outlive the container: docker compose -f docker-compose.bot.yml logs
+      # shows the console, this volume keeps the log files.
+      - bot-logs:/app/demolizzen/logs
+    # Time to close the connection to Discord and the database.
+    stop_grace_period: 30s
+
+volumes:
+  bot-logs:

@@ -1,4 +1,5 @@
 # Standard Library
+import os
 import traceback
 from collections import Counter
 from functools import cached_property
@@ -16,6 +17,7 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import config, logger
+from demolizzen.core import extensions
 from demolizzen.core.command_scope import CommandScope
 from demolizzen.core.openapi import OpenAPI
 from demolizzen.services import guilds
@@ -42,7 +44,9 @@ class Demolizzen(commands.Bot):
         self.config = config
         self.token = config.BOT_TOKEN
         self.req_perms = discord.Permissions(config.BOT_PERMISSIONS)
-        self.preload_ext = config.PRELOAD_EXTENSIONS
+        self.preload_ext = extensions.with_extra(
+            config.PRELOAD_EXTENSIONS, os.getenv(extensions.SETTING)
+        )
         self.logger = logger.init_logger(debug_flag="info")
         self.launch_time = timezone.now()
         self._connected_once = False

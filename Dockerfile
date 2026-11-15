@@ -10,7 +10,8 @@ RUN apt-get update \
         build-essential default-libmysqlclient-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-COPY pyproject.toml README.md ./
+# Everything pyproject.toml names: without the licence file the build stops.
+COPY pyproject.toml README.md LICENSE ./
 COPY demolizzen ./demolizzen
 RUN pip wheel --no-cache-dir --wheel-dir /wheels ".[web]"
 
