@@ -5,11 +5,12 @@ import logging
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
+from discord.ext import tasks
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
-from demolizzen.services import bank, guilds
+from demolizzen.services import bank, cog_settings, guilds
 from demolizzen.services.errors import BankError
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,43 @@ class Bank(BaseCog):
         super().__init__(bot)
         self.title = "Banksystem"
         self.alias = "bank"
+        self.interest.start()
+
+    def cog_unload(self):
+        self.interest.cancel()
+
+    @tasks.loop(hours=6)
+    async def interest(self):
+        """Check a few times a day whether a guild's weekly interest is due."""
+        try:
+            await self.run_interest()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Bank interest run failed")
+
+    @interest.before_loop
+    async def before_interest(self):
+        await self.bot.wait_until_ready()
+
+    async def run_interest(self) -> int:
+        """Pay interest in every guild that is due and has the bank enabled.
+
+        Returns the number of guilds that were paid.
+        """
+        guild_ids = await cog_settings.enabled_guild_ids(
+            self.key, [guild.id for guild in self.bot.guilds]
+        )
+        served = 0
+        for guild_id in await bank.due_guild_ids(guild_ids):
+            try:
+                accounts = await bank.pay_interest(guild_id)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception("Paying interest failed for guild %s", guild_id)
+                continue
+            served += 1
+            logger.info(
+                "Paid interest to %s account(s) in guild %s", accounts, guild_id
+            )
+        return served
 
     bank = SlashCommandGroup(
         "bank", "Banksystem", contexts=[discord.InteractionContextType.guild]

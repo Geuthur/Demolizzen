@@ -1,6 +1,6 @@
 # Standard Library
 import inspect
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Django
 from django.test import SimpleTestCase, TestCase
@@ -21,7 +21,8 @@ class BankCogTestCase(TestCase):
         self.alice = make_member(10, "alice", guild=self.guild)
         self.bob = make_member(11, "bob", guild=self.guild)
         self.alice.mention, self.bob.mention = "<@10>", "<@11>"
-        self.cog = Bank(MagicMock())
+        with patch("discord.ext.tasks.Loop.start"):
+            self.cog = Bank(MagicMock())
         self.admin = BankAdmin(MagicMock())
 
     def ctx(self, author=None):

@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Bank settings page in `/panel` (interest per week, deposits and withdrawals on/off); `allow_deposits` and `allow_withdrawals` are now enforced
 - Ticket subject and description form, `Open ticket` button message, transcript of deleted tickets in a log channel, ticket settings page in `/panel`
 - `/panel`: guild admins enable and disable modules for their server, with a confirmation when dependent modules are switched along
 - `BaseCog` as common base of all cogs: commands and guild events of a cog are skipped in guilds that disabled it
@@ -25,6 +26,9 @@ Section Order:
 
 ## Fixed
 
+- `/bank_admin` commands no longer fail for members without a profile; sending money to a member without an account creates it
+- Bank bookings could lose or duplicate money when two commands ran at the same time; every booking now runs on locked rows in the database
+- Bank interest rate was stored as a percentage but applied as a factor (a rate of 5 paid 500%); rates are now fractions and stored values of 1 or more are converted (migration `0011`)
 - `/games slots` win message names the doubled bet that is actually paid out
 - `/help` hides admin-only commands such as `/panel` from members; start banner is printed on first connect
 - `/games slots` and `/games dice` failed on every call because of a removed database helper
@@ -39,6 +43,7 @@ Section Order:
 
 ## Changed
 
+- Bank logic moved to `demolizzen/services/bank.py`; weekly interest is paid by a single database update and checked every six hours
 - Ticket channels are named `ticket-0042-name` while open and `closed-0042-name` when closed; members are limited to one open ticket by default
 - Ticket system rebuilt on the service layer: permissions are enforced by one rights table (claim: staff, close/reopen: staff or the creator if allowed, delete: admins), buttons and channel name follow the stored ticket state, ticket numbers are allocated atomically
 - Drop Python 3.10; Python 3.11 or newer is required
@@ -60,6 +65,7 @@ Section Order:
 
 ## Removed
 
+- `/bank create` (accounts are created automatically) and the `/bank_config` commands; bank settings are changed in `/panel`
 - Ticket task queue (`guild_ticket_tasks` table, migration `0010`) and the loading of all tickets at startup
 - `/ticket_config` commands; ticket settings are changed in `/panel`
 - Removed Cache Logic in Killmail Cog
