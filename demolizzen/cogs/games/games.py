@@ -14,14 +14,17 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.models import UserBankAccount
 from demolizzen.utils.functions import application_cooldown, get_command_mention
 
 
-class Games(commands.Cog):
+class Games(BaseCog):
     """
     Play games, but be careful not to gamble away everything.
     """
+
+    key = "games"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

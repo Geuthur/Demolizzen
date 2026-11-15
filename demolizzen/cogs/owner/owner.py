@@ -14,10 +14,13 @@ from discord.ext import commands
 from demolizzen.cogs.banksystem import Bank
 from demolizzen.cogs.economy import Economy
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 
-class Owner(commands.Cog):
+class Owner(BaseCog):
     """Owner Only Commands."""
+
+    key = "owner"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

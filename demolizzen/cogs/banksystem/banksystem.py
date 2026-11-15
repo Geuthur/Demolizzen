@@ -8,7 +8,6 @@ from asgiref.sync import sync_to_async
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands
 
 # Django
 from django.db import IntegrityError, transaction
@@ -17,14 +16,17 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 logger = logging.getLogger(__name__)
 
 
-class Bank(commands.Cog):
+class Bank(BaseCog):
     """
     Save you money, Deposit it or Withdraw it watch out of other Players...
     """
+
+    key = "banksystem"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

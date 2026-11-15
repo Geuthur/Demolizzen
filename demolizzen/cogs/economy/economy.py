@@ -18,14 +18,17 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.utils.functions import get_command_mention
 
 logger = logging.getLogger(__name__)
 
 
 # pylint: disable=too-many-public-methods
-class Economy(commands.Cog):
+class Economy(BaseCog):
     """All about economy"""
+
+    key = "economy"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

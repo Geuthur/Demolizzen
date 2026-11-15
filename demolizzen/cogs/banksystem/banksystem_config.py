@@ -14,14 +14,17 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog, guild_listener
 
 logger = logging.getLogger(__name__)
 
 
-class BankConfig(commands.Cog):
+class BankConfig(BaseCog):
     """
     Cog for managing bank configuration settings.
     """
+
+    key = "banksystem"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
@@ -40,7 +43,7 @@ class BankConfig(commands.Cog):
     def cog_unload(self):
         self.deposits.cancel()
 
-    @commands.Cog.listener()
+    @guild_listener()
     async def on_guild_join(self, guild: discord.Guild):
         max_retries = 3
         for attempt in range(1, max_retries + 1):

@@ -14,6 +14,7 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.utils.autocomplete import search_items
 from demolizzen.utils.functions import application_cooldown, format_number
 from demolizzen.utils.pricehandler import PriceHandler
@@ -21,7 +22,7 @@ from demolizzen.utils.pricehandler import PriceHandler
 log = logging.getLogger("main")
 
 
-class EveOnline(commands.Cog):
+class EveOnline(BaseCog):
     """
     All EVE-Online relevant commands.
     """
@@ -31,6 +32,8 @@ class EveOnline(commands.Cog):
     )
 
     # pylint: disable=too-many-instance-attributes
+    key = "eveonline"
+
     def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.title = "EVEOnline"

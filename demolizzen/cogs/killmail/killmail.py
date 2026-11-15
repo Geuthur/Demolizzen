@@ -16,7 +16,7 @@ from aiohttp import (
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands, tasks
+from discord.ext import tasks
 from discord.ui import View
 
 # Django
@@ -32,6 +32,7 @@ from demolizzen.constants import (
 )
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog, guild_listener
 
 from .killmailmanager import KillmailManager, Subscription
 
@@ -46,10 +47,12 @@ class MailProcessingError(Exception):
     pass
 
 
-class Killmail(commands.Cog):
+class Killmail(BaseCog):
     """
     Killboard Fetcher - Send new Killmails from zKill
     """
+
+    key = "killmail"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot
@@ -76,7 +79,7 @@ class Killmail(commands.Cog):
         self.clean_subscriptions.cancel()
         self.zkillboard_watcher.cancel()
 
-    @commands.Cog.listener()
+    @guild_listener()
     async def on_guild_leave(self, guild: discord.Guild):
         """Remove all subscriptions for a guild when the bot leaves it."""
         try:

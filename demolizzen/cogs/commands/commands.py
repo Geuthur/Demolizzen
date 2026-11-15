@@ -6,13 +6,16 @@ from discord.ext import commands
 from demolizzen import models
 from demolizzen.cogs.commands import _base, _economy, _help
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.utils.functions import get_command_mention
 
 
 class Commands(
-    _base.CommandsBase, _help.CommandsHelp, _economy.CommandsEconomy, commands.Cog
+    _base.CommandsBase, _help.CommandsHelp, _economy.CommandsEconomy, BaseCog
 ):
     """A list of commands that can help you."""
+
+    key = "commands"
 
     def __init__(self, bot: Demolizzen, *args, **kwargs):
         super().__init__(bot, *args, **kwargs)

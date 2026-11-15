@@ -5,7 +5,6 @@ import logging
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import commands
 
 # Django
 from django.utils import timezone
@@ -14,14 +13,17 @@ from django.utils import timezone
 from demolizzen import models
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 logger = logging.getLogger(__name__)
 
 
-class BankAdmin(commands.Cog):
+class BankAdmin(BaseCog):
     """
     Cog for administering bank accounts.
     """
+
+    key = "banksystem"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

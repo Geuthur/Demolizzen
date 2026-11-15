@@ -10,11 +10,14 @@ from discord.ext.pages import Paginator
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.utils.functions import application_cooldown
 
 
-class Core(commands.Cog):
+class Core(BaseCog):
     """General bot functions."""
+
+    key = "core"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

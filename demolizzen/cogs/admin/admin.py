@@ -11,12 +11,15 @@ from django.utils import timezone
 from demolizzen.config import EVENTS_SERVER
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 
-class Admin(commands.Cog):
+class Admin(BaseCog):
     """
     Secure the Server with automated Moderation Tools
     """
+
+    key = "admin"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

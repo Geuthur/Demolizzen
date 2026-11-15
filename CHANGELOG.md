@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- `BaseCog` as common base of all cogs: commands and guild events of a cog are skipped in guilds that disabled it
 - Cog registry (`demolizzen/core/registry.py`) and per-guild cog settings service with dependency handling (Economy, Shop and Games require the Banksystem)
 - Open API Log [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - On Member Update Listener [PR](https://github.com/Geuthur/Demolizzen/pull/50)

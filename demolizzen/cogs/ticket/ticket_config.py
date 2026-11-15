@@ -13,6 +13,7 @@ from demolizzen.cogs.ticket._ticketprocess import ChannelUpdateProcessor
 from demolizzen.cogs.ticket._ticketview import TicketControlView
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.models.guild import (
     GuildTicket,
     GuildTicketSettings,
@@ -21,8 +22,10 @@ from demolizzen.models.guild import (
 logger = logging.getLogger(__name__)
 
 
-class TicketSystemConfig(commands.Cog):
+class TicketSystemConfig(BaseCog):
     """Ticket Configuration Cog"""
+
+    key = "ticket"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

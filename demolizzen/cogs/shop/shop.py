@@ -13,13 +13,16 @@ from django.db import transaction
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.utils.functions import get_command_mention
 
 
-class Shop(commands.Cog):
+class Shop(BaseCog):
     """
     You have Coins? Here you have a lot of choices, Happy Shopping!
     """
+
+    key = "shop"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

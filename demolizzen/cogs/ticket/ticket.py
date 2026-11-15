@@ -9,6 +9,7 @@ from discord.ext import commands
 # Demolizzen
 from demolizzen.cogs.ticket._ticketview import TicketControlView
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.models.guild import (
     GuildTicket,
     GuildTicketSettings,
@@ -27,8 +28,10 @@ THREAD_EMBED = Embed(
 logger = logging.getLogger(__name__)
 
 
-class TicketSystem(commands.Cog):
+class TicketSystem(BaseCog):
     """Help Ticket Cog Things"""
+
+    key = "ticket"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

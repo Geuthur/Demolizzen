@@ -16,11 +16,14 @@ from demolizzen.config import (
 )
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog, guild_listener
 from demolizzen.models import GuildProfile, UserProfile
 from demolizzen.utils.functions import application_cooldown, get_command_mention
 
 
-class Levelsystem(commands.Cog):
+class Levelsystem(BaseCog):
+    key = "levelsystem"
+
     def __init__(self, bot: "Demolizzen"):
         self.bot = bot
         self.title = "Levelsystem"
@@ -157,7 +160,7 @@ class Levelsystem(commands.Cog):
     # ---------------------------- Listener ----------------------------
     # ---------------------------- Listener ----------------------------
 
-    @commands.Cog.listener()
+    @guild_listener()
     async def on_message(self, ctx: discord.Message):
         if ctx.guild and not ctx.author.bot:
             # Check if the Guild Profile exists
@@ -228,7 +231,7 @@ class Levelsystem(commands.Cog):
             except Exception as e:
                 self.bot.logger.error(f"Fehler bei On Message: {e}", exc_info=True)
 
-    @commands.Cog.listener()
+    @guild_listener()
     async def on_guild_channel_delete(self, channel: discord.TextChannel):
         try:
             guild_profile = await GuildProfile.objects.aget(guild_id=channel.guild.id)

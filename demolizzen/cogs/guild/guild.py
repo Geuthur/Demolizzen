@@ -10,16 +10,19 @@ from discord.ext import commands, tasks
 # Demolizzen
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 from demolizzen.services import guilds
 from demolizzen.utils.constants import PERMS_MAP
 
 logger = logging.getLogger(__name__)
 
 
-class Guild(commands.Cog):
+class Guild(BaseCog):
     """
     Manage your Guild with automated Tools
     """
+
+    key = "guild"
 
     def __init__(self, bot: Demolizzen):
         self.bot = bot

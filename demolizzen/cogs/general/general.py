@@ -3,16 +3,19 @@ from asgiref.sync import sync_to_async
 
 # Discord
 import discord
-from discord.ext import commands, tasks
+from discord.ext import tasks
 
 # Django
 from django.db import DatabaseError, connection
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 
-class General(commands.Cog):
+class General(BaseCog):
+    key = "general"
+
     def __init__(self, bot: Demolizzen):
         self.bot = bot
         self.status_checker.start()
