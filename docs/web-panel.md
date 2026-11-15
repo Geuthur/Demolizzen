@@ -20,15 +20,15 @@ follow.
 
 Set in `.env` (see `.env.example`):
 
-| Variable                                          | Meaning                                                                 |
-| ------------------------------------------------- | ----------------------------------------------------------------------- |
-| `SECRET_KEY`                                      | Long random text. Signs the session cookies; changing it signs everyone out. |
-| `DATABASE_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_NAME` | The bot's database.                                               |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`      | OAuth2 client of the Discord application.                               |
-| `WEB_BASE_URL`                                    | Where browsers reach the panel, e.g. `https://panel.example.com`.       |
-| `WEB_ALLOWED_HOSTS`                               | Further host names, comma separated. Optional.                          |
-| `WEB_DEBUG`                                       | `1` only for local development.                                         |
-| `PANEL_BIND`, `PANEL_PORT`                        | Address and port docker compose publishes. Default `127.0.0.1:8000`.    |
+| Variable                                                | Meaning                                                                      |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `SECRET_KEY`                                            | Long random text. Signs the session cookies; changing it signs everyone out. |
+| `DATABASE_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_NAME` | The bot's database.                                                          |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`            | OAuth2 client of the Discord application.                                    |
+| `WEB_BASE_URL`                                          | Where browsers reach the panel, e.g. `https://panel.example.com`.            |
+| `WEB_ALLOWED_HOSTS`                                     | Further host names, comma separated. Optional.                               |
+| `WEB_DEBUG`                                             | `1` only for local development.                                              |
+| `PANEL_BIND`, `PANEL_PORT`                              | Address and port docker compose publishes. Default `127.0.0.1:8000`.         |
 
 The panel does not need `BOT_TOKEN` yet. Leave it empty on the machine that only runs the panel.
 
