@@ -5,7 +5,7 @@ import discord
 
 # Demolizzen
 from demolizzen import config
-from demolizzen.core import registry
+from demolizzen.core import registry, settings_pages
 from demolizzen.services import cog_settings, guilds
 from demolizzen.services.errors import DependencyConflict
 
@@ -90,6 +90,10 @@ class PanelView(discord.ui.View):
             label="Cancel", style=discord.ButtonStyle.secondary, row=0
         )
         self.cancel_button.callback = self.cancel
+        self.settings_button = discord.ui.Button(
+            label="Settings", emoji="⚙️", style=discord.ButtonStyle.primary, row=1
+        )
+        self.settings_button.callback = self.open_settings
         self._build()
 
     def _build(self) -> None:
@@ -116,6 +120,13 @@ class PanelView(discord.ui.View):
         self.add_item(self.select)
         self.add_item(self.enable_button)
         self.add_item(self.disable_button)
+        # Modules may contribute a settings page; it is offered while they are active.
+        if (
+            chosen
+            and self.states[self.selected]
+            and settings_pages.get(self.selected) is not None
+        ):
+            self.add_item(self.settings_button)
 
     def embed(self) -> discord.Embed:
         notice = dependency_notice(*self.pending) if self.pending else None
@@ -127,18 +138,7 @@ class PanelView(discord.ui.View):
         await interaction.response.edit_message(embed=self.embed(), view=self)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        user = interaction.user
-        guild = interaction.guild
-        is_author = user.id == self.author_id
-        is_admin = guild is not None and (
-            user.id == guild.owner_id or user.guild_permissions.manage_guild
-        )
-        if is_author and is_admin:
-            return True
-        await interaction.response.send_message(
-            "You are not allowed to use this panel.", ephemeral=True
-        )
-        return False
+        return await settings_pages.check_admin(interaction, self.author_id)
 
     async def choose(self, interaction: discord.Interaction, key: str) -> None:
         """Select the cog the buttons act on."""
@@ -163,6 +163,28 @@ class PanelView(discord.ui.View):
         """Drop the open question without switching anything."""
         self.pending = None
         await self._redraw(interaction)
+
+    async def open_settings(self, interaction: discord.Interaction) -> None:
+        """Hand the message over to the settings page of the selected module."""
+        page = settings_pages.get(self.selected)
+        if page is None:
+            await self._redraw(interaction)
+            return
+        # The page shows its own controls; stop this view so its timeout does
+        # not overwrite the page later. Coming back builds a fresh panel.
+        self.stop()
+        await page(interaction, self._return_from_settings)
+
+    async def _return_from_settings(self, interaction: discord.Interaction) -> None:
+        panel = PanelView(
+            self.guild_id,
+            self.guild_name,
+            self.author_id,
+            await cog_settings.get_states(self.guild_id),
+        )
+        panel.selected = self.selected
+        panel._build()
+        await interaction.response.edit_message(embed=panel.embed(), view=panel)
 
     async def _apply(self, key: str, enabled: bool, *, cascade: bool) -> None:
         await guilds.ensure_guild(self.guild_id, self.guild_name)
