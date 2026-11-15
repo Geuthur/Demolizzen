@@ -1,4 +1,5 @@
 # Standard Library
+import asyncio
 import logging
 import subprocess
 import sys
@@ -11,8 +12,6 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
 # Demolizzen
-from demolizzen.cogs.banksystem import Bank
-from demolizzen.cogs.economy import Economy
 from demolizzen.core.cog import BaseCog
 
 
@@ -28,18 +27,14 @@ class Owner(BaseCog):
     @owner.command(name="force-deposits-update")
     @commands.is_owner()
     async def trigger_deposit_update(self, ctx: discord.ApplicationContext):
-        """Force a deposit update."""
-        banksystem_cog: Bank = self.bot.get_cog("Bank")
-        await banksystem_cog.process_daily_interest()
-        await ctx.respond("Deposit Update Triggered.", ephemeral=True)
-
-    @owner.command(name="force-ship-update")
-    @commands.is_owner()
-    async def trigger_ship_update(self, ctx: discord.ApplicationContext):
-        """Force a ship data update."""
-        shopsystem_cog: Economy = self.bot.get_cog("Eco")
-        await shopsystem_cog.fetch_ship_data()
-        await ctx.respond("Ship Data Update Triggered.", ephemeral=True)
+        """Pay the bank interest now in every server where it is due."""
+        bank_cog = self.bot.get_cog("Bank")
+        if bank_cog is None:
+            await ctx.respond("The bank module is not loaded.", ephemeral=True)
+            return
+        await ctx.defer(ephemeral=True)
+        served = await bank_cog.run_interest()
+        await ctx.respond(f"Interest paid in {served} server(s).", ephemeral=True)
 
     @owner.command(
         name="load",
@@ -126,7 +121,9 @@ class Owner(BaseCog):
         cwd = str(project_root)
         try:
             # Run the migration command and capture output
-            result = subprocess.run(
+            # In a thread: the bot keeps running while the migration works.
+            result = await asyncio.to_thread(
+                subprocess.run,
                 [sys.executable, "manage.py", "migrate"],
                 check=True,
                 cwd=cwd,
@@ -210,12 +207,20 @@ class Owner(BaseCog):
         try:
             status = discord.Status[status.lower()]
         except KeyError:
-            await ctx.error(
-                "Invalid Status",
-                "Only `online`, `idle` or `dnd` statuses are available.",
-            )
-        else:
-            await self.bot.change_presence(status=status, activity=ctx.me.activity)
             await ctx.respond(
-                f"Status changed to `{status}`.", ephemeral=True, delete_after=10
+                "Only `online`, `idle` or `dnd` statuses are available.",
+                ephemeral=True,
             )
+            return
+        await self.bot.change_presence(status=status, activity=self._activity())
+        await ctx.respond(
+            f"Status changed to `{status}`.", ephemeral=True, delete_after=10
+        )
+
+    def _activity(self) -> discord.BaseActivity | None:
+        """What the bot currently shows as activity. Owner commands run in
+        direct messages, so it is read from a server the bot is in."""
+        for guild in self.bot.guilds:
+            if guild.me is not None:
+                return guild.me.activity
+        return None

@@ -34,8 +34,11 @@ ______________________________________________________________________
 **Interfaces – Produces:**
 
 - `Event(active: bool, factor: int)`; `MIN_EVENT_FACTOR = 1`, `MAX_EVENT_FACTOR = 10`, `DEFAULT_EVENT_FACTOR = 2`
+
 - `async get_event(guild_id: int) -> Event` (ohne Eintrag: `Event(False, 2)`)
+
 - `async set_event(guild_id: int, *, active: bool | None = None, factor: int | None = None) -> Event`; wirft `InvalidEventFactor`, `GuildNotRegistered`
+
 - `MissionEvent(ctx, components, mission_account, kind, event: Event)`
 
 - [ ] **Step 1: Failing tests**
@@ -81,6 +84,7 @@ test_admin_has_no_economy_commands
 **Interfaces – Produces:**
 
 - `async shop.get_bag(guild_id: int, user_id: int) -> list[BagItem]` (`BagItem(name: str, quantity: int)`, nur Menge > 0, nach Name sortiert)
+
 - `async bank.richest(guild_id: int, limit: int = 10) -> Richest` (`Richest(total: int, top: list[tuple[str, int]])`)
 
 - [ ] **Step 1: Failing tests**

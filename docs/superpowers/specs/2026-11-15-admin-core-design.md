@@ -41,11 +41,11 @@ Betrifft: Admin, Owner, Core, General, Commands und das Economy-Event.
 
 ## Ansätze
 
-|       | Ansatz                                                                              | Abwägung                                                  |
-| ----- | ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **A** | Event in die Datenbank und ins Panel, Befehle `/admin economy …` entfallen          | Einheitlich mit Bank, Tickets, Levelsystem; eine Migration |
-| B     | Event in der Datenbank, Befehle bleiben                                             | Zwei Bedienwege für dieselbe Einstellung                  |
-| C     | Nur den Faktor im Arbeitsspeicher absichern                                         | Event bleibt nach Neustart verloren                       |
+|       | Ansatz                                                                     | Abwägung                                                   |
+| ----- | -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **A** | Event in die Datenbank und ins Panel, Befehle `/admin economy …` entfallen | Einheitlich mit Bank, Tickets, Levelsystem; eine Migration |
+| B     | Event in der Datenbank, Befehle bleiben                                    | Zwei Bedienwege für dieselbe Einstellung                   |
+| C     | Nur den Faktor im Arbeitsspeicher absichern                                | Event bleibt nach Neustart verloren                        |
 
 **Gewählt: A.**
 

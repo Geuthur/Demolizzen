@@ -27,6 +27,12 @@ Section Order:
 
 ## Fixed
 
+- Economy event paid 0 coins when switched on without a factor, could take money with a negative factor and was lost on restart; it is stored per server with a factor from 1 to 10 (default 2, migration `0014`)
+- `/help`, `/bag`, `/richest`, `/use` and `/spenden` demanded a registration; profile and account are created on demand
+- `/bag` showed an empty message for an empty bag and failed with more than 25 items; `/richest` changed the spelling of names and loaded every account into memory
+- `/moderation clear` never answered when reading the messages failed and described an empty result the wrong way round; it accepts 1 to 100 and always answers
+- `/owner force-deposits-update` called a function that no longer exists, `/owner status` failed in direct messages and `/owner migrate` blocked the whole bot while it ran
+- Status display stayed on `Database Issues` until the next restart after a single database error; it is decided anew every hour
 - Cooldowns of `/rank`, `/bot uptime`, `/games rps`, `/games slots`, `/games dice` and `/token help` were answered twice; only the private standard message of the bot is sent
 - `/eve price` never used its price cache and failed for a second trade hub of the same item; prices are cached for 30 minutes per item and trade hub (migration `0013` recreates the cache table)
 - `/eve price` showed `0 ISK` or a generic error when the price service failed or did not know the item, and could time out; it defers, waits at most 10 seconds and answers with a clear message
@@ -67,6 +73,7 @@ Section Order:
 
 ## Changed
 
+- The economy event is switched and its payout factor chosen in `/panel`
 - `/killmail add` needs the Embed Links permission in the channel and allows each ID once per channel, whoever added it
 - Level rules moved to `demolizzen/services/levels.py`; messages that earn no experience no longer query the database
 - Daily, work and mission rules moved to `demolizzen/services/missions.py`; `demolizzen/models` no longer imports `discord`; test account cooldown overrides moved to `config.COOLDOWN_OVERRIDES`
@@ -93,6 +100,7 @@ Section Order:
 
 ## Removed
 
+- `/admin economy mode`, `/admin economy set`, `/auth register` and `/owner force-ship-update`
 - Unused price list window of the EVE Online module and `utils/pricehandler.py`
 - ESI name task queue (`EveEntityTask`, migration `0012`) and the 6-hour killmail memory cleanup
 - `/levelsystem_config set-mention` and the empty `/levelsystem` command group; level-up posts and their channel are set in `/panel`
