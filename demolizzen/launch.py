@@ -14,6 +14,7 @@ from demolizzen.core.bot import Demolizzen
 
 def run_bot():
     bot = Demolizzen()
+    bot.load_preload_extensions()
     bot.run()
 
 

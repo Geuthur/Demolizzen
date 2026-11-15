@@ -30,6 +30,7 @@ Section Order:
 
 ## Changed
 
+- Bot construction no longer loads extensions or opens network connections; `launch.py` loads extensions and `start()` creates the HTTP session and ESI client
 - Tests run on in-memory SQLite by default; `USE_MYSQL=1` selects MySQL (set by tox and CI)
 - Enhance logging configuration by adding custom handler for httpx and improving time formatting [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)

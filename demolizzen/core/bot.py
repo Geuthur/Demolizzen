@@ -1,7 +1,5 @@
 # Standard Library
 import asyncio
-import os
-import sys
 import traceback
 from collections import Counter
 from functools import cached_property
@@ -24,47 +22,82 @@ from demolizzen.models.guild import GuildProfile
 
 
 class Demolizzen(commands.Bot):
+    """The Demolizzen bot.
+
+    Constructing the bot has no side effects: extensions are loaded by
+    :meth:`load_preload_extensions` and network resources are created by
+    :meth:`start`, so the bot can be built in tests without a token or network.
+    """
+
     def __init__(self, **kwargs):
-        # Deine intents definieren
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
         kwargs["command_prefix"] = "$"
         super().__init__(intents=intents, **kwargs)
         self.counter = Counter()
-        self.core_dir = os.path.dirname(os.path.realpath(__file__))
         self.config = config
-        self.bot_users = []
         self.token = config.BOT_TOKEN
         self.req_perms = discord.Permissions(config.BOT_PERMISSIONS)
         self.preload_ext = config.PRELOAD_EXTENSIONS
-        self.loop = asyncio.get_event_loop()
-        self.session = aiohttp.ClientSession(loop=self.loop)
-        # Initialize OpenAPI CCP Client
-        self.esi_data = OpenAPI(self.session)
-        self._entity_task = self.loop.create_task(self.esi_data._entity_name_worker())
-        # Initialize the logger
         self.logger = logger.init_logger(debug_flag="info")
         self.launch_time = timezone.now()
+        # Created in start(), once the event loop is running.
+        self.session: aiohttp.ClientSession | None = None
+        self.esi_data: OpenAPI | None = None
+        self._entity_task: asyncio.Task | None = None
 
+    def load_preload_extensions(self) -> dict[str, Exception | None]:
+        """Load every configured extension.
+
+        A failing extension is logged and does not stop the others.
+
+        Returns
+        -------
+        dict[str, Exception | None]
+            The extension name mapped to the error it raised, or ``None`` on success.
+        """
+        results: dict[str, Exception | None] = {}
         print(Green("-------- Loading Modules ---------"))
         for ext in self.preload_ext:
             try:
                 self.load_extension(f"demolizzen.cogs.{ext}")
-                print(Blue(f"- {ext.capitalize()} ✅ "))
             # pylint: disable=broad-except
             except Exception as e:
                 self.logger.exception(f"Failed to load extension {ext}", exc_info=e)
                 print(Blue(f"- {ext.capitalize()} ❌ {e}"))
+                results[ext] = e
+            else:
+                print(Blue(f"- {ext.capitalize()} ✅ "))
+                results[ext] = None
         print(Green("-------- Finished Loading --------\n"))
-        if self.token is None:
+        return results
+
+    async def start(self, token: str | None = None, *, reconnect: bool = True) -> None:
+        """Create the HTTP session and ESI client, then log in and connect.
+
+        py-cord has no ``setup_hook``; this is the first point where the event
+        loop is running.
+        """
+        token = token or self.token
+        if token is None:
             self.logger.critical("Token must be set in order to login.")
-            sys.exit(1)
-        try:
-            self.loop.run_until_complete(self.start(self.token))
-        # pylint: disable=broad-except
-        except Exception as e:
-            self.logger.critical("Fatal exception", exc_info=e)
+            raise RuntimeError("Token must be set in order to login.")
+
+        self.session = aiohttp.ClientSession()
+        self.esi_data = OpenAPI(self.session)
+        self._entity_task = asyncio.create_task(self.esi_data._entity_name_worker())
+        await super().start(token, reconnect=reconnect)
+
+    async def close(self) -> None:
+        """Stop background work and release the HTTP session. Safe to call twice."""
+        if self._entity_task is not None:
+            self._entity_task.cancel()
+            self._entity_task = None
+        if self.session is not None:
+            await self.session.close()
+            self.session = None
+        await super().close()
 
     @cached_property
     def invite_url(self):
