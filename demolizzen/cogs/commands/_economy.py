@@ -7,30 +7,18 @@ from discord import option
 from discord.ext import commands
 
 # Demolizzen
-from demolizzen import models
 from demolizzen.services import shop as shop_service
 from demolizzen.services.errors import ItemNotOwned, NotEnoughItems, ShopError
 
 
-# Automatische auswahl für Tasche von jeweiligen Discord User
-async def get_bag_data(ctx: discord.AutocompleteContext):
-    # SQL-Abfrage, um das ausgewählte Item zu finden
-    try:
-        user = await models.UserProfile.objects.select_related("bags").aget(
-            user_id=ctx.interaction.user.id, guild_id=ctx.interaction.guild.id
-        )
-        items = [
-            item.item_name
-            async for item in user.bags.items.all()
-            if item.item_name.lower().startswith(ctx.value.lower())
-        ]
-    except models.UserProfile.DoesNotExist:
-        return []
-    except models.UserBag.DoesNotExist:
-        return []
-    except models.UserBagItems.DoesNotExist:
-        return []
-    return items
+async def get_bag_data(ctx: discord.AutocompleteContext) -> list[str]:
+    """Suggest the items in the member's bag that start with what was typed."""
+    typed = (ctx.value or "").lower()
+    items = await shop_service.get_bag(
+        ctx.interaction.guild.id, ctx.interaction.user.id
+    )
+    # Discord shows at most 25 suggestions.
+    return [item.name for item in items if item.name.lower().startswith(typed)][:25]
 
 
 class CommandsEconomy:

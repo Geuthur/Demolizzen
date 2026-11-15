@@ -1,13 +1,11 @@
 # Discord
 import discord
-from discord.ext import commands
 
 # Demolizzen
-from demolizzen import models
 from demolizzen.cogs.commands import _base, _economy, _help
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
-from demolizzen.utils.functions import get_command_mention
+from demolizzen.services import bank, guilds
 
 
 class Commands(
@@ -24,19 +22,6 @@ class Commands(
         self.alias = "commands"
 
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
-        try:
-            user = await models.UserProfile.objects.select_related(
-                "bank_account", "bags"
-            ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
-            ctx.user_profile = user
-            self.bot.logger.debug(f"UserProfile loaded for {ctx.author}.")
-        except models.UserProfile.DoesNotExist as exc:
-            app_command = get_command_mention(
-                bot=self.bot,
-                cog="Core",
-                slash_command="auth",
-                slash_command_group="register",
-            )
-            raise commands.CheckFailure(
-                f"UserProfile does not exist. Please register first. Use {app_command} to register."
-            ) from exc
+        # Members need no registration: profile and bank account are created on demand.
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        await bank.ensure_account(ctx.guild.id, ctx.author.id, ctx.author.display_name)

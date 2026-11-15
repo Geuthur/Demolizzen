@@ -25,6 +25,12 @@ MAX_QUANTITY = 1000
 
 
 @dataclass(frozen=True)
+class BagItem:
+    name: str
+    quantity: int
+
+
+@dataclass(frozen=True)
 class Purchase:
     """What a purchase bought and what the member owns afterwards."""
 
@@ -117,3 +123,15 @@ async def use_item(
     _check_quantity(quantity)
     account = await bank.ensure_account(guild_id, user_id, user_name)
     return await sync_to_async(_use_sync)(account.user_id, item_name, quantity)
+
+
+async def get_bag(guild_id: int, user_id: int) -> list[BagItem]:
+    """The items a member owns, sorted by name. Used-up items are left out."""
+    return [
+        BagItem(name=item.item_name, quantity=item.quantity)
+        async for item in UserBagItems.objects.filter(
+            user_bag__user__guild_id=guild_id,
+            user_bag__user__user_id=user_id,
+            quantity__gt=0,
+        ).order_by("item_name", "pk")
+    ]

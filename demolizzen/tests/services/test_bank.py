@@ -291,3 +291,27 @@ class CreditDebitTest(BankTestCase):
         await bank.reset(1, A, "a")
 
         self.assertEqual(await self.balance(A), Balance(0, 0))
+
+
+class RichestTest(BankTestCase):
+    async def test_richest_returns_top_wallets_and_total(self):
+        for number in range(12):
+            await self.fund(100 + number, wallet=number * 10, balance=1000)
+        await guilds.ensure_guild(2, "Beta")
+        other = await bank.ensure_account(2, 500, "stranger")
+        await UserBankAccount.objects.filter(pk=other.pk).aupdate(wallet=99999)
+
+        richest = await bank.richest(1)
+
+        self.assertEqual(richest.total, sum(number * 10 for number in range(12)))
+        self.assertEqual(len(richest.top), 10)
+        self.assertEqual(richest.top[0][1], 110)
+        self.assertEqual([wallet for _, wallet in richest.top][-1], 20)
+        self.assertNotIn("stranger", [name for name, _ in richest.top])
+
+    async def test_richest_limit_and_empty_guild(self):
+        await self.fund(100, wallet=5)
+        await self.fund(101, wallet=7)
+
+        self.assertEqual(len((await bank.richest(1, limit=1)).top), 1)
+        self.assertEqual(await bank.richest(3), bank.Richest(total=0, top=[]))

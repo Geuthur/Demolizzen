@@ -15,7 +15,7 @@ from asgiref.sync import sync_to_async
 
 # Django
 from django.db import transaction
-from django.db.models import BigIntegerField, ExpressionWrapper, F, Value
+from django.db.models import BigIntegerField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Floor
 from django.utils import timezone
 
@@ -55,6 +55,14 @@ class Balance:
 
     wallet: int
     bank: int
+
+
+@dataclass(frozen=True)
+class Richest:
+    """The fullest wallets of a guild as ``(name, wallet)`` and the sum of all."""
+
+    total: int
+    top: list[tuple[str, int]]
 
 
 def _check_amount(amount) -> None:
@@ -278,6 +286,19 @@ async def adjust(guild_id: int, user_id: int, user_name: str, delta: int) -> int
     if delta == 0:
         return 0
     return await sync_to_async(_adjust_sync)(account.pk, delta)
+
+
+async def richest(guild_id: int, limit: int = 10) -> Richest:
+    """Rank the guild's members by the money in their wallets."""
+    accounts = UserBankAccount.objects.filter(user__guild_id=guild_id)
+    total = (await accounts.aaggregate(total=Sum("wallet")))["total"] or 0
+    top = [
+        (account.user.user_name, account.wallet)
+        async for account in accounts.select_related("user").order_by("-wallet", "pk")[
+            :limit
+        ]
+    ]
+    return Richest(total=total, top=top)
 
 
 # ---------------------------------------------------------------------- settings

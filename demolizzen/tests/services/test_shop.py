@@ -146,3 +146,27 @@ class UseItemTest(ShopTestCase):
                     await shop.use_item(1, A, "alice", "Beer", quantity)
 
         self.assertEqual(await self.owned(), 3)
+
+
+class BagTest(ShopTestCase):
+    async def test_get_bag_lists_owned_items(self):
+        await self.asetup(wallet=1000)
+        await EconomyShop.objects.acreate(name="Ale", price=1, description="Dark")
+        await shop.buy(1, A, "alice", "Beer", 2)
+        await shop.buy(1, A, "alice", "Ale", 1)
+        await bank.ensure_account(1, 11, "bob")
+        await shop.buy(1, A, "alice", "Ale", 1)
+
+        self.assertEqual(
+            await shop.get_bag(1, A),
+            [shop.BagItem("Ale", 2), shop.BagItem("Beer", 2)],
+        )
+        self.assertEqual(await shop.get_bag(1, 11), [])
+        self.assertEqual(await shop.get_bag(2, A), [])
+
+    async def test_used_up_items_are_not_listed(self):
+        await self.asetup(wallet=1000)
+        await shop.buy(1, A, "alice", "Beer", 1)
+        await UserBagItems.objects.filter(item_name="Beer").aupdate(quantity=0)
+
+        self.assertEqual(await shop.get_bag(1, A), [])
