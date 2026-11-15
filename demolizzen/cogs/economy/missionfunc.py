@@ -2,19 +2,16 @@
 import math
 import random
 
-# Third Party
-from asgiref.sync import sync_to_async
-
 # Discord
 import discord
 
 # Django
-from django.db import transaction
 from django.utils import timezone
 
 # Demolizzen
 from demolizzen import models
 from demolizzen.config import EVENTS_SERVER
+from demolizzen.services import bank
 
 
 class MissionComponent:
@@ -132,9 +129,15 @@ class MissionEvent(discord.ui.View):
             for name, value in await self.generate_embed_fields(mission_payout):
                 em.add_field(name=name, value=value, inline=False)
 
-            # Prepare Payout for previous Mission
+            # Book the result of the previous mission. A lost ship costs the
+            # insurance, but never more than the wallet holds.
             if self.payout is not None:
-                self.mission_account.user.bank_account.wallet += mission_payout
+                await bank.adjust(
+                    self.ctx.guild.id,
+                    self.ctx.author.id,
+                    self.ctx.author.display_name,
+                    mission_payout,
+                )
 
             # Calculate Payout
             earning = random.randrange(10, 30)
@@ -150,12 +153,7 @@ class MissionEvent(discord.ui.View):
             self.mission_account.cooldown = timezone.now()
             self.mission_account.active = True
 
-            def save_transaction():
-                with transaction.atomic():
-                    self.mission_account.save()
-                    self.mission_account.user.bank_account.save()
-
-            await sync_to_async(save_transaction)()
+            await self.mission_account.asave()
         else:
             em = discord.Embed(
                 title=":x: Mission Canceled",

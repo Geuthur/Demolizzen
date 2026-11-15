@@ -3,9 +3,6 @@ import logging
 import math
 import random
 
-# Third Party
-from asgiref.sync import sync_to_async
-
 # Discord
 import discord
 from discord import option
@@ -13,7 +10,6 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
 # Django
-from django.db import transaction
 from django.utils import timezone
 
 # Demolizzen
@@ -22,6 +18,8 @@ from demolizzen.cogs.economy import missionfunc
 from demolizzen.config import EVENTS_SERVER
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
+from demolizzen.services import bank, guilds
+from demolizzen.services.errors import BankError
 from demolizzen.utils.functions import get_command_mention
 
 logger = logging.getLogger(__name__)
@@ -45,29 +43,18 @@ class TextAdventure(BaseCog):
     )
 
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
-        try:
-            user = await models.UserProfile.objects.select_related(
-                "bank_account",
-                "raid_mission",
-                "mining_mission",
-                "raid_mission__ship",
-                "mining_mission__ship",
-            ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
-            ctx.user_profile = user
-            logger.debug(f"UserProfile loaded for {ctx.author}.")
-        except models.UserProfile.DoesNotExist as exc:
-            raise commands.CheckFailure(
-                f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
-            ) from exc
+        # Members need no registration: profile and bank account are created on demand.
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        await bank.ensure_account(ctx.guild.id, ctx.author.id, ctx.author.display_name)
+        ctx.user_profile = await models.UserProfile.objects.select_related(
+            "bank_account",
+            "raid_mission",
+            "mining_mission",
+            "raid_mission__ship",
+            "mining_mission__ship",
+        ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
 
-        try:
-            assert user.bank_account
-        except models.UserBankAccount.DoesNotExist as exc:
-            raise commands.CheckFailure(
-                f"Bank account does not exist. Please create one first. {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')} "
-            ) from exc
-
-        # pylint: disable=too-many-statements
+    # pylint: disable=too-many-statements
 
     async def get_shop(self, ctx: discord.AutocompleteContext) -> list[str]:
         """Returns a list of names that begin with the entered characters."""
@@ -182,19 +169,15 @@ class TextAdventure(BaseCog):
                     inline=False,
                 )
 
-        # Save Data
-        def sync_save():
-            with transaction.atomic():
-                if user_work.salary is not None:
-                    bank_account: models.UserBankAccount = ctx.user_profile.bank_account
-                    bank_account.wallet += payout
-                    bank_account.save()
-                user_work.cooldown = timezone.now()
-                user_work.chance = chance
-                user_work.salary = payout
-                user_work.save()
-
-        await sync_to_async(sync_save)()
+        # Pay out the previous shift and start the next one
+        if user_work.salary is not None:
+            await bank.adjust(
+                ctx.guild.id, ctx.author.id, ctx.author.display_name, payout
+            )
+        user_work.cooldown = timezone.now()
+        user_work.chance = chance
+        user_work.salary = payout
+        await user_work.asave()
         return await ctx.respond(embed=em)
 
     @mission.command(name="start")
@@ -394,7 +377,6 @@ class TextAdventure(BaseCog):
         Buy a specific Ship for Mission Event
         """
         try:
-            bank_account = ctx.user_profile.bank_account
             if category == "Mining":
                 mission_account = ctx.user_profile.mining_mission
             elif category == "Raiding":
@@ -413,11 +395,28 @@ class TextAdventure(BaseCog):
                 "user__bank_account"
             ).acreate(user=ctx.user_profile)
 
+        async def pay_for_ship(ship, mission_account):
+            """Take the price, then hand the ship over. Returns the response code."""
+            account = (ctx.guild.id, ctx.author.id, ctx.author.display_name)
+            try:
+                if ship.price > 0:
+                    await bank.debit(*account, ship.price)
+            except BankError:
+                return [False, 3]  # Benutzer hat nicht genug Geld
+            mission_account.ship = ship
+            try:
+                await mission_account.asave()
+            except Exception:
+                # The ship could not be handed over: give the money back.
+                if ship.price > 0:
+                    await bank.credit(*account, ship.price)
+                raise
+            return [True, 0]
+
         async def buy_ship(
             item_name,
             category: str,
             mission_account: models.UserMiningMission | models.UserRaidMission,
-            bank_account: models.UserBankAccount,
         ):
             response = None
             try:
@@ -430,22 +429,7 @@ class TextAdventure(BaseCog):
                 response = [False, 1]  # Item not found
 
             if response is None:
-
-                def check_bill():
-                    with transaction.atomic():
-                        mission_account.ship = ship
-                        if bank_account.wallet >= ship.price:
-                            bank_account.wallet -= ship.price
-                            bank_account.save()
-                            mission_account.save()
-                            return True
-                        return False
-
-                purchased = await sync_to_async(check_bill)()
-                if purchased:
-                    response = [True, 0]
-                else:
-                    response = [False, 3]  # Benutzer hat nicht genug Geld
+                response = await pay_for_ship(ship, mission_account)
 
             if response[0] is True:
                 em = discord.Embed(
@@ -480,7 +464,7 @@ class TextAdventure(BaseCog):
                     )
             await ctx.respond(embed=em)
 
-        return await buy_ship(item, category, mission_account, bank_account)
+        return await buy_ship(item, category, mission_account)
 
     @mission.command(name="price")
     @option(

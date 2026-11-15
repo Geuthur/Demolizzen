@@ -26,6 +26,11 @@ Section Order:
 
 ## Fixed
 
+- Economy, shop and mission commands asked members to create a bank account with a command that no longer exists; profile and account are created on demand
+- Mission insurance could push the wallet below zero
+- `/games dice` rolled 1–5 instead of 1–6 and announced the single stake while paying the double; stakes of 0 are refused
+- A successful `/gank` never moved the loot; ganking yourself or a bot is refused
+- `/shop buy` accepted negative quantities and credited money for them; quantities must be between 1 and 1000 and paying and receiving the item are one transaction
 - `/bank_admin` commands no longer fail for members without a profile; sending money to a member without an account creates it
 - Bank bookings could lose or duplicate money when two commands ran at the same time; every booking now runs on locked rows in the database
 - Bank interest rate was stored as a percentage but applied as a factor (a rate of 5 paid 500%); rates are now fractions and stored values of 1 or more are converted (migration `0011`)
@@ -43,6 +48,7 @@ Section Order:
 
 ## Changed
 
+- Games, shop, economy and missions book all money through the bank service; shop purchases and item use moved to `demolizzen/services/shop.py`
 - Bank logic moved to `demolizzen/services/bank.py`; weekly interest is paid by a single database update and checked every six hours
 - Ticket channels are named `ticket-0042-name` while open and `closed-0042-name` when closed; members are limited to one open ticket by default
 - Ticket system rebuilt on the service layer: permissions are enforced by one rights table (claim: staff, close/reopen: staff or the creator if allowed, delete: admins), buttons and channel name follow the stored ticket state, ticket numbers are allocated atomically
