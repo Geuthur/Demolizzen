@@ -115,6 +115,28 @@ Cogs live in `demolizzen/cogs/<name>/` and follow three rules:
 
 Add the folder name to `PRELOAD_EXTENSIONS` in `demolizzen/config.py` to load the cog.
 
+### Settings in the server panel
+
+A module can offer its settings in `/panel`. Register a page in the extension's `setup()`:
+
+```python
+from demolizzen.core import settings_pages
+
+
+def setup(bot):
+    settings_pages.register("ticket", ticket_settings_page)
+    bot.add_cog(TicketSystem(bot))
+```
+
+A page is `async def page(interaction, back)`. It replaces the panel message with its own embed
+and view and calls `back(interaction)` to return to the panel. Use
+`settings_pages.check_admin(interaction, author_id)` as the view's `interaction_check` so the
+page follows the same access rule as the panel. `demolizzen/cogs/ticket/_settings_page.py` is
+the reference implementation.
+
+py-cord views need a running event loop. Extensions are loaded before the bot runs, so create
+persistent views in an `on_ready` listener, not in the cog's `__init__`.
+
 ## Running the tests
 
 ```shell

@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Ticket subject and description form, `Open ticket` button message, transcript of deleted tickets in a log channel, ticket settings page in `/panel`
 - `/panel`: guild admins enable and disable modules for their server, with a confirmation when dependent modules are switched along
 - `BaseCog` as common base of all cogs: commands and guild events of a cog are skipped in guilds that disabled it
 - Cog registry (`demolizzen/core/registry.py`) and per-guild cog settings service with dependency handling (Economy, Shop and Games require the Banksystem)
@@ -38,6 +39,8 @@ Section Order:
 
 ## Changed
 
+- Ticket channels are named `ticket-0042-name` while open and `closed-0042-name` when closed; members are limited to one open ticket by default
+- Ticket system rebuilt on the service layer: permissions are enforced by one rights table (claim: staff, close/reopen: staff or the creator if allowed, delete: admins), buttons and channel name follow the stored ticket state, ticket numbers are allocated atomically
 - Drop Python 3.10; Python 3.11 or newer is required
 - `/help` no longer lists modules that are disabled on the server
 - Guild and member bookkeeping moved into `demolizzen/services/guilds.py`; the periodic guild check now uses one query per guild instead of one per member
@@ -57,6 +60,8 @@ Section Order:
 
 ## Removed
 
+- Ticket task queue (`guild_ticket_tasks` table, migration `0010`) and the loading of all tickets at startup
+- `/ticket_config` commands; ticket settings are changed in `/panel`
 - Removed Cache Logic in Killmail Cog
 - Removed [FireTail](https://github.com/scragly/Firetail) Code Base @ Credits for inspiration
 - [Unused Package](https://github.com/Geuthur/Demolizzen/commit/498e3292cbb85144d7b5a30a3b0762b5e5cc13b8)
