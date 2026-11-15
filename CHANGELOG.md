@@ -19,7 +19,7 @@ bot was rebuilt on a tested service layer. Read
 
 ### Added
 
-- `Dockerfile.bot` and `docker-compose.bot.yml` run the bot itself in a container, see `docs/bot-docker.md`
+- `Dockerfile.bot` and `docker-compose.bot.yml` run the bot itself in a container, with an optional MariaDB (`--profile database`) that uses the login from `.env`; see `docs/bot-docker.md`
 - `EXTRA_EXTENSIONS` in `.env` loads the modules of single servers (`vow`, `geuthur`) without editing `config.py`
 - A README: what the bot does, installation, first steps, updating and upgrading from 2.x
 - Web panel: alliances and corporations on the zKillboard page show their logo from EVE's image server

@@ -172,6 +172,75 @@ class BotContainerTest(SimpleTestCase):
         self.assertRegex(docs, r"(?i)stop the bot .*before")
 
 
+class BotDatabaseTemplateTest(SimpleTestCase):
+    """The optional database next to the bot, for those who have none yet."""
+
+    def setUp(self):
+        self.compose = (ROOT / "docker-compose.bot.yml").read_text()
+        # The block of the service, up to the next top-level key.
+        self.db = re.search(r"^  db:\n(.*?)(?=^\S)", self.compose, re.M | re.S).group(1)
+        self.bot = re.search(
+            r"^  bot:\n(.*?)(?=^  \S)", self.compose, re.M | re.S
+        ).group(1)
+
+    def test_database_only_starts_when_asked_for(self):
+        # Whoever has a database already must not get a second, empty one.
+        self.assertIn('profiles: ["database"]', self.db)
+        self.assertNotIn("profiles:", self.bot)
+
+    def test_bot_starts_without_the_database_service(self):
+        # depends_on would drag the database in, or stop the bot without it.
+        self.assertNotIn("depends_on", self.bot)
+
+    def test_login_is_the_one_the_bot_uses(self):
+        for line in (
+            "MARIADB_DATABASE: ${DATABASE_NAME:-}",
+            "MARIADB_USER: ${DATABASE_USER:-}",
+            "MARIADB_PASSWORD: ${DATABASE_PASSWORD:-}",
+            "MARIADB_ROOT_PASSWORD: ${DATABASE_ROOT_PASSWORD:-}",
+        ):
+            with self.subTest(line=line):
+                self.assertIn(line, self.db)
+
+    def test_no_password_is_written_into_the_file(self):
+        # Either a reference to .env or deliberately blank.
+        for value in re.findall(r"PASSWORD: (.+)", self.compose):
+            self.assertRegex(value, r'^(\$\{[A-Z_]+:-\}|"")$')
+
+    def test_administrator_password_stays_out_of_bot_and_panel(self):
+        # env_file hands a container all of .env; these two only need their
+        # own login.
+        blank = 'DATABASE_ROOT_PASSWORD: ""'
+
+        self.assertIn(blank, self.bot)
+        self.assertIn(blank, (ROOT / "docker-compose.yml").read_text())
+
+    def test_data_outlives_the_container(self):
+        self.assertIn("- db-data:/var/lib/mysql", self.db)
+        self.assertRegex(
+            self.compose, re.compile(r"^volumes:\n(  .+\n)*  db-data:", re.M)
+        )
+
+    def test_database_is_not_published_to_the_network(self):
+        self.assertNotIn("ports:", self.compose)
+
+    def test_tables_can_hold_every_character(self):
+        # Names and messages contain emoji.
+        self.assertIn("--character-set-server=utf8mb4", self.db)
+
+    def test_root_password_setting_is_documented_without_a_value(self):
+        example = (ROOT / ".env.example").read_text()
+
+        self.assertRegex(example, re.compile(r"^DATABASE_ROOT_PASSWORD=$", re.M))
+
+    def test_docs_tell_how_to_use_and_back_up_the_database(self):
+        docs = (ROOT / "docs/bot-docker.md").read_text()
+
+        self.assertIn("--profile database", docs)
+        self.assertIn("DATABASE_HOST=db", docs)
+        self.assertIn("mariadb-dump", docs)
+
+
 class ExtraExtensionsTest(SimpleTestCase):
     """Modules of single servers are switched on in .env, not by editing code."""
 

@@ -14,6 +14,46 @@ the database.
   `DATABASE_HOST=host.docker.internal`; [Reaching the database from the container](web-panel.md#reaching-the-database-from-the-container)
   describes what the database has to allow.
 
+## A database in a container
+
+If there is no database yet, the compose file can start one: a MariaDB whose login is the one the
+bot uses. In `.env` set
+
+```shell
+DATABASE_HOST=db
+DATABASE_PORT=3306
+DATABASE_NAME=demolizzen
+DATABASE_USER=demolizzen
+DATABASE_PASSWORD=a-long-random-password
+DATABASE_ROOT_PASSWORD=another-long-random-password
+```
+
+and add `--profile database` to the compose commands on this page, for example
+
+```shell
+docker compose -f docker-compose.bot.yml --profile database up -d --build
+```
+
+Without `--profile database` the database service is left alone, so nothing changes for a bot that
+uses a database of its own.
+
+- Database, user and passwords are created at the very first start. Changing them in `.env`
+  afterwards does not change the existing database.
+- The data is kept in the volume `db-data`. `docker compose down` keeps it;
+  `docker compose down -v` deletes it together with the logs.
+- The database is reachable from the bot's container only; no port is published. A web panel on
+  another machine needs a database it can reach, see
+  [Reaching the database from the container](web-panel.md#reaching-the-database-from-the-container).
+- The bot starts before the database is ready, ends, and is started again until it connects.
+  A few restarts right after the first start are expected.
+
+Back it up before every update that brings migrations:
+
+```shell
+docker compose -f docker-compose.bot.yml --profile database exec db \
+  sh -c 'mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --single-transaction "$MARIADB_DATABASE"' > backup.sql
+```
+
 ## First start
 
 Stop the bot wherever it runs today before you start the container. Two bots with one token answer
