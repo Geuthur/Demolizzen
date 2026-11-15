@@ -137,7 +137,7 @@ class Games(BaseCog):
                 em = discord.Embed(
                     title="",
                     color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You won! {3 * amount} :coin:",
+                    description=f"{ctx.author.mention}, You won! {2 * amount} :coin:",
                 )
             else:
                 bank_account.wallet -= amount

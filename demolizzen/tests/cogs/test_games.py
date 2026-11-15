@@ -50,3 +50,9 @@ class SlotsTest(TestCase):
         await self.play(50, 100, LOSING)
 
         self.assertEqual(await self.wallet(), 50)
+
+    async def test_win_message_names_the_doubled_bet(self):
+        ctx = await self.play(1000, 100, [":red_circle:"] * 3)
+
+        embed = ctx.respond.await_args.kwargs["embed"]
+        self.assertIn("You won! 200 :coin:", embed.description)

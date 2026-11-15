@@ -24,6 +24,7 @@ Section Order:
 
 ## Fixed
 
+- `/games slots` win message names the doubled bet that is actually paid out
 - `/help` hides admin-only commands such as `/panel` from members; start banner is printed on first connect
 - `/games slots` and `/games dice` failed on every call because of a removed database helper
 - Killmail subscriptions are removed when the bot leaves a server (listened to a non-existent event and never cleared the in-memory entries)
