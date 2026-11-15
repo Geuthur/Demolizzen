@@ -9,10 +9,10 @@
 <body>
 <div class="shell{% if not user %} guest{% endif %}">
   <header class="rail">
-    <a class="brand" href="{% url 'home' %}">Demolizzen <span>panel</span></a>
+    <a class="brand" href="{% url 'home' %}">{% icon "hexagon-half" %} Demolizzen <span>panel</span></a>
     {% if servers %}
     <nav aria-label="Servers">
-      <p class="rail-title">Servers</p>
+      <p class="rail-title">{% icon "hdd-rack" %} Servers</p>
       <ul>
         {% for server in servers %}
         <li><a href="{% url 'guild' server.id %}"{% if server.current %} aria-current="page"{% endif %}>{{ server.name }}</a></li>
@@ -24,7 +24,7 @@
     <form class="who" method="post" action="{% url 'logout' %}">
       {% csrf_token %}
       <span>{{ user.name }}</span>
-      <button class="quiet" type="submit">Sign out</button>
+      <button class="quiet" type="submit">{% icon "box-arrow-right" %} Sign out</button>
     </form>
     {% endif %}
   </header>

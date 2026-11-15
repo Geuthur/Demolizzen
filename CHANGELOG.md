@@ -91,6 +91,7 @@ Section Order:
 
 ## Changed
 
+- Web panel: a more futuristic look with Bootstrap Icons (shipped with the panel, MIT): every module has an icon in a lit socket, the state is a badge with icon and word, buttons and notices carry icons
 - Web panel layout for wide screens: server navigation at the side, modules as a rack with a tally, dependency hints on modules, own typeface for headings
 - English is the language of all texts: `/spenden` is now `/donate`, and the remaining German texts of `/use`, `/bag`, `/leaderboard` and `/games wheelofnames` are translated
 - The economy event is switched and its payout factor chosen in `/panel`

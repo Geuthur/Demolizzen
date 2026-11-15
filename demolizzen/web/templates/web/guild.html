@@ -1,11 +1,11 @@
 {% extends "web/base.html" %}
 {% block title %}{{ guild.name }} – Demolizzen panel{% endblock %}
 {% block content %}
-<p class="crumb"><a href="{% url 'home' %}">Your servers</a></p>
+<p class="crumb"><a href="{% url 'home' %}">{% icon "arrow-left" %} Your servers</a></p>
 <h1>{{ guild.name }}</h1>
 <p class="tally">{{ tally.on }} of {{ tally.total }} modules on</p>
 <div class="gauge" aria-hidden="true">{% for module in modules %}{% if not module.fixed %}<span class="seg{% if module.on %} on{% endif %}"></span>{% endif %}{% endfor %}</div>
-{% if notice %}<p class="notice done" role="status">{{ notice }}</p>{% endif %}
+{% if notice %}<p class="notice done" role="status">{% icon "check-circle-fill" %} <span>{{ notice }}</span></p>{% endif %}
 
 <h2>Modules</h2>
 <p class="small">A switch reaches Discord within a minute: the slash commands of the module appear on this server or disappear from it.</p>
@@ -13,18 +13,18 @@
   {% for module in modules %}{% if not module.fixed %}
   <li class="slot{% if not module.on %} off{% endif %}">
     <div class="slot-head">
-      <span class="lamp{% if module.on %} on{% endif %}" aria-hidden="true"></span>
+      <span class="glyph{% if module.on %} on{% endif %}">{% icon module.icon %}</span>
       <span class="name">{{ module.title }}</span>
-      <span class="state">{% if module.on %}on{% else %}off{% endif %}</span>
+      {% if module.on %}<span class="badge on">{% icon "power" %} On</span>{% else %}<span class="badge off">{% icon "power" %} Off</span>{% endif %}
     </div>
     <p class="about">{{ module.description }}</p>
     <div class="slot-foot">
       <span class="needs">{% if module.needs %}Needs {{ module.needs }}{% endif %}</span>
-      {% if module.settings %}<a class="to-settings" href="{% url 'module_settings' guild.id module.key %}">Settings</a>{% endif %}
+      {% if module.settings %}<a class="button quiet to-settings" href="{% url 'module_settings' guild.id module.key %}">{% icon "gear" %} Settings</a>{% endif %}
       <form method="post" action="{% url 'switch_module' guild.id module.key %}">
         {% csrf_token %}
         <input type="hidden" name="enabled" value="{% if module.on %}0{% else %}1{% endif %}">
-        <button class="{% if module.on %}quiet{% else %}wake{% endif %}" type="submit" aria-label="Switch {{ module.title }} {% if module.on %}off{% else %}on{% endif %}">Switch {% if module.on %}off{% else %}on{% endif %}</button>
+        <button class="{% if module.on %}quiet{% else %}wake{% endif %}" type="submit" aria-label="Switch {{ module.title }} {% if module.on %}off{% else %}on{% endif %}">{% icon "power" %} Switch {% if module.on %}off{% else %}on{% endif %}</button>
       </form>
     </div>
   </li>
@@ -36,7 +36,7 @@
 <ul class="fixed">
   {% for module in modules %}{% if module.fixed %}
   <li>
-    <span class="lamp on" aria-hidden="true"></span>
+    <span class="glyph on">{% icon module.icon %}</span>
     <div>
       <div class="name">{{ module.title }}</div>
       <div class="about">{{ module.description }}</div>

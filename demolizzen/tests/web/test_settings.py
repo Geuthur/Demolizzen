@@ -45,7 +45,7 @@ class SettingsPagesTest(SettingsTestCase):
         for key in with_settings:
             self.assertContains(response, f'href="/guilds/1/settings/{key}"')
         self.assertNotContains(response, 'href="/guilds/1/settings/games"')
-        self.assertContains(response, ">Settings</a>", count=len(with_settings))
+        self.assertContains(response, " Settings</a>", count=len(with_settings))
 
     def test_bank_page_shows_the_stored_values(self):
         self.run_async(

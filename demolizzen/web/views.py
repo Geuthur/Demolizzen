@@ -27,6 +27,7 @@ from demolizzen.services.errors import (
 from demolizzen.web import access, directory, discord_api, session
 from demolizzen.web.assets import FONT, STYLESHEET, STYLESHEET_VERSION
 from demolizzen.web.discord_api import BotTokenMissing, DiscordError
+from demolizzen.web.icons import module_icon
 from demolizzen.web.module_settings import PAGES, InvalidInput
 
 logger = logging.getLogger(__name__)
@@ -201,6 +202,7 @@ async def guild(request, guild_id: int) -> HttpResponse:
         {
             "key": info.key,
             "title": info.title,
+            "icon": module_icon(info.key),
             "description": info.description,
             "fixed": not info.toggleable,
             "on": states.get(info.key, True),
@@ -367,6 +369,7 @@ async def module_settings(request, guild_id: int, key: str) -> HttpResponse:
             "servers": servers,
             "guild": {"id": guild_id, "name": name},
             "page": page,
+            "page_icon": module_icon(key),
             "values": await page.load(guild_id, listing),
             "listing_problem": listing_problem,
             "module_off": not states.get(key, True),

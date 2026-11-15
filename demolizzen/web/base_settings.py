@@ -53,6 +53,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "demolizzen.web.assets.context",
             ],
+            # {% icon "name" %} in every template, without {% load %}.
+            "builtins": ["demolizzen.web.icons"],
         },
     },
 ]
