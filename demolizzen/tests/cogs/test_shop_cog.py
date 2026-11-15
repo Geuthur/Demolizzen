@@ -100,10 +100,15 @@ class UseItemCommandTest(ShopCogTestCase):
         commands = Commands(MagicMock())
         ctx = self.ctx()
 
-        await commands.use.callback(commands, ctx, "Beer", 2)
+        # The drink text is picked at random; take the first one.
+        with patch(
+            "demolizzen.cogs.commands._economy.random.choice",
+            side_effect=lambda texts: texts[0],
+        ):
+            await commands.use.callback(commands, ctx, "Beer", 2)
 
         self.assertEqual(await self.owned(), 1)
-        self.assertIn("Beer", self.said(ctx))
+        self.assertIn("**`2`** x **`Beer`**", self.said(ctx))
 
     async def test_use_more_than_owned_is_refused(self):
         await self.stock(wallet=1000)
