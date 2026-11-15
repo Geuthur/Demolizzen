@@ -17,14 +17,16 @@ from demolizzen.models import (
 from demolizzen.services import bank, guilds, missions
 from demolizzen.services.errors import (
     AlreadySettled,
+    GuildNotRegistered,
     InsufficientFunds,
+    InvalidEventFactor,
     NoActiveMission,
     NoShip,
     OnCooldown,
     ShipAlreadyOwned,
     ShipNotFound,
 )
-from demolizzen.services.missions import Kind, Outcome
+from demolizzen.services.missions import Event, Kind, Outcome
 
 A = 10
 WHO = (1, A, "alice")
@@ -265,6 +267,51 @@ class ResolveTest(SimpleTestCase):
         outcome = self.resolve(chance=25, attack=True, event=True, event_factor=2)
 
         self.assertEqual(outcome, Outcome(True, 320, 160))
+
+    def test_resolve_never_lowers_the_payout_for_a_bad_factor(self):
+        for factor in (0, -3, 0.5):
+            with self.subTest(factor=factor):
+                outcome = self.resolve(event=True, event_factor=factor)
+
+                self.assertEqual(outcome, Outcome(True, 100, 0))
+
+
+class EventTest(TestCase):
+    async def test_event_defaults_to_off_with_factor_two(self):
+        self.assertEqual(await missions.get_event(1), Event(False, 2))
+        self.assertEqual(
+            (missions.MIN_EVENT_FACTOR, missions.MAX_EVENT_FACTOR), (1, 10)
+        )
+
+    async def test_set_event_stores_per_guild(self):
+        await guilds.ensure_guild(1, "Alpha")
+        await guilds.ensure_guild(2, "Beta")
+
+        self.assertEqual(await missions.set_event(1, active=True), Event(True, 2))
+        self.assertEqual(await missions.set_event(1, factor=5), Event(True, 5))
+        self.assertEqual(await missions.set_event(1, active=False), Event(False, 5))
+
+        self.assertEqual(await missions.get_event(1), Event(False, 5))
+        self.assertEqual(await missions.get_event(2), Event(False, 2))
+
+    async def test_factor_outside_one_to_ten_is_refused(self):
+        await guilds.ensure_guild(1, "Alpha")
+        await missions.set_event(1, active=True, factor=3)
+
+        for factor in (0, -1, 11, 2.5, "3", True):
+            with self.subTest(factor=factor):
+                with self.assertRaises(InvalidEventFactor) as raised:
+                    await missions.set_event(1, active=False, factor=factor)
+                self.assertEqual(
+                    raised.exception.message,
+                    "The event factor must be between 1 and 10.",
+                )
+
+        self.assertEqual(await missions.get_event(1), Event(True, 3))
+
+    async def test_set_event_needs_a_registered_guild(self):
+        with self.assertRaises(GuildNotRegistered):
+            await missions.set_event(99, active=True)
 
 
 class SettleTest(MissionsTestCase):

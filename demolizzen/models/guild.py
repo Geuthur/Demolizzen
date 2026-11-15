@@ -70,6 +70,25 @@ class GuildBankSettings(models.Model):
         return f"Bank Settings for {self.guild}"
 
 
+class GuildEconomySettings(models.Model):
+    guild = models.OneToOneField(
+        GuildProfile, on_delete=models.CASCADE, related_name="economy_settings"
+    )
+    event_active = models.BooleanField(
+        default=False, help_text="Whether the payout event is running"
+    )
+    event_factor = models.PositiveSmallIntegerField(
+        default=2, help_text="Payouts are multiplied by this during the event"
+    )
+
+    class Meta:
+        db_table = "guild_economy_settings"
+        default_permissions = ()
+
+    def __str__(self):
+        return f"Economy Settings for {self.guild}"
+
+
 class GuildTicket(models.Model):
     guild = models.ForeignKey(
         GuildProfile, on_delete=models.CASCADE, related_name="guild_tickets"

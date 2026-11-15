@@ -166,6 +166,13 @@ class ShipAlreadyOwned(MissionError):
     """The member already flies this ship."""
 
 
+class InvalidEventFactor(MissionError):
+    """The event factor is not a whole number in the allowed range."""
+
+    def __init__(self, minimum: int, maximum: int):
+        super().__init__(f"The event factor must be between {minimum} and {maximum}.")
+
+
 class PriceError(ServiceError):
     """Base class of price lookup errors. ``message`` is meant to be shown to the user."""
 

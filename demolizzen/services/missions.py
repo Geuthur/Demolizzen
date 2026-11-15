@@ -25,6 +25,8 @@ from django.utils import timezone
 from demolizzen import config
 from demolizzen.models import (
     EconomyShip,
+    GuildEconomySettings,
+    GuildProfile,
     UserDailyReward,
     UserMiningMission,
     UserRaidMission,
@@ -33,6 +35,8 @@ from demolizzen.models import (
 from demolizzen.services import bank
 from demolizzen.services.errors import (
     AlreadySettled,
+    GuildNotRegistered,
+    InvalidEventFactor,
     NoActiveMission,
     NoShip,
     OnCooldown,
@@ -78,6 +82,57 @@ class Outcome:
     success: bool
     payout: int
     event_extra: int
+
+
+@dataclass(frozen=True)
+class Event:
+    """A guild's payout event. While it is active, payouts are multiplied by
+    ``factor`` and a lost ship costs nothing."""
+
+    active: bool
+    factor: int
+
+
+MIN_EVENT_FACTOR = 1
+MAX_EVENT_FACTOR = 10
+DEFAULT_EVENT_FACTOR = 2
+
+
+# -------------------------------------------------------------------------- event
+
+
+async def get_event(guild_id: int) -> Event:
+    """The guild's event; off with the default factor until it is set."""
+    settings = await GuildEconomySettings.objects.filter(guild_id=guild_id).afirst()
+    if settings is None:
+        return Event(active=False, factor=DEFAULT_EVENT_FACTOR)
+    return Event(active=settings.event_active, factor=settings.event_factor)
+
+
+async def set_event(
+    guild_id: int, *, active: bool | None = None, factor: int | None = None
+) -> Event:
+    """Switch the guild's event or change its factor. Nothing is saved unless
+    the factor is a whole number from 1 to 10."""
+    if factor is not None and (
+        type(factor) is not int  # pylint: disable=unidiomatic-typecheck
+        or not MIN_EVENT_FACTOR <= factor <= MAX_EVENT_FACTOR
+    ):
+        raise InvalidEventFactor(MIN_EVENT_FACTOR, MAX_EVENT_FACTOR)
+    if not await GuildProfile.objects.filter(guild_id=guild_id).aexists():
+        raise GuildNotRegistered(guild_id)
+
+    settings, _ = await GuildEconomySettings.objects.aget_or_create(guild_id=guild_id)
+    changed = []
+    if active is not None:
+        settings.event_active = bool(active)
+        changed.append("event_active")
+    if factor is not None:
+        settings.event_factor = factor
+        changed.append("event_factor")
+    if changed:
+        await settings.asave(update_fields=changed)
+    return Event(active=settings.event_active, factor=settings.event_factor)
 
 
 # ---------------------------------------------------------------------- cooldowns
@@ -276,7 +331,8 @@ def resolve(
         payout += bonus_amount
     event_extra = 0
     if event:
-        boosted = math.ceil(payout * event_factor)
+        # An event never lowers a payout, whatever factor arrives here.
+        boosted = math.ceil(payout * max(event_factor, MIN_EVENT_FACTOR))
         event_extra = boosted - payout
         payout = boosted
     factor = 0.8 if attack and chance > 25 else 1.0

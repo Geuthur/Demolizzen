@@ -25,7 +25,7 @@ from demolizzen.models import (
     UserWorkMission,
 )
 from demolizzen.services import bank, guilds, missions
-from demolizzen.services.missions import Kind
+from demolizzen.services.missions import Event, Kind
 from demolizzen.tests.helpers import make_ctx, make_guild, make_member
 
 MODULE = "demolizzen.cogs.economy.economy"
@@ -202,10 +202,12 @@ class MissionMoneyTest(EconomyTestCase):
         )
         return await missions.get_mission(1, 10, "alice", Kind.RAIDING)
 
-    def view(self, mission, init_chance: int):
+    def view(self, mission, init_chance: int, event=None):
         ctx = make_ctx(guild=self.guild, author=self.alice)
         with patch.object(missionfunc.random, "randint", return_value=init_chance):
-            return missionfunc.MissionEvent(ctx, None, mission, Kind.RAIDING)
+            return missionfunc.MissionEvent(
+                ctx, None, mission, Kind.RAIDING, event=event
+            )
 
     @staticmethod
     def click():
@@ -373,6 +375,49 @@ class MissionMoneyTest(EconomyTestCase):
         again = await self.ctx(cog=self.missions)
         await self.missions.work.callback(self.missions, again)
         self.assertEqual(await self.wallet(self.alice), earned)
+
+    async def test_work_uses_the_stored_event(self):
+        # Switched on without ever choosing a factor: the default doubles.
+        await guilds.ensure_guild(1, "Alpha")
+        await missions.set_event(1, active=True)
+        ctx = await self.ctx(cog=self.missions)
+        await self.missions.work.callback(self.missions, ctx)
+        await UserWorkMission.objects.filter(user__user_id=10).aupdate(
+            cooldown=timezone.now() - timedelta(hours=2)
+        )
+
+        paid = await self.ctx(cog=self.missions)
+        with patch("demolizzen.cogs.economy.mission.random.randrange", return_value=40):
+            await self.missions.work.callback(self.missions, paid)
+
+        # 40 for the shift, another 40 when the story escalates, times two.
+        self.assertIn(await self.wallet(self.alice), (80, 160))
+        self.assertIn("EVENT DAY", self.lines(paid))
+
+    async def test_mission_uses_the_stored_event(self):
+        await guilds.ensure_guild(1, "Alpha")
+        await missions.set_event(1, active=True, factor=3)
+        mission = await self.make_mission(wallet=0)
+
+        ctx = await self.ctx(cog=self.missions)
+        await self.missions.missionevent.callback(self.missions, ctx, "Raiding")
+        shown = ctx.respond.await_args.kwargs["view"]
+        self.assertEqual(shown.event, Event(True, 3))
+
+        interaction, _ = await self.trigger(
+            self.view(mission, init_chance=100, event=Event(True, 3)), roll=1
+        )
+        self.assertEqual(await self.wallet(self.alice), 150)
+        self.assertIn("EVENT DAY", self.report(interaction))
+
+    async def test_mission_without_event(self):
+        mission = await self.make_mission(wallet=0)
+
+        ctx = await self.ctx(cog=self.missions)
+        await self.missions.missionevent.callback(self.missions, ctx, "Raiding")
+
+        self.assertEqual(ctx.respond.await_args.kwargs["view"].event, Event(False, 2))
+        self.assertEqual(mission.salary, 50)
 
     async def test_buying_a_ship_takes_the_price(self):
         await self.fund(self.alice, 1000)

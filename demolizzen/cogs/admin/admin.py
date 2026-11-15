@@ -8,7 +8,6 @@ from discord.ext import commands
 from django.utils import timezone
 
 # Demolizzen
-from demolizzen.config import EVENTS_SERVER
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
@@ -38,9 +37,6 @@ class Admin(BaseCog):
         "Moderation System",
         contexts=[discord.InteractionContextType.guild],
         default_member_permissions=discord.Permissions(manage_messages=True),
-    )
-    economy = admin.create_subgroup(
-        "economy", contexts=[discord.InteractionContextType.guild]
     )
 
     # ---------------------------- Moderation ----------------------------
@@ -106,55 +102,3 @@ class Admin(BaseCog):
                 description="❌ No messages older than 14 days to delete."
             )
         await ctx.respond(embed=embed, ephemeral=True, delete_after=10)
-
-    # ---------------------------- Mission System ----------------------------
-    # ---------------------------- Mission System ----------------------------
-    # ---------------------------- Mission System ----------------------------
-
-    @economy.command(
-        name="mode", description="Start or Stop the Event for the Economy System"
-    )
-    @commands.guild_only()
-    @checks.is_admin()
-    @option(
-        "action",
-        description="Start or Stop the Event for the Economy System",
-        choices=["On", "Off", "Status"],
-    )
-    async def mode(self, ctx, action: str):
-        """Start or Stop the Event for the Economy System."""
-
-        server_id = ctx.guild.id
-
-        if server_id in EVENTS_SERVER:
-            events, event_factor = EVENTS_SERVER[server_id]
-        else:
-            EVENTS_SERVER[server_id] = (False, 0)
-            events, event_factor = EVENTS_SERVER[server_id]
-
-        if action == "Status":
-            if events:
-                await ctx.respond(f"🟢 Event ist aktiv.\n Faktor: {event_factor}")
-            else:
-                await ctx.respond(f"🔴 Event ist nicht aktiv.\n Faktor: {event_factor}")
-
-        if action == "On":
-            EVENTS_SERVER[server_id] = (True, int(event_factor))
-            await ctx.respond("🟢 Event wurde aktiviert.")
-            return
-
-        if action == "Off":
-            EVENTS_SERVER[server_id] = (False, int(event_factor))
-            await ctx.respond("🔴 Event wurde deaktiviert.")
-            return
-
-    @economy.command(name="set", description="Set the Event Faktor as Multiplier")
-    @checks.is_admin()
-    @option("amount", description="Multiply the Loan")
-    async def set(self, ctx, amount: int):
-        """Set the Event Faktor as Multiplier."""
-        server_id = ctx.guild.id
-
-        EVENTS_SERVER[server_id] = (True, int(amount))
-        await ctx.respond(f"🟢 Event has been set to x {amount}.")
-        return

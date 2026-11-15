@@ -6,10 +6,9 @@ import discord
 
 # Demolizzen
 from demolizzen import models
-from demolizzen.config import EVENTS_SERVER
 from demolizzen.services import missions
 from demolizzen.services.errors import AlreadySettled
-from demolizzen.services.missions import Kind
+from demolizzen.services.missions import Event, Kind
 
 
 class MissionComponent:
@@ -27,6 +26,7 @@ class MissionEvent(discord.ui.View):
         components,
         mission_account: models.UserMiningMission | models.UserRaidMission,
         kind: Kind,
+        event: Event | None = None,
     ):
         super().__init__(timeout=20, disable_on_timeout=True)
         if components is None:
@@ -61,12 +61,8 @@ class MissionEvent(discord.ui.View):
         # Discord Data
         self.username = self.ctx.author.name.capitalize()
 
-        # Event Data
-        if self.ctx.guild.id in EVENTS_SERVER:
-            self.events, self.event_factor = EVENTS_SERVER[self.ctx.guild.id]
-        else:
-            EVENTS_SERVER[self.ctx.guild.id] = (False, 0)
-            self.events, self.event_factor = EVENTS_SERVER[self.ctx.guild.id]
+        # The guild's event as it was when the mission was shown.
+        self.event = event or Event(False, missions.DEFAULT_EVENT_FACTOR)
 
     async def on_timeout(self):
         # Nobody clicked: the mission is settled without a decision.
@@ -106,8 +102,8 @@ class MissionEvent(discord.ui.View):
             insurance=self.insurance,
             attack=self.bonus,
             bonus_amount=random.randrange(50, 100),
-            event=bool(self.events),
-            event_factor=self.event_factor,
+            event=self.event.active,
+            event_factor=self.event.factor,
         )
         # The next mission starts right away
         next_salary = random.randrange(10, 30) + ship.payout_bonus
@@ -188,6 +184,7 @@ class MissionEvent(discord.ui.View):
                         components=self.components,
                         mission_account=self.mission_account,
                         kind=self.kind,
+                        event=self.event,
                     )
                 )
             # pylint: disable=broad-exception-caught
@@ -209,7 +206,7 @@ class MissionEvent(discord.ui.View):
                         f":rocket: {self.username}, 🌟**BONUS**🌟\n{self.mission_account.get_attack_story()}",
                     )
                 )
-            if self.events:
+            if self.event.active:
                 fields.append(
                     (
                         "",
@@ -260,7 +257,7 @@ class MissionEvent(discord.ui.View):
                         f":rocket: {self.username}, \n{self.mission_account.get_attack_story(failure=True)}",
                     )
                 )
-            if self.events:
+            if self.event.active:
                 fields.append(
                     (
                         "",

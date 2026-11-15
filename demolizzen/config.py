@@ -40,8 +40,6 @@ MODERATOR_ROLE_NAME = "Moderator"
 # https://discordapi.com/permissions.html
 BOT_PERMISSIONS = 405807557744
 
-EVENTS_SERVER = {}
-
 # Shorter cooldowns for test accounts: guild id -> member id -> seconds.
 _TEST_ACCOUNTS = (784546720935182357, 240850566002114561)
 COOLDOWN_OVERRIDES = {

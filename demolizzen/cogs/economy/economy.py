@@ -35,14 +35,6 @@ class Economy(BaseCog):
         "mission", contexts=[discord.InteractionContextType.guild]
     )
 
-    def set_event(self, guild_id, active, event_factor):
-        self.events[guild_id] = (active, int(event_factor))
-
-    def get_event(self, guild_id):
-        return self.events.get(
-            guild_id, (False, 0)
-        )  # Standardwerte, falls das Event nicht vorhanden ist
-
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
         # Members need no registration: profile and bank account are created on demand.
         await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)

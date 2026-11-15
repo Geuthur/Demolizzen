@@ -12,7 +12,6 @@ from discord.ext import commands
 # Demolizzen
 from demolizzen import models
 from demolizzen.cogs.economy import missionfunc
-from demolizzen.config import EVENTS_SERVER
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
 from demolizzen.services import bank, guilds, missions
@@ -72,7 +71,7 @@ class TextAdventure(BaseCog):
         """
         username = ctx.author.name.capitalize()
         gif_url = "https://hell-rider.de/static/images/discord/work-working.gif"
-        events, event_factor = EVENTS_SERVER.setdefault(ctx.guild.id, (False, 0))
+        event = await missions.get_event(ctx.guild.id)
 
         # Roll the shift: payout, bonus for the adventure and the story
         payout = random.randrange(25, 75)
@@ -84,8 +83,8 @@ class TextAdventure(BaseCog):
         if escalation_text is not None:
             payout += escalation_payout
         event_extra = 0
-        if events is True:
-            boosted = math.ceil(payout * event_factor)
+        if event.active:
+            boosted = math.ceil(payout * event.factor)
             event_extra = boosted - payout
             payout = boosted
 
@@ -125,7 +124,7 @@ class TextAdventure(BaseCog):
                 value=f":rocket: {username}, 🌟**BONUS**🌟\n{escalation_text}",
                 inline=False,
             )
-        if events is True:
+        if event.active:
             em.add_field(
                 name="",
                 value=f"🎉**EVENT DAY**🎉\nYou notice that there has been an extra payout on your pay slip, and the amount is **`{event_extra}`**:coin:",
@@ -229,6 +228,7 @@ class TextAdventure(BaseCog):
                 ctx=ctx,
                 mission_account=mission_account,
                 kind=kind,
+                event=await missions.get_event(ctx.guild.id),
             ),
         )
 
