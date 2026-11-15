@@ -33,6 +33,7 @@ Section Order:
 
 ## Fixed
 
+- The Voices of War module loads again: its ticket button is registered once the bot is running and opens tickets through the rebuilt ticket module
 - A bot started the old way (`Demolizzen().run()` without `load_preload_extensions()`) ran without modules and deleted every slash command at Discord; `run()` and `start()` now load the modules themselves, and an empty command list is never synced
 - `/owner load`, `unload` and `reload` did not register added, changed or removed commands with Discord
 - Economy event paid 0 coins when switched on without a factor, could take money with a negative factor and was lost on restart; it is stored per server with a factor from 1 to 10 (default 2, migration `0014`)

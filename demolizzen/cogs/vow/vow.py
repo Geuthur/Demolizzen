@@ -1,4 +1,5 @@
 # Standard Library
+import asyncio
 import logging
 
 # Discord
@@ -7,6 +8,9 @@ from discord.ext import commands
 from discord.ui import Button, View
 
 logger = logging.getLogger(__name__)
+
+# Buttons already posted in the server carry this id; it must not change.
+TICKET_BUTTON_ID = "persistent_ticket_button"
 
 
 class Vow(commands.Cog):
@@ -19,9 +23,27 @@ class Vow(commands.Cog):
         self.title = "Voice of War"
         self.alias = "vow"
         self.access = 476405195585355776
-        self.bot.add_view(
-            self.PersistentTicketView(bot)
-        )  # Add the persistent view to the bot
+        self._view_registered = False
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # loaded before the bot runs; on_ready registers the view
+        else:
+            self._register_view()
+
+    def _register_view(self) -> None:
+        """Register the ticket button once.
+
+        py-cord views can only be created while the event loop is running.
+        """
+        if self._view_registered:
+            return
+        self.bot.add_view(self.PersistentTicketView(self.bot))
+        self._view_registered = True
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        self._register_view()
 
     # --------- Persistent Ticket Button ---------
     class PersistentTicketView(View):
@@ -35,7 +57,7 @@ class Vow(commands.Cog):
                 super().__init__(
                     label="Ticket eröffnen",
                     style=discord.ButtonStyle.green,
-                    custom_id="persistent_ticket_button",
+                    custom_id=TICKET_BUTTON_ID,
                 )
 
             async def callback(self, interaction: discord.Interaction):
@@ -46,11 +68,8 @@ class Vow(commands.Cog):
                         "Ticketsystem nicht geladen.", ephemeral=True
                     )
                     return
-                # open_ticket aufrufen (async, wie im Original)
-                ctx = await interaction.client.get_application_context(interaction)
-                # GuildSettings laden wie im TicketSystem
-                await ticket_cog.cog_before_invoke(ctx)
-                await ticket_cog.open_ticket(ctx)
+                # Same path as the ticket module's own "Open ticket" button.
+                await ticket_cog.actions.start_open(interaction)
 
     @commands.slash_command(guild_ids=[476405195585355776, 518052275076464640])
     @commands.guild_only()
