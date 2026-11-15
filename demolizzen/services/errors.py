@@ -164,3 +164,27 @@ class ShipNotFound(MissionError):
 
 class ShipAlreadyOwned(MissionError):
     """The member already flies this ship."""
+
+
+class PriceError(ServiceError):
+    """Base class of price lookup errors. ``message`` is meant to be shown to the user."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class PriceNotFound(PriceError):
+    """The trade hub has no price for the item."""
+
+    def __init__(self, item_name: str, tradehub: str):
+        super().__init__(f"No market price found for **{item_name}** in {tradehub}.")
+
+
+class PriceUnavailable(PriceError):
+    """The price service could not be asked."""
+
+    def __init__(self, tradehub: str):
+        super().__init__(
+            f"The price service did not answer for {tradehub}. Please try again later."
+        )
