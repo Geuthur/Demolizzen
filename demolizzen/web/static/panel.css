@@ -592,6 +592,8 @@ fieldset.field legend { padding: 0; }
 }
 
 .feeds .settings { max-width: none; margin-top: 0; align-content: start; }
+/* Save at the left, the way out at the right, on one line. */
+.feeds .choice { justify-content: space-between; gap: 0.75rem; }
 
 /* What the card is about leads it: the followed id, set like a readout. */
 .follows p { display: grid; gap: 0.1rem; margin: 0; min-width: 0; }
@@ -621,24 +623,40 @@ fieldset.field legend { padding: 0; }
   overflow-wrap: anywhere;
 }
 
-/* Removing takes two steps without a script: open, then press. */
+/* Removing takes two steps without a script: open, then press. Both steps
+   wear the alarm colour; only the second one is filled. */
 .remove { position: relative; }
 
 .remove summary {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0;
-  color: var(--muted);
+  gap: 0.45rem;
+  padding: 0.42rem 0.85rem;
+  border: 1px solid rgb(255 143 128 / 0.55);
+  border-radius: var(--cut-small);
+  background: rgb(255 143 128 / 0.08);
+  color: var(--alarm);
   font: 500 0.875rem/1.3 var(--display);
   letter-spacing: 0.035em;
   list-style: none;
   cursor: pointer;
+  transition: box-shadow 0.15s, background-color 0.15s, border-color 0.15s;
 }
 
 .remove summary::-webkit-details-marker { display: none; }
-.remove summary:hover { color: var(--alarm); }
-.remove[open] summary { margin-bottom: 0.6rem; color: var(--text); }
+
+.remove summary:hover {
+  border-color: var(--alarm);
+  background: rgb(255 143 128 / 0.16);
+  box-shadow: 0 0 0.8rem rgb(255 143 128 / 0.25);
+}
+
+.remove[open] summary { margin-bottom: 0.6rem; }
+
+.remove[open] button.danger {
+  background: var(--alarm);
+  color: var(--ink);
+}
 
 .crumb.back { margin-top: 2rem; }
 
