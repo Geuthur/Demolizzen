@@ -236,6 +236,50 @@ async def reset(guild_id: int, user_id: int, user_name: str) -> None:
     await sync_to_async(_reset_sync)(account.pk)
 
 
+def _wager_sync(account_id: int, stake: int, won: bool) -> Balance:
+    with transaction.atomic():
+        (account,) = _lock_accounts(account_id)
+        if account.wallet < stake:
+            raise InsufficientFunds("You don't have that much money!")
+        account.wallet += 2 * stake if won else -stake
+        account.save(update_fields=["wallet"])
+    return _balance(account)
+
+
+async def wager(
+    guild_id: int, user_id: int, user_name: str, stake: int, won: bool
+) -> Balance:
+    """Settle a bet: a win adds twice the stake, a loss takes the stake.
+
+    The member must hold the stake either way.
+    """
+    _check_amount(stake)
+    account = await ensure_account(guild_id, user_id, user_name)
+    return await sync_to_async(_wager_sync)(account.pk, stake, won)
+
+
+def _adjust_sync(account_id: int, delta: int) -> int:
+    with transaction.atomic():
+        (account,) = _lock_accounts(account_id)
+        applied = max(delta, -account.wallet)
+        account.wallet += applied
+        account.save(update_fields=["wallet"])
+    return applied
+
+
+async def adjust(guild_id: int, user_id: int, user_name: str, delta: int) -> int:
+    """Change the wallet by ``delta`` and return the change that was booked.
+
+    A negative ``delta`` takes at most what the wallet holds.
+    """
+    if isinstance(delta, bool) or not isinstance(delta, int) or abs(delta) > MAX_AMOUNT:
+        raise InvalidAmount("Amount is too large.")
+    account = await ensure_account(guild_id, user_id, user_name)
+    if delta == 0:
+        return 0
+    return await sync_to_async(_adjust_sync)(account.pk, delta)
+
+
 # ---------------------------------------------------------------------- settings
 
 
