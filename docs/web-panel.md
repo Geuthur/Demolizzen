@@ -72,6 +72,21 @@ The database server has to offer TLS for this (`require_secure_transport` or `RE
 panel's database user enforce it on that side as well). A misspelt mode stops the panel at start
 instead of running unencrypted. The same two settings work for the bot.
 
+### Without TLS
+
+Both settings are optional. Without them user name and password decide who gets in, but what
+travels between panel and database can be read on the way. If the database cannot offer TLS, do at
+least this:
+
+- Open port 3306 in the firewall for the panel's address only.
+- Bind the panel's database user to that address (`'demolizzen_panel'@'<panel address>'`), not
+  to `%`.
+- Use a long random password that is used nowhere else.
+
+A tunnel between the two machines (WireGuard, or `ssh -L`) encrypts the connection without
+touching the database's configuration. The setup check reports an unencrypted connection as a
+warning, not as an error.
+
 ## Run it with Docker
 
 ```shell
@@ -127,7 +142,8 @@ CREATE USER 'demolizzen_panel'@'<address the panel connects from>'
 GRANT SELECT, INSERT, UPDATE ON <database>.* TO 'demolizzen_panel'@'<address the panel connects from>';
 ```
 
-Leave out `REQUIRE SSL` only when the database runs on the same machine.
+Leave out `REQUIRE SSL` when the database runs on the same machine or cannot offer TLS (see
+*Without TLS* above).
 
 ## Check the setup
 
