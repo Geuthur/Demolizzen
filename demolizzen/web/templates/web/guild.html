@@ -1,0 +1,19 @@
+{% extends "web/base.html" %}
+{% block title %}{{ guild.name }} – Demolizzen panel{% endblock %}
+{% block content %}
+<p class="small"><a href="{% url 'home' %}">Your servers</a></p>
+<h1>{{ guild.name }}</h1>
+<h2>Modules</h2>
+<ul class="rows">
+  {% for module in modules %}
+  <li>
+    <span class="lamp{% if module.on %} on{% endif %}" aria-hidden="true"></span>
+    <div class="grow">
+      <div class="name">{{ module.title }}</div>
+      <div class="about">{{ module.description }}</div>
+    </div>
+    <span class="state">{% if module.fixed %}Always on{% elif module.on %}On{% else %}Off{% endif %}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

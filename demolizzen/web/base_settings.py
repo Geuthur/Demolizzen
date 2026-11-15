@@ -60,6 +60,7 @@ SESSION_COOKIE_HTTPONLY = True
 # Lax: the cookie must come along when Discord sends the browser back.
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_FAILURE_VIEW = "demolizzen.web.views.csrf_failure"
 
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
