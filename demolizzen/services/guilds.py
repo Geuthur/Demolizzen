@@ -51,6 +51,18 @@ async def remove_missing_guilds(present_ids: Iterable[int]) -> list[int]:
     return removed
 
 
+async def known_guilds(guild_ids: Iterable[int]) -> list[tuple[int, str]]:
+    """Id and name of those guilds the bot is registered in, sorted by name."""
+    ids = list(guild_ids)
+    if not ids:
+        return []
+    found = [
+        (guild.guild_id, guild.guild_name)
+        async for guild in GuildProfile.objects.filter(guild_id__in=ids)
+    ]
+    return sorted(found, key=lambda entry: (entry[1].casefold(), entry[0]))
+
+
 async def ensure_members(guild_id: int, members: Iterable[tuple[int, str]]) -> int:
     """Create profiles and default settings for members that have none yet.
 

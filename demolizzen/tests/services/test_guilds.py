@@ -196,3 +196,16 @@ class EnsureMembersBatchTest(TestCase):
         self.assertEqual(
             [len(call.args[1]) for call in batch.call_args_list], [3, 3, 1]
         )
+
+
+class KnownGuildsTest(TestCase):
+    async def test_known_guilds_returns_names_sorted(self):
+        await guilds.ensure_guild(2, "beta")
+        await guilds.ensure_guild(1, "Gamma")
+        await guilds.ensure_guild(3, "Alpha")
+
+        self.assertEqual(
+            await guilds.known_guilds([1, 2, 3, 99]),
+            [(3, "Alpha"), (2, "beta"), (1, "Gamma")],
+        )
+        self.assertEqual(await guilds.known_guilds([]), [])
