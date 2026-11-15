@@ -17,7 +17,6 @@ from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
 from demolizzen.services import bank, guilds
 from demolizzen.services.errors import BankError, InsufficientFunds
-from demolizzen.utils.functions import application_cooldown
 
 
 class Games(BaseCog):
@@ -94,10 +93,6 @@ class Games(BaseCog):
 
         await ctx.respond(message)
 
-    @rps.error
-    async def command_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
-
     @games.command()
     @commands.guild_only()
     @commands.cooldown(
@@ -132,10 +127,6 @@ class Games(BaseCog):
                 title="", color=discord.Color.red(), description=description
             )
         )
-
-    @slots.error
-    async def slots_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
 
     @games.command()
     @commands.guild_only()
@@ -180,10 +171,6 @@ class Games(BaseCog):
             name="", value=f":game_die: {ctx.author.name}, {result}", inline=False
         )
         await ctx.respond(embed=em)
-
-    @dice.error
-    async def dice_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
 
     @games.command()
     @commands.guild_only()

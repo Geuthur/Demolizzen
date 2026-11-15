@@ -27,6 +27,7 @@ Section Order:
 
 ## Fixed
 
+- Cooldowns of `/rank`, `/bot uptime`, `/games rps`, `/games slots`, `/games dice` and `/token help` were answered twice; only the private standard message of the bot is sent
 - `/eve price` never used its price cache and failed for a second trade hub of the same item; prices are cached for 30 minutes per item and trade hub (migration `0013` recreates the cache table)
 - `/eve price` showed `0 ISK` or a generic error when the price service failed or did not know the item, and could time out; it defers, waits at most 10 seconds and answers with a clear message
 - Item suggestions of `/eve price` lost names starting with the search text when more than 50 items contained it

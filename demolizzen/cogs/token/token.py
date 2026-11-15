@@ -27,7 +27,6 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
-from demolizzen.utils.functions import application_cooldown
 
 OTOKEN_URL = "https://login.eveonline.com/v2/oauth/token"
 TOKEN_JWK_SET_URL = "https://login.eveonline.com/oauth/jwks"
@@ -307,7 +306,3 @@ class Token(commands.Cog):
             "** TEST MODE **\n With the Link you can add the SSO Scope to the Discord Bot.\n ATM there is no use for it.",
             view=view,
         )
-
-    @token_help.error
-    async def command_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)

@@ -3,7 +3,6 @@ import logging
 
 # Discord
 import discord
-from discord.ext import commands
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
@@ -12,33 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 # Convert Time
-def convert_time(seconds: int) -> str:
-    """
-    Convert a duration in seconds into a human-readable string representation.
-
-    This function takes a duration in seconds as input and converts it into a
-    human-readable string format. It provides the duration in seconds, minutes,
-    or hours, depending on the input value.
-
-    Parameters
-    ----------
-    seconds : int
-        The duration in seconds to be converted.
-
-    Returns
-    -------
-    str
-        A string representing the duration in seconds, minutes, or hours.
-    """
-    if seconds < 60:
-        return f"{round(seconds)} Sekunden"
-    minutes = seconds / 60
-    if minutes < 60:
-        return f"{round(minutes)} Minuten"
-    hours = minutes / 60
-    return f"{round(hours)} Stunden"
-
-
 def convert_to_bool(argument):
     lowered = argument.lower()
     if lowered in ("yes", "y", "true", "t", "1", "enable", "on"):
@@ -49,17 +21,6 @@ def convert_to_bool(argument):
 
 
 # Application Cooldown Trigger
-async def application_cooldown(ctx: discord.ApplicationContext, error):
-    seconds = ctx.command.get_cooldown_retry_after(ctx)
-    final_time = convert_time(seconds)
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.respond(
-            f"The Rate limit has been reached, Please wait {final_time}",
-            delete_after=10,
-        )
-        return
-
-
 def colour(*args):
     """Returns a discord Colour object.
     Pass one as an argument to define colour:

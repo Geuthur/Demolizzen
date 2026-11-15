@@ -11,7 +11,6 @@ from discord.ext.pages import Paginator
 from demolizzen import models
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
-from demolizzen.utils.functions import application_cooldown
 
 
 class Core(BaseCog):
@@ -113,10 +112,6 @@ class Core(BaseCog):
         if ctx.user.id == 240850566002114561:
             self.bot.logger.error(self.bot.guilds)
         await ctx.respond(embed=em)
-
-    @uptime.error
-    async def command_cooldown(self, ctx, error):
-        await application_cooldown(ctx, error)
 
     @botsettings.command()
     async def changelog(self, ctx: discord.ApplicationContext):

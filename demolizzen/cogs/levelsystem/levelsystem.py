@@ -19,7 +19,7 @@ from demolizzen.config import DISCORD_EMBED_COLOR_DANGER
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog, guild_listener
 from demolizzen.services import guilds, levels
-from demolizzen.utils.functions import application_cooldown, get_command_mention
+from demolizzen.utils.functions import get_command_mention
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +122,6 @@ class Levelsystem(BaseCog):
         return await ctx.respond(
             embed=embed, file=discord.File(fp=image, filename="rank_card.png")
         )
-
-    @rank.error
-    async def rank_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
 
     # ---------------------------- Listener ----------------------------
 
