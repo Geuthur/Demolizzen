@@ -104,3 +104,27 @@ class InvalidTransfer(BankError):
 
 class InvalidBankSetting(BankError):
     """A bank setting was given an unknown name or an invalid value."""
+
+
+class ShopError(ServiceError):
+    """Base class of shop errors. ``message`` is meant to be shown to the user."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class ItemNotFound(ShopError):
+    """The shop does not sell the item."""
+
+
+class InvalidQuantity(ShopError):
+    """The quantity is not a whole number within the allowed range."""
+
+
+class ItemNotOwned(ShopError):
+    """The member has none of the item."""
+
+
+class NotEnoughItems(ShopError):
+    """The member has fewer of the item than they want to use."""
