@@ -76,7 +76,7 @@ class AssetLoader:
                             f"{url} is larger than {self.MAX_BYTES} bytes."
                         )
                     chunks.append(chunk)
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        except (aiohttp.ClientError, TimeoutError) as exc:
             raise AssetError(f"{url} could not be loaded: {exc!r}") from exc
         return b"".join(chunks)
 

@@ -1,110 +1,65 @@
 # Standard Library
-import random
+import asyncio
+import logging
 
 # Discord
 import discord
-from discord.commands import SlashCommandGroup
 from discord.ext import commands
 from discord.ext.pages import Paginator
 
 # Demolizzen
 from demolizzen import config
-from demolizzen.cogs.levelsystem._functions import CheckLevelUp
-from demolizzen.config import (
-    DISCORD_EMBED_COLOR_DANGER,
-    DISCORD_EMBED_COLOR_SUCCESS,
+from demolizzen.cogs.levelsystem._cards import (
+    AssetError,
+    AssetLoader,
+    render_level_up_card,
+    render_rank_card,
 )
-from demolizzen.core import checks
+from demolizzen.config import DISCORD_EMBED_COLOR_DANGER
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog, guild_listener
-from demolizzen.models import GuildProfile, UserProfile
+from demolizzen.services import guilds, levels
 from demolizzen.utils.functions import application_cooldown, get_command_mention
+
+logger = logging.getLogger(__name__)
 
 
 class Levelsystem(BaseCog):
+    """Earn experience by chatting and climb the server's leaderboard."""
+
     key = "levelsystem"
 
     def __init__(self, bot: "Demolizzen"):
         super().__init__(bot)
         self.title = "Levelsystem"
         self.alias = "levelsystem"
-        self.level = CheckLevelUp(bot)
+        # Images are fetched through the bot's HTTP session, which exists once
+        # the bot has started.
+        self.assets = AssetLoader(lambda: self.bot.session)
 
-    levelsystem = SlashCommandGroup(
-        "levelsystem", "Levelsystem", contexts=[discord.InteractionContextType.guild]
-    )
+    # ---------------------------- Commands ----------------------------
 
-    levelsystem_config = SlashCommandGroup(
-        "levelsystem_config",
-        "Levelsystem Configuration",
-        default_member_permissions=discord.Permissions(manage_guild=True),
-        contexts=[discord.InteractionContextType.guild],
-    )
-
-    @levelsystem_config.command(
-        name="set-mention", description="Activate/Deactivate Level UP Posting"
-    )
-    @checks.is_guild_manager()
-    async def toggle(self, ctx: discord.ApplicationContext, state: bool):
-        """
-        Activate/Deactivate Level UP Posting
-        """
-        guild_profile = await GuildProfile.objects.aget(guild_id=ctx.guild.id)
-        guild_profile.mention = state
-
-        await guild_profile.asave()
-        embed = discord.Embed(
-            description=f"🟢 **SUCCESS**: `📢 Level UP Posting set to: {state}`"
-        )
-        await ctx.respond(embed=embed)
-
-    # Leaderboard Command
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 10 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(3, 600, commands.BucketType.user)
     async def leaderboard(self, ctx: discord.ApplicationContext):
         """
         Get rank list from Server
         """
         await ctx.defer()
-        guild_users = [
-            member
-            async for member in UserProfile.objects.filter(
-                guild_id=ctx.guild.id
-            ).order_by("-level", "-experience")
-        ]
-
-        if not guild_users:
+        board = await levels.leaderboard(ctx.guild.id)
+        if not board:
             embed = discord.Embed(
                 description="❌ Aktuell ist die Liste nicht verfügbar"
             )
             return await ctx.respond(embed=embed)
 
-        embed = discord.Embed(
-            title=f":trophy: {ctx.guild}'s Leaderboard",
-            colour=DISCORD_EMBED_COLOR_SUCCESS,
-        )
-
-        level = []
         pages = []
-        data = []
         description = ""
-
-        for user in guild_users:
-            values = (
-                user.user_name,
-                user.level,
-                user.experience,
-            )  # A list with the three values from x
-            data.append(values)
-
-        for index, level in enumerate(data):
+        for index, (name, level, experience) in enumerate(board):
             description += (
-                f"`{index + 1}.` {level[0]} `LEVEL:` {level[1]} `XP`: {level[2]}\n"
+                f"`{index + 1}.` {name} `LEVEL:` {level} `XP`: {experience}\n"
             )
-
-            if (index + 1) % 10 == 0 or index == len(data) - 1:
+            if (index + 1) % 10 == 0 or index == len(board) - 1:
                 embed = discord.Embed(
                     title=f":trophy: {ctx.guild}'s Leaderboard",
                     description=description,
@@ -118,159 +73,168 @@ class Levelsystem(BaseCog):
         paginator = Paginator(pages=pages, timeout=30, disable_on_timeout=True)
         return await paginator.respond(ctx.interaction)
 
-    # Rank Command
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
-    @commands.cooldown(
-        3, 600, commands.BucketType.user
-    )  # 10 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(3, 600, commands.BucketType.user)
     async def rank(self, ctx: discord.ApplicationContext, member: discord.Member):
         """
         Get member's rank
         """
         await ctx.defer()
-
-        user_profile = await UserProfile.objects.select_related("settings").aget(
-            user_id=member.id, guild_id=ctx.guild.id
-        )
-
-        if not user_profile:
+        data = await levels.get_card_data(ctx.guild.id, member.id)
+        if data is None:
             embed = discord.Embed(
                 description=f"❌ {member.display_name} is not registered in the leveling system."
             )
             return await ctx.respond(embed=embed)
 
-        # Generate the rank card
-        card = await self.level.generate_rank_card(
-            user_profile=user_profile, member=member, guild=ctx.guild
-        )
-        embed = discord.Embed()
-        embed.set_image(url="attachment://rank_card.png")
-        if card is None:
+        try:
+            background, border, avatar = await asyncio.gather(
+                self.assets.load(data.background),
+                self.assets.load(data.border),
+                self.assets.load(str(member.display_avatar.url), cache=False),
+            )
+            progress = levels.progress(data.experience)
+            # Drawing is CPU work; keep it off the event loop.
+            image = await asyncio.to_thread(
+                render_rank_card,
+                background,
+                avatar,
+                border,
+                name=member.name.capitalize(),
+                experience=data.experience,
+                level=progress.level,
+                into_level=progress.into_level,
+                needed=progress.needed,
+                percent=progress.percent,
+                colour=data.xp_colour,
+                blur=data.blur,
+                rank=data.rank,
+            )
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            logger.warning("Rank card for %s failed: %r", member.id, error)
             embed = discord.Embed(
                 description="❌ Error generating rank card. Please try again later."
             )
             return await ctx.respond(embed=embed)
-        return await ctx.respond(embed=embed, file=card)
+
+        embed = discord.Embed()
+        embed.set_image(url="attachment://rank_card.png")
+        return await ctx.respond(
+            embed=embed, file=discord.File(fp=image, filename="rank_card.png")
+        )
 
     @rank.error
     async def rank_cooldown(self, ctx: discord.ApplicationContext, error):
         await application_cooldown(ctx, error)
 
     # ---------------------------- Listener ----------------------------
-    # ---------------------------- Listener ----------------------------
-    # ---------------------------- Listener ----------------------------
 
     @guild_listener()
-    async def on_message(self, ctx: discord.Message):
-        if ctx.guild and not ctx.author.bot:
-            # Check if the Guild Profile exists
-            try:
-                guild_profile = await GuildProfile.objects.aget(guild_id=ctx.guild.id)
-            except GuildProfile.DoesNotExist:
-                guild_profile = await GuildProfile.objects.acreate(
-                    guild_id=ctx.guild.id, guild_name=ctx.guild.name
-                )
-                self.bot.logger.info(
-                    f"Create New Guild Profile {ctx.guild.name} to Database."
-                )
-            # Check if the User Profile exists
-            try:
-                user_profile = await UserProfile.objects.select_related(
-                    "settings"
-                ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
-            except UserProfile.DoesNotExist:
-                user_profile = await UserProfile.objects.select_related(
-                    "settings"
-                ).acreate(
-                    user_id=ctx.author.id,
-                    user_name=(
-                        ctx.author.name if ctx.author.name else ctx.author.display_name
-                    ),
-                    guild_id=ctx.guild.id,
-                )
-                self.bot.logger.info(
-                    f"Create New User Profile: {ctx.author.display_name.capitalize()}"
-                )
-            try:
-                if config.XP_CHANCE is True:
-                    chance_rate = config.XP_CHANCE_RATE
-                    random_num = random.randint(1, chance_rate)
-                    if random_num != chance_rate:
-                        return
+    async def on_message(self, message: discord.Message):
+        """Give experience for messages written in a server."""
+        if message.guild is None or message.author.bot:
+            return
+        # Decide first whether this message earns anything; most do not, and
+        # those must not cost a database query.
+        amount = levels.message_xp(len(message.content.split()))
+        if amount <= 0:
+            return
+        try:
+            result = await levels.add_xp(
+                message.guild.id,
+                message.guild.name,
+                message.author.id,
+                message.author.display_name,
+                amount,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Adding experience for %s failed", message.author.id)
+            return
+        if result.leveled_up:
+            await self._announce_level_up(message.author, result)
 
-                xp_type = self.bot.config.XP_TYPE
-                if xp_type.lower() == "normal":
-                    to_add = config.XP_NORMAL_AMOUNT
-                    user_profile.experience += to_add
-                elif xp_type.lower() == "words":
-                    # get the length of the message
-                    res = len(ctx.content.split())
-                    message_length = int(res)
-                    user_profile.experience += message_length
-                elif xp_type.lower() == "ranrange":
-                    # get ranges from config
-                    min_xp = config.XP_RANRANGE_MIN
-                    max_xp = config.XP_RANRANGE_MAX
-                    amount = random.randint(min_xp, max_xp)
-                    user_profile.experience += amount
-
-                # Update User Name if changed
-                if user_profile.user_name != ctx.author.display_name:
-                    user_profile.user_name = ctx.author.display_name
-
-                await user_profile.asave()
-                # Check if the user leveled up
-                await self.level.check_level_up(
-                    user_profile=user_profile,
-                    guild_profile=guild_profile,
-                    member=ctx.author,
-                    guild=ctx.guild,
-                )
+    async def _announce_level_up(self, member: discord.Member, result) -> None:
+        """Post the level-up card. Experience and level are booked either way."""
+        guild = member.guild
+        try:
+            announcement = await levels.get_announcement(guild.id)
+            if not announcement.enabled:
                 return
-            # pylint: disable=broad-except
-            except Exception as e:
-                self.bot.logger.error(f"Fehler bei On Message: {e}", exc_info=True)
+            channel = None
+            if announcement.channel_id:
+                channel = guild.get_channel(announcement.channel_id)
+            channel = channel or guild.system_channel
+            if channel is None:
+                return
+            if not channel.permissions_for(guild.me).send_messages:
+                return
+
+            data = await levels.get_card_data(guild.id, member.id)
+            background, shade, border, avatar = await asyncio.gather(
+                self.assets.load(config.LEVEL_UP_BACKGROUND),
+                self.assets.load(config.LEVEL_UP_BACKGROUND_SHADE),
+                self.assets.load(data.border),
+                self.assets.load(str(member.display_avatar.url), cache=False),
+            )
+            progress = levels.progress(result.experience)
+            image = await asyncio.to_thread(
+                render_level_up_card,
+                background,
+                shade,
+                avatar,
+                border,
+                name=member.display_name.capitalize(),
+                level=progress.level,
+                xp_into_level=progress.into_level,
+            )
+            embed = discord.Embed()
+            embed.set_image(url="attachment://level_card.png")
+            await channel.send(
+                file=discord.File(fp=image, filename="level_card.png"),
+                embed=embed,
+                content=f"{member.mention}," if config.LEVEL_UP_PING is True else "",
+            )
+        except AssetError as error:
+            logger.warning("Level-up card for %s skipped: %s", member.id, error)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Level-up card for %s failed", member.id)
 
     @guild_listener()
     async def on_guild_channel_delete(self, channel: discord.TextChannel):
+        """Pick a new main channel when the current one was deleted."""
         try:
-            guild_profile = await GuildProfile.objects.aget(guild_id=channel.guild.id)
-            if guild_profile is not None:
-                if channel.id == guild_profile.main_channel_id:
-                    # Use system (default) channel if available, else pick first available text channel
-                    new_channel = None
-                    if (
-                        channel.guild.system_channel
-                        and channel.guild.system_channel.id != channel.id
-                    ):
-                        new_channel = channel.guild.system_channel
-                    if not new_channel:
-                        channels = [
-                            ch
-                            for ch in await channel.guild.fetch_channels()
-                            if isinstance(ch, discord.TextChannel)
-                            and ch.id != channel.id
-                        ]
-                        if channels:
-                            new_channel = channels[0]
-                    if new_channel:
-                        guild_profile.main_channel_id = new_channel.id
-                        # Try to resolve the command for mention
-                        command_mention = get_command_mention(
-                            self.bot,
-                            cog="Guild",
-                            slash_command="guild",
-                            slash_command_group="set_channel",
-                        )
-                        embed = discord.Embed(
-                            description=(
-                                f"⛔CONFIG ERROR⛔: The main channel has been deleted, Use System Channel.\n"
-                                f"If you want to change the main channel, use {command_mention}"
-                            ),
-                            color=DISCORD_EMBED_COLOR_DANGER,
-                        )
-                        await new_channel.send(embed=embed)
-                        await guild_profile.asave()
-                    return
-        except GuildProfile.DoesNotExist:
-            return
+            guild = channel.guild
+            if channel.id != await guilds.get_main_channel(guild.id):
+                return
+            # Use the system channel if available, else the first text channel
+            new_channel = None
+            if guild.system_channel and guild.system_channel.id != channel.id:
+                new_channel = guild.system_channel
+            if not new_channel:
+                candidates = [
+                    ch
+                    for ch in await guild.fetch_channels()
+                    if isinstance(ch, discord.TextChannel) and ch.id != channel.id
+                ]
+                if candidates:
+                    new_channel = candidates[0]
+            if not new_channel:
+                return
+
+            await guilds.set_main_channel(guild.id, new_channel.id)
+            command_mention = get_command_mention(
+                self.bot,
+                cog="Guild",
+                slash_command="guild",
+                slash_command_group="set_channel",
+            )
+            embed = discord.Embed(
+                description=(
+                    f"⛔CONFIG ERROR⛔: The main channel has been deleted, Use System Channel.\n"
+                    f"If you want to change the main channel, use {command_mention}"
+                ),
+                color=DISCORD_EMBED_COLOR_DANGER,
+            )
+            await new_channel.send(embed=embed)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Repairing the main channel failed")

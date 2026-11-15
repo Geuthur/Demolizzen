@@ -120,6 +120,12 @@ async def rename_member(guild_id: int, user_id: int, name: str) -> bool:
     return updated > 0
 
 
+async def get_main_channel(guild_id: int) -> int | None:
+    """Return the id of the guild's main channel, if one is set."""
+    profile = await GuildProfile.objects.filter(guild_id=guild_id).afirst()
+    return profile.main_channel_id if profile is not None else None
+
+
 async def set_main_channel(guild_id: int, channel_id: int | None) -> bool:
     """Set or clear the guild's main channel. Returns True only when it changed."""
     try:

@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Level system settings page in `/panel` (level-up posts on/off, channel)
 - Bank settings page in `/panel` (interest per week, deposits and withdrawals on/off); `allow_deposits` and `allow_withdrawals` are now enforced
 - Ticket subject and description form, `Open ticket` button message, transcript of deleted tickets in a log channel, ticket settings page in `/panel`
 - `/panel`: guild admins enable and disable modules for their server, with a confirmation when dependent modules are switched along
@@ -26,6 +27,9 @@ Section Order:
 
 ## Fixed
 
+- `/rank` for a member without a profile ended in a generic error
+- Experience could be lost when a member wrote messages in quick succession; experience is added with a single database update
+- Level-up and rank cards blocked the whole bot while images were downloaded and drawn; downloads are asynchronous with a 10 second and 8 MB limit, static images are cached and drawing runs in a worker thread
 - `/use` never showed the drink texts because shop drinks are filed as `drinks`
 - `/daily` and `/work` could pay twice when sent at the same time; cooldown check and payout are one transaction
 - Mission reports could tell a different outcome than the one that was booked; the outcome is decided once and the insurance line names what was actually paid
@@ -52,6 +56,7 @@ Section Order:
 
 ## Changed
 
+- Level rules moved to `demolizzen/services/levels.py`; messages that earn no experience no longer query the database
 - Daily, work and mission rules moved to `demolizzen/services/missions.py`; `demolizzen/models` no longer imports `discord`; test account cooldown overrides moved to `config.COOLDOWN_OVERRIDES`
 - Games, shop, economy and missions book all money through the bank service; shop purchases and item use moved to `demolizzen/services/shop.py`
 - Bank logic moved to `demolizzen/services/bank.py`; weekly interest is paid by a single database update and checked every six hours
@@ -76,6 +81,7 @@ Section Order:
 
 ## Removed
 
+- `/levelsystem_config set-mention` and the empty `/levelsystem` command group; level-up posts and their channel are set in `/panel`
 - `/bank create` (accounts are created automatically) and the `/bank_config` commands; bank settings are changed in `/panel`
 - Ticket task queue (`guild_ticket_tasks` table, migration `0010`) and the loading of all tickets at startup
 - `/ticket_config` commands; ticket settings are changed in `/panel`

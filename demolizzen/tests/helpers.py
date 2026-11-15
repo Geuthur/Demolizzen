@@ -46,6 +46,7 @@ def make_ctx(guild=None, author=None) -> MagicMock:
     ctx = MagicMock(spec=discord.ApplicationContext)
     ctx.guild = guild
     ctx.bot = MagicMock()
+    ctx.interaction = MagicMock()
     ctx.author = author if author is not None else make_member(guild=guild)
     ctx.user = ctx.author
     ctx.respond = AsyncMock()
