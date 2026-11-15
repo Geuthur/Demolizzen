@@ -8,15 +8,11 @@ from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
-# Django
-from django.utils import timezone
-
 # Demolizzen
-from demolizzen import models
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
-from demolizzen.services import bank, guilds
-from demolizzen.services.errors import InsufficientFunds
+from demolizzen.services import bank, guilds, missions
+from demolizzen.services.errors import InsufficientFunds, OnCooldown
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +47,6 @@ class Economy(BaseCog):
         # Members need no registration: profile and bank account are created on demand.
         await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
         await bank.ensure_account(ctx.guild.id, ctx.author.id, ctx.author.display_name)
-        ctx.user_profile = await models.UserProfile.objects.select_related(
-            "bank_account"
-        ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
 
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     async def daily(self, ctx: discord.ApplicationContext):
@@ -61,54 +54,27 @@ class Economy(BaseCog):
         Collect your Daily Reward
         """
         try:
-            daily_account, __ = await models.UserDailyReward.objects.select_related(
-                "user"
-            ).aget_or_create(user=ctx.user_profile)
-
-            # Timer Manager
-            remaining_time = await daily_account.user.get_cooldown(
-                ctx=ctx,
-                ship_cooldown=timezone.timedelta(days=1),
-                last_cooldown=daily_account.last_claim,
+            claim = await missions.claim_daily(
+                ctx.guild.id,
+                ctx.author.id,
+                ctx.author.display_name,
+                random.randrange(30),
             )
-
-            delta = remaining_time.delta
-            cooldown = remaining_time.cooldown
-
-            if delta < remaining_time.timer:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You have already collected your daily reward, wait a bit more `{cooldown}`",
-                )
-                await ctx.respond(embed=em)
-                return
-
-            # Set Daily Reward
-            # Streak: +1 wenn mehr als 24h vergangen, sonst 1
-            streak = daily_account.streak + 1 if delta > remaining_time.timer else 1
-            daily_account.streak = streak
-            daily_account.last_claim = timezone.now()
-            daily_reward = random.randrange(30) + (daily_account.streak * 5)
-            await daily_account.asave()
-            await bank.credit(
-                ctx.guild.id, ctx.author.id, ctx.author.display_name, daily_reward
-            )
-
-            # Send Response
+        except OnCooldown as cooldown:
             em = discord.Embed(
                 title="",
-                color=discord.Color.teal(),
-                description=f"{ctx.author.mention}, **{streak}** At once. Here is your daily reward of {daily_reward}:coin:",
+                color=discord.Color.red(),
+                description=f"{ctx.author.mention}, You have already collected your daily reward, wait a bit more `{missions.format_remaining(cooldown.remaining)}`",
             )
-
             await ctx.respond(embed=em)
-        except Exception as e:
-            logger.exception(f"Error in daily command: {e}")
-            await ctx.respond(
-                "An error occurred while processing your command. Please try again later."
-            )
-        return
+            return
+
+        em = discord.Embed(
+            title="",
+            color=discord.Color.teal(),
+            description=f"{ctx.author.mention}, **{claim.streak}** At once. Here is your daily reward of {claim.reward}:coin:",
+        )
+        await ctx.respond(embed=em)
 
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     @commands.cooldown(1, 300, commands.BucketType.user)

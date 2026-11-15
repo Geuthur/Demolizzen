@@ -278,7 +278,13 @@ class SettleTest(MissionsTestCase):
         later = NOW + timedelta(minutes=10)
 
         applied = await missions.settle(
-            *WHO, Kind.RAIDING, started_at, 120, 33, 44, later
+            *WHO,
+            Kind.RAIDING,
+            started_at,
+            payout=120,
+            next_salary=33,
+            next_chance=44,
+            now=later,
         )
 
         self.assertEqual(applied, 120)
@@ -291,19 +297,37 @@ class SettleTest(MissionsTestCase):
     async def test_mission_is_settled_only_once(self):
         started_at = await self.flying()
         later = NOW + timedelta(minutes=10)
-        await missions.settle(*WHO, Kind.RAIDING, started_at, 120, 33, 44, later)
+        await missions.settle(
+            *WHO,
+            Kind.RAIDING,
+            started_at,
+            payout=120,
+            next_salary=33,
+            next_chance=44,
+            now=later,
+        )
 
         with self.assertRaisesMessage(
             AlreadySettled, "This mission has already been reported."
         ):
-            await missions.settle(*WHO, Kind.RAIDING, started_at, 120, 33, 44, later)
+            await missions.settle(
+                *WHO,
+                Kind.RAIDING,
+                started_at,
+                payout=120,
+                next_salary=33,
+                next_chance=44,
+                now=later,
+            )
 
         self.assertEqual(await self.wallet(), 120)
 
     async def test_loss_takes_at_most_the_wallet(self):
         started_at = await self.flying(wallet=120)
 
-        applied = await missions.settle(*WHO, Kind.RAIDING, started_at, -500, 33, 44)
+        applied = await missions.settle(
+            *WHO, Kind.RAIDING, started_at, payout=-500, next_salary=33, next_chance=44
+        )
 
         self.assertEqual(applied, -120)
         self.assertEqual(await self.wallet(), 0)
@@ -311,7 +335,9 @@ class SettleTest(MissionsTestCase):
     async def test_zero_payout_still_starts_the_next_mission(self):
         started_at = await self.flying(wallet=50)
 
-        applied = await missions.settle(*WHO, Kind.RAIDING, started_at, 0, 33, 44)
+        applied = await missions.settle(
+            *WHO, Kind.RAIDING, started_at, payout=0, next_salary=33, next_chance=44
+        )
 
         self.assertEqual(applied, 0)
         self.assertEqual((await self.mission()).salary, 33)
@@ -321,7 +347,14 @@ class SettleTest(MissionsTestCase):
         await missions.cancel(*WHO, Kind.RAIDING)
 
         with self.assertRaises(AlreadySettled):
-            await missions.settle(*WHO, Kind.RAIDING, started_at, 120, 33, 44)
+            await missions.settle(
+                *WHO,
+                Kind.RAIDING,
+                started_at,
+                payout=120,
+                next_salary=33,
+                next_chance=44,
+            )
 
         self.assertEqual(await self.wallet(), 0)
 
@@ -333,7 +366,9 @@ class SettleTest(MissionsTestCase):
             ship=ship, salary=40, chance=20, active=True, cooldown=old_start
         )
 
-        applied = await missions.settle(*WHO, Kind.RAIDING, old_start, 40, 33, 44)
+        applied = await missions.settle(
+            *WHO, Kind.RAIDING, old_start, payout=40, next_salary=33, next_chance=44
+        )
 
         self.assertEqual(applied, 40)
 

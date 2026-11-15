@@ -1,12 +1,8 @@
 # Standard Library
 from typing import Union
 
-# Discord
-import discord
-
 # Django
 from django.db import models
-from django.utils import timezone
 
 # Demolizzen
 from demolizzen.models.guild import GuildProfile
@@ -40,45 +36,6 @@ class UserProfile(models.Model):
     def bags(self) -> Union[models.QuerySet["UserBag"], "UserBag"]:
         """Returns the user's bag QuerySet Manager."""
         return self.bags
-
-    async def get_cooldown(
-        self,
-        ctx: discord.ApplicationContext,
-        ship_cooldown: timezone.timedelta,
-        last_cooldown: timezone.datetime | None,
-    ):
-        """Get the cooldown for a specific mission type."""
-
-        class CooldownTimer:
-            def __init__(self, timer, delta, cooldown):
-                self.timer = timer
-                self.delta = delta
-                self.cooldown = cooldown
-
-        excluding = [784546720935182357, 240850566002114561]
-
-        timer = ship_cooldown
-        # Can be removed cause its only for checking code
-        if ctx.author.id in excluding and ctx.guild.id == 518052275076464640:
-            timer = timezone.timedelta(seconds=10)
-        if ctx.author.id in excluding and ctx.guild.id == 337275567487320064:
-            timer = timezone.timedelta(seconds=10)
-
-        # Wenn last_cooldown nicht gesetzt ist, setze ihn auf einen Zeitpunkt weit in der Vergangenheit
-        if not last_cooldown:
-            last_cooldown = timezone.now() - timer
-
-        # Berechne, wie viel Zeit noch übrig ist
-        cooldown_end = last_cooldown + timer
-        now = timezone.now()
-        cooldown_td = max(cooldown_end - now, timezone.timedelta(seconds=0))
-        cooldown = str(cooldown_td).split(".", maxsplit=1)[0]
-        delta = now - last_cooldown
-
-        ctx.bot.logger.debug(
-            f"Last Cooldown: {last_cooldown} | Now: {now} | Timer: {timer} | Delta: {delta} | Cooldown: {cooldown}"
-        )
-        return CooldownTimer(timer, delta, cooldown)
 
 
 class UserSettings(models.Model):

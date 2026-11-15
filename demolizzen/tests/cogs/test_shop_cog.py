@@ -103,7 +103,7 @@ class UseItemCommandTest(ShopCogTestCase):
         await commands.use.callback(commands, ctx, "Beer", 2)
 
         self.assertEqual(await self.owned(), 1)
-        self.assertIn("2 x Beer", self.said(ctx))
+        self.assertIn("Beer", self.said(ctx))
 
     async def test_use_more_than_owned_is_refused(self):
         await self.stock(wallet=1000)
@@ -135,3 +135,13 @@ class UseItemCommandTest(ShopCogTestCase):
 
         self.assertEqual(await self.owned(), 1)
         self.assertIn("must be positive", self.said(ctx))
+
+    async def test_use_shows_drink_text_for_drinks(self):
+        await self.stock(wallet=1000)
+        await shop_service.buy(1, 10, "alice", "Beer", 1)
+        commands = Commands(MagicMock())
+        ctx = self.ctx()
+
+        await commands.use.callback(commands, ctx, "Beer", 1)
+
+        self.assertNotIn("benutzt 1 x Beer", self.said(ctx))

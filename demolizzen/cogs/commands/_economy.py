@@ -93,7 +93,8 @@ class CommandsEconomy:
             await ctx.respond(embed=em)
             return
 
-        if used.item_type == "drink":
+        # The shop files drinks under "drinks"; older bags may say "drink".
+        if used.item_type in ("drink", "drinks"):
             if amount <= 1:
                 em = discord.Embed(
                     title="",

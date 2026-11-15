@@ -26,6 +26,10 @@ Section Order:
 
 ## Fixed
 
+- `/use` never showed the drink texts because shop drinks are filed as `drinks`
+- `/daily` and `/work` could pay twice when sent at the same time; cooldown check and payout are one transaction
+- Mission reports could tell a different outcome than the one that was booked; the outcome is decided once and the insurance line names what was actually paid
+- A mission could be paid out several times: once per open report message, and again when the buttons timed out after a click. A mission is now settled exactly once
 - Economy, shop and mission commands asked members to create a bank account with a command that no longer exists; profile and account are created on demand
 - Mission insurance could push the wallet below zero
 - `/games dice` rolled 1–5 instead of 1–6 and announced the single stake while paying the double; stakes of 0 are refused
@@ -48,6 +52,7 @@ Section Order:
 
 ## Changed
 
+- Daily, work and mission rules moved to `demolizzen/services/missions.py`; `demolizzen/models` no longer imports `discord`; test account cooldown overrides moved to `config.COOLDOWN_OVERRIDES`
 - Games, shop, economy and missions book all money through the bank service; shop purchases and item use moved to `demolizzen/services/shop.py`
 - Bank logic moved to `demolizzen/services/bank.py`; weekly interest is paid by a single database update and checked every six hours
 - Ticket channels are named `ticket-0042-name` while open and `closed-0042-name` when closed; members are limited to one open ticket by default

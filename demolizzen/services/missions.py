@@ -257,6 +257,7 @@ def resolve(
     chance: int,
     payout: int,
     insurance: int,
+    *,
     attack: bool,
     bonus_amount: int,
     event: bool,
@@ -287,6 +288,7 @@ def _settle_sync(
     profile_id: int,
     kind: Kind,
     started_at,
+    *,
     payout: int,
     next_salary: int,
     next_chance: int,
@@ -313,6 +315,7 @@ async def settle(
     user_name: str,
     kind: Kind,
     started_at,
+    *,
     payout: int,
     next_salary: int,
     next_chance: int,
@@ -328,10 +331,10 @@ async def settle(
         account.user_id,
         kind,
         started_at,
-        payout,
-        next_salary,
-        next_chance,
-        now or timezone.now(),
+        payout=payout,
+        next_salary=next_salary,
+        next_chance=next_chance,
+        now=now or timezone.now(),
     )
 
 
