@@ -18,6 +18,7 @@ from demolizzen.services.errors import (
     MissionError,
     TicketError,
 )
+from demolizzen.web import eve_names
 from demolizzen.web.directory import Choice, Directory
 
 
@@ -374,15 +375,37 @@ def _channel_options(choices: list[Choice], current: int) -> list[dict]:
     return options
 
 
+# How the panel names ESI's categories, and which of them a killmail is ever
+# matched by (see services.killmails.matches).
+KIND_LABELS = {
+    "alliance": "Alliance",
+    "corporation": "Corporation",
+    "character": "Character",
+    "solar_system": "System",
+    "region": "Region",
+}
+
+
+def _kind_label(kind: str) -> str:
+    return KIND_LABELS.get(kind) or kind.replace("_", " ").capitalize()
+
+
 async def _killmail_load(guild_id: int, directory: Directory | None = None) -> dict:
     rules = await killmails.rules_for_guild(guild_id)
     channels = directory.text_channels if directory is not None else None
+    # What each followed id stands for; empty when EVE's API cannot say.
+    names = await eve_names.lookup([rule.group_id for rule in rules if rule.group_id])
+    known = {rule.id: names.get(rule.group_id) for rule in rules}
     return {
         "has_directory": directory is not None,
         "subscriptions": [
             {
                 "id": rule.id,
                 "follows": str(rule.group_id) if rule.group_id else "Every killmail",
+                "kind": _kind_label(known[rule.id].kind) if known[rule.id] else None,
+                "name": known[rule.id].name if known[rule.id] else None,
+                # False for a kind of id no killmail is matched by.
+                "matched": known[rule.id] is None or known[rule.id].kind in KIND_LABELS,
                 "threshold": rule.threshold,
                 "losses": rule.losses,
                 "channel_id": rule.channel_id,

@@ -458,4 +458,6 @@ button.danger {
 
 button.danger:hover { background: var(--alarm); color: var(--deep); filter: none; }
 
+.help.caution { color: var(--caution); }
+
 .crumb.back { margin-top: 2rem; }

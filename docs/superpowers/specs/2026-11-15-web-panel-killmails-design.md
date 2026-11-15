@@ -14,8 +14,8 @@ instead of with `/killmail add|remove|subscription`.
 
 ## Non-goals
 
-- Names for the followed ids (alliance, corporation, …). The page shows the id,
-  as `/killmail subscription` does. Resolving names needs ESI and is a later step.
+- Validating a new id against ESI. The page shows what an id is once it is
+  stored; an unknown id is shown bare.
 - Checking in the panel whether the bot may write in the chosen channel. The
   bot pauses a subscription it cannot deliver and says so, as before.
 - Changing the followed id of a subscription: remove it and add another.
@@ -40,3 +40,8 @@ instead of with `/killmail add|remove|subscription`.
 - Removing sits behind a `<details>` element: one click opens it, a second
   removes. The panel has no JavaScript.
 - The killmail cog re-reads all subscriptions every 60 seconds (one query).
+- The owner asked for the kind of each id (corporation, alliance, system).
+  `demolizzen/web/eve_names.py` asks ESI's `POST /universe/names/` for kind
+  and name of all ids of the page in one request, keeps answers for a day and
+  never fails the page: without an answer the bare id is shown. A kind no
+  killmail is matched by (constellation, station, …) is pointed out.

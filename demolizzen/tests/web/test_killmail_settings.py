@@ -1,3 +1,6 @@
+# Standard Library
+from unittest.mock import patch
+
 # Django
 from django.test import Client
 
@@ -5,13 +8,28 @@ from django.test import Client
 from demolizzen.models import UserProfile
 from demolizzen.services import killmails
 from demolizzen.tests.web.test_ticket_settings import DirectoryPagesTestCase
+from demolizzen.web import eve_names
 from demolizzen.web.discord_api import BotTokenMissing
+from demolizzen.web.eve_names import EveName
 
 PAGE = "/guilds/1/settings/killmail"
 NEW = {"action": "add", "channel": "11", "group": "99000001", "threshold": "1000000"}
 
 
 class KillmailPageTestCase(DirectoryPagesTestCase):
+    def setUp(self):
+        super().setUp()
+        # What EVE's API knows; the tests never ask the real one.
+        self.eve: dict[int, EveName] = {}
+        self.eve_asked: list[list[int]] = []
+        patcher = patch.object(eve_names, "lookup", self.lookup)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def lookup(self, ids):
+        self.eve_asked.append(sorted(ids))
+        return {number: self.eve[number] for number in ids if number in self.eve}
+
     def subscribe(self, channel_id=11, group_id=500, guild_id=1, **kwargs):
         rule, _ = self.run_async(
             killmails.add_subscription(
@@ -106,6 +124,81 @@ class KillmailListTest(KillmailPageTestCase):
         self.assertEqual(
             [(r.channel_id, r.threshold) for r in self.rules()], [(4711, 9)]
         )
+
+
+class KillmailNamesTest(KillmailPageTestCase):
+    """What an id stands for: alliance, corporation, system, … and its name."""
+
+    def shown(self, response) -> list[tuple]:
+        return [
+            (sub["kind"], sub["name"], sub["follows"]) for sub in self.listed(response)
+        ]
+
+    def test_kind_and_name_are_shown_with_the_id(self):
+        self.subscribe(11, 99003581)
+        self.subscribe(14, 30000142)
+        self.subscribe(11, 98000001)
+        self.eve = {
+            99003581: EveName(99003581, "alliance", "Voices of War"),
+            30000142: EveName(30000142, "solar_system", "Jita"),
+            98000001: EveName(98000001, "corporation", "Hell Riders"),
+        }
+
+        response = self.client.get(PAGE)
+
+        self.assertEqual(
+            self.shown(response),
+            [
+                ("Alliance", "Voices of War", "99003581"),
+                ("System", "Jita", "30000142"),
+                ("Corporation", "Hell Riders", "98000001"),
+            ],
+        )
+        self.assertContains(response, "Voices of War")
+        self.assertContains(response, "Id 99003581")
+        # All ids of the page in one question.
+        self.assertEqual(self.eve_asked, [[30000142, 98000001, 99003581]])
+
+    def test_id_stands_alone_when_eve_cannot_say_what_it_is(self):
+        self.subscribe(11, 424242)
+
+        response = self.client.get(PAGE)
+
+        self.assertEqual(self.shown(response), [(None, None, "424242")])
+        self.assertContains(response, "424242")
+
+    def test_subscription_to_everything_is_not_looked_up(self):
+        self.subscribe(11, killmails.GLOBAL_GROUP_ID)
+
+        self.assertEqual(
+            self.shown(self.client.get(PAGE)), [(None, None, "Every killmail")]
+        )
+        self.assertEqual(self.eve_asked, [[]])
+
+    def test_kind_killmails_are_never_matched_by_is_pointed_out(self):
+        self.subscribe(11, 20000020)
+        self.subscribe(14, 99003581)
+        self.eve = {
+            20000020: EveName(20000020, "constellation", "Kimotoro"),
+            99003581: EveName(99003581, "alliance", "Voices of War"),
+        }
+
+        response = self.client.get(PAGE)
+
+        self.assertEqual(
+            [(sub["kind"], sub["matched"]) for sub in self.listed(response)],
+            [("Constellation", False), ("Alliance", True)],
+        )
+        self.assertContains(response, "never match", count=1)
+
+    def test_name_from_eve_is_shown_as_text_never_as_markup(self):
+        self.subscribe(11, 98000001)
+        self.eve = {98000001: EveName(98000001, "corporation", "<script>x</script>")}
+
+        response = self.client.get(PAGE)
+
+        self.assertNotContains(response, "<script>x</script>")
+        self.assertContains(response, "&lt;script&gt;x&lt;/script&gt;")
 
 
 class KillmailAddTest(KillmailPageTestCase):

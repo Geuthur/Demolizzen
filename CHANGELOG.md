@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Web panel: the zKillboard page shows what a followed id is (alliance, corporation, character, region, system) and its name, asked from EVE's public API
 - Web panel: zKillboard settings list a server's killmail subscriptions and change, remove or add them; the bot re-reads subscriptions once a minute
 - Slash commands of a module that is switched off on a server are no longer shown there: commands of switchable modules are registered per server, a switch in the web panel reaches Discord within a minute, one in `/panel` at once
 - `python -m demolizzen.web.check` tells whether the web panel is set up: settings, database access, encryption and missing migrations; `docs/web-panel.md` describes database access from the container and going live with backup and way back

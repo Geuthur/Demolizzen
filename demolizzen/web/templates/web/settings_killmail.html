@@ -8,7 +8,12 @@
   <form class="settings feed" method="post" action="{% url 'module_settings' guild.id page.key %}">
     {% csrf_token %}
     <input type="hidden" name="subscription" value="{{ sub.id }}">
-    <p class="follows"><span class="label">Follows</span> <span class="target">{{ sub.follows }}</span></p>
+    <p class="follows">
+      <span class="label">{{ sub.kind|default:"Follows" }}</span>
+      <span class="target">{{ sub.name|default:sub.follows }}</span>
+      {% if sub.name %}<span class="label">Id {{ sub.follows }}</span>{% endif %}
+    </p>
+    {% if not sub.matched %}<p class="help caution">Killmails never match this kind of id. Follow an alliance, corporation, character, region or system instead.</p>{% endif %}
     {% if sub.channels %}
     <label class="field">
       <span class="label">Channel</span>

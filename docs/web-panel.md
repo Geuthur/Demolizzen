@@ -230,6 +230,9 @@ Register `http://localhost:8000/callback` as redirect for this.
   `identify guilds`) and the ids of their servers. It is encrypted and signed with keys derived
   from `SECRET_KEY`: without that key nobody can read or change it, the visitor included. Nothing
   about visitors is stored in the database.
+- The zKillboard page asks EVE's public API (`esi.evetech.net`) what a followed id stands for:
+  its kind (alliance, corporation, system, …) and name. No token is involved. Answers are kept
+  for a day; when the API cannot be reached the page shows the bare ids.
 - A module switched in the panel takes effect in the bot within a minute. The bot then registers
   that server's slash commands again, so the commands of a switched-off module disappear from
   the server and return when it is switched on.
