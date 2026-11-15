@@ -5,6 +5,7 @@ missions, a level system and help tickets. Each server decides which of these it
 
 - [Changelog](CHANGELOG.md)
 - [Web panel](docs/web-panel.md)
+- [The bot in a container](docs/bot-docker.md)
 - [Contributing](CONTRIBUTING.md)
 - [Privacy policy](PRIVACY_POLICY.md)
 - Support: <https://discord.gg/WrHzA4rnxA>
@@ -63,6 +64,8 @@ Start the bot:
 ```shell
 python -m demolizzen.launch
 ```
+
+Or run it in a container: [docs/bot-docker.md](docs/bot-docker.md).
 
 On its first connect the bot prints an invite link. It asks for the `bot` and
 `applications.commands` scopes; a server needs both to get its slash commands.

@@ -1,0 +1,36 @@
+# The Demolizzen bot itself. The web panel has its own image (Dockerfile).
+#
+#   docker compose -f docker-compose.bot.yml up -d --build
+#
+# See docs/bot-docker.md.
+
+FROM python:3.13-slim AS build
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential default-libmysqlclient-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+# Everything pyproject.toml names: without the licence file the build stops.
+COPY pyproject.toml README.md LICENSE ./
+COPY demolizzen ./demolizzen
+RUN pip wheel --no-cache-dir --wheel-dir /wheels .
+
+FROM python:3.13-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libmariadb3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 bot
+COPY --from=build /wheels /wheels
+RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+
+WORKDIR /app
+# The bot writes its logs below the working directory.
+RUN mkdir -p /app/demolizzen/logs && chown -R bot:bot /app
+COPY --chown=bot:bot manage.py ./
+
+USER bot
+ENV DJANGO_SETTINGS_MODULE=demolizzen.settings \
+    PYTHONUNBUFFERED=1
+# Bring the tables up to date, then become the bot: "docker stop" then reaches
+# the bot itself, which closes its connections before it ends.
+CMD ["sh", "-c", "python manage.py migrate --noinput && exec python -m demolizzen.launch"]
