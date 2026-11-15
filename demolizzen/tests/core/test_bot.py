@@ -1,11 +1,14 @@
 # Standard Library
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 # Django
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
+from demolizzen.models import GuildProfile
+from demolizzen.services import guilds
+from demolizzen.tests.helpers import make_guild
 
 MODULE = "demolizzen.core.bot"
 
@@ -107,3 +110,25 @@ class BotStartTest(SimpleTestCase):
         await bot.close()
 
         self.assertIsNone(bot.session)
+
+
+class BotReadyTest(TestCase):
+    async def test_on_ready_updates_changed_guild_names(self):
+        await guilds.ensure_guild(1, "Old Name")
+        bot = Demolizzen()
+        with (
+            patch.object(
+                Demolizzen,
+                "guilds",
+                new_callable=PropertyMock,
+                return_value=[make_guild(1, "New Name")],
+            ),
+            patch.object(Demolizzen, "get_all_members", return_value=iter(())),
+            patch.object(Demolizzen, "sync_commands", new_callable=AsyncMock),
+            patch.object(Demolizzen, "change_presence", new_callable=AsyncMock),
+        ):
+            await bot.on_ready()
+
+        self.assertEqual(
+            (await GuildProfile.objects.aget(guild_id=1)).guild_name, "New Name"
+        )

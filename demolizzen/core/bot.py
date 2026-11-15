@@ -18,7 +18,7 @@ from django.utils import timezone
 # Demolizzen
 from demolizzen import config, logger
 from demolizzen.core.openapi import OpenAPI
-from demolizzen.models.guild import GuildProfile
+from demolizzen.services import guilds
 
 
 class Demolizzen(commands.Bot):
@@ -154,26 +154,20 @@ class Demolizzen(commands.Bot):
             print(f"\nInvite URL: {self.invite_url}\n")
 
     async def on_ready(self):
-        guilds = len(self.guilds)
+        guild_count = len(self.guilds)
         users = len(list(self.get_all_members()))
 
         await self.sync_commands()
 
         updated_guilds = 0
         for guild in self.guilds:
-            try:
-                guild_profile = await GuildProfile.objects.aget(guild_id=guild.id)
-                if guild.name != guild_profile.guild_name:
-                    guild_profile.guild_name = guild.name
-                    updated_guilds += 1
-                    await guild_profile.asave()
-            except GuildProfile.DoesNotExist:
-                pass
+            if await guilds.rename_guild(guild.id, guild.name):
+                updated_guilds += 1
         if updated_guilds > 0:
             print(f"Updated guild names for {updated_guilds} guild(s).")
 
-        if guilds:
-            print(f"Servers: {guilds}")
+        if guild_count:
+            print(f"Servers: {guild_count}")
             print(f"Members: {users}")
         else:
             print("Invite me to a server!")
@@ -181,7 +175,7 @@ class Demolizzen(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.listening,
-                name=f"{guilds} Servers",
+                name=f"{guild_count} Servers",
                 state="Status: 🟢 No Issues",
             ),
             status=discord.Status.online,
