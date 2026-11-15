@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Cog registry (`demolizzen/core/registry.py`) and per-guild cog settings service with dependency handling (Economy, Shop and Games require the Banksystem)
 - Open API Log [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - On Member Update Listener [PR](https://github.com/Geuthur/Demolizzen/pull/50)
 - Guild Join Event for Bank Cog [da1006a](https://github.com/Geuthur/Demolizzen/commit/da1006a3875be34bce98866184de7db1209afea5)
