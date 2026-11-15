@@ -6,6 +6,10 @@ import os
 from demolizzen import config
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The test runner creates the tables itself. A bot built in a test must not
+# start by migrating; the tests of that step switch it on explicitly.
+os.environ.setdefault("AUTO_MIGRATE", "0")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SECRET_KEY = config.SECRET_KEY

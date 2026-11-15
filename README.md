@@ -88,10 +88,12 @@ with the bot and ships as a Docker image. See [docs/web-panel.md](docs/web-panel
 ```shell
 git pull
 pip install -e .
-python manage.py migrate
 ```
 
-Then restart the bot. It registers the slash commands with Discord at every start.
+Then restart the bot. At every start it applies pending database migrations and registers the
+slash commands with Discord. Back up the database before an update that brings migrations.
+`AUTO_MIGRATE=0` in `.env` switches the automatic migration off; then run
+`python manage.py migrate` yourself before the restart.
 [CONTRIBUTING.md](CONTRIBUTING.md#updating-a-running-bot) has the details.
 
 ## Upgrading from 2.x
@@ -99,7 +101,7 @@ Then restart the bot. It registers the slash commands with Discord at every star
 Version 3 changes how the bot is run and what a server sees. Back up the database first.
 
 - **Python 3.11** or newer is required.
-- **Migrations** `0008` to `0014` are applied by `python manage.py migrate`. `0011` turns bank
+- **Migrations** `0008` to `0014` are applied by the bot at its first start. `0011` turns bank
   interest rates into fractions (a stored `5` becomes `0.05`), `0013` recreates the price cache.
 - **`panel` must be loaded.** If you keep your own `PRELOAD_EXTENSIONS`, add `"panel"` to it.
 - **Slash commands move from global to per server.** They get new ids at the first start, so

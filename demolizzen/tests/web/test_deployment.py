@@ -104,22 +104,23 @@ class BotContainerTest(SimpleTestCase):
         # Demolizzen
         from demolizzen import launch
 
-        self.assertIn("python -m demolizzen.launch", self.dockerfile)
+        self.assertIn('"-m", "demolizzen.launch"', self.dockerfile)
         self.assertTrue(callable(launch.run_bot))
         self.assertIn("DJANGO_SETTINGS_MODULE=demolizzen.settings", self.dockerfile)
 
-    def test_database_is_brought_up_to_date_before_the_bot_starts(self):
-        # A bot whose code is ahead of its tables fails in odd places.
-        start = self.dockerfile[self.dockerfile.rindex("CMD") :]
+    def test_database_is_brought_up_to_date_by_the_bot_itself(self):
+        # The bot applies pending migrations at every start, wherever it runs;
+        # the container must not switch that off.
+        # Demolizzen
+        from demolizzen.core import schema
 
-        self.assertLess(
-            start.index("manage.py migrate --noinput"),
-            start.index("python -m demolizzen.launch"),
-        )
+        self.assertTrue(schema.enabled(None))
+        self.assertNotIn("AUTO_MIGRATE", self.dockerfile)
+        self.assertNotIn("AUTO_MIGRATE", self.compose)
 
     def test_stop_signal_reaches_the_bot_not_a_shell(self):
         # "docker stop" must let the bot close its connections.
-        self.assertIn("exec python -m demolizzen.launch", self.dockerfile)
+        self.assertIn('CMD ["python", "-m", "demolizzen.launch"]', self.dockerfile)
 
     def test_management_commands_work_inside_the_container(self):
         # README: python manage.py migrate / init_database

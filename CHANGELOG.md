@@ -19,6 +19,7 @@ bot was rebuilt on a tested service layer. Read
 
 ### Added
 
+- The bot applies pending database migrations at every start, before it loads its modules; a failing migration stops the start, `AUTO_MIGRATE=0` in `.env` switches it off
 - `Dockerfile.bot` and `docker-compose.bot.yml` run the bot itself in a container, with an optional MariaDB (`--profile database`) that uses the login from `.env`; see `docs/bot-docker.md`
 - `EXTRA_EXTENSIONS` in `.env` loads the modules of single servers (`vow`, `geuthur`) without editing `config.py`
 - A README: what the bot does, installation, first steps, updating and upgrading from 2.x

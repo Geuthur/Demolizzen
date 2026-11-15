@@ -1,4 +1,5 @@
 # Standard Library
+import asyncio
 import os
 import traceback
 from collections import Counter
@@ -17,7 +18,7 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import config, logger
-from demolizzen.core import extensions
+from demolizzen.core import extensions, schema
 from demolizzen.core.command_scope import CommandScope
 from demolizzen.core.openapi import OpenAPI
 from demolizzen.services import guilds
@@ -51,6 +52,9 @@ class Demolizzen(commands.Bot):
         self.launch_time = timezone.now()
         self._connected_once = False
         self._modules_loaded = False
+        # Pending database migrations are applied before the bot starts.
+        self.auto_migrate = schema.enabled(os.getenv(schema.SETTING))
+        self._schema_checked = False
         self.command_scope = CommandScope(self)
         self._commands_synced = False
         # Created in start(), once the event loop is running.
@@ -94,8 +98,42 @@ class Demolizzen(commands.Bot):
         if not self._modules_loaded:
             self.load_preload_extensions()
 
+    def _ensure_schema(self) -> None:
+        """Apply pending database migrations, once per start.
+
+        Every way of starting the bot ends up here, before any module is
+        loaded: modules read tables the moment they start. A migration that
+        fails stops the start, because a bot on half-changed tables does damage.
+        """
+        if self._schema_checked:
+            return
+        self._schema_checked = True
+        if not self.auto_migrate:
+            return
+        try:
+            applied = schema.apply_pending()
+        except Exception:
+            self.logger.critical(
+                "Database migrations failed; the bot does not start.", exc_info=True
+            )
+            print(Red("Database migrations failed; the bot does not start."))
+            raise
+        finally:
+            # The bot's own work uses other connections; this one would sit idle.
+            schema.connection.close()
+        if applied:
+            self.logger.info("Applied database migrations: %s", ", ".join(applied))
+            print(
+                Green(
+                    f"Applied {len(applied)} database migration(s): "
+                    + ", ".join(applied)
+                )
+            )
+
     def run(self, *args, **kwargs) -> None:
-        """Load the modules if the caller has not, then connect and block."""
+        """Bring the database up to date and load the modules if the caller
+        has not, then connect and block."""
+        self._ensure_schema()
         self._ensure_modules()
         super().run(*args, **kwargs)
 
@@ -110,6 +148,9 @@ class Demolizzen(commands.Bot):
             self.logger.critical("Token must be set in order to login.")
             raise RuntimeError("Token must be set in order to login.")
 
+        if not self._schema_checked:
+            # In a thread: migrating talks to the database synchronously.
+            await asyncio.to_thread(self._ensure_schema)
         self._ensure_modules()
         self.session = aiohttp.ClientSession()
         self.esi_data = OpenAPI(self.session)
