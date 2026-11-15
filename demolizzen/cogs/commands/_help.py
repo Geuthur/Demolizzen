@@ -50,7 +50,9 @@ class CommandsHelp:
             # Check if the user has permission to view any command in the cog
             show_cog = True
             for command in cog.get_commands():
-                if isinstance(command, discord.SlashCommandGroup):
+                if isinstance(
+                    command, (discord.SlashCommandGroup, discord.SlashCommand)
+                ):
                     perms = getattr(command, "default_member_permissions", None)
                     if perms is not None and isinstance(perms, discord.Permissions):
                         if (

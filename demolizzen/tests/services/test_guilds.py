@@ -1,3 +1,6 @@
+# Standard Library
+from unittest.mock import patch
+
 # Django
 from django.test import TestCase
 
@@ -172,3 +175,24 @@ class MainChannelTest(TestCase):
     async def test_unknown_guild_raises(self):
         with self.assertRaises(GuildNotRegistered):
             await guilds.set_main_channel(99, 555)
+
+
+class EnsureMembersBatchTest(TestCase):
+    async def test_large_guilds_are_processed_in_batches(self):
+        await guilds.ensure_guild(1, "Alpha")
+        members = [(user_id, f"u{user_id}") for user_id in range(1, 8)]
+
+        with (
+            patch.object(guilds, "MEMBER_BATCH_SIZE", 3),
+            patch.object(
+                guilds, "_ensure_member_batch", wraps=guilds._ensure_member_batch
+            ) as batch,
+        ):
+            created = await guilds.ensure_members(1, members)
+
+        self.assertEqual(created, 7)
+        self.assertEqual(await UserProfile.objects.acount(), 7)
+        self.assertEqual(await UserSettings.objects.acount(), 7)
+        self.assertEqual(
+            [len(call.args[1]) for call in batch.call_args_list], [3, 3, 1]
+        )

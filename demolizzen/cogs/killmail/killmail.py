@@ -16,7 +16,7 @@ from aiohttp import (
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
-from discord.ext import tasks
+from discord.ext import commands, tasks
 from discord.ui import View
 
 # Django
@@ -32,7 +32,7 @@ from demolizzen.constants import (
 )
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
-from demolizzen.core.cog import BaseCog, guild_listener
+from demolizzen.core.cog import BaseCog
 
 from .killmailmanager import KillmailManager, Subscription
 
@@ -79,8 +79,9 @@ class Killmail(BaseCog):
         self.clean_subscriptions.cancel()
         self.zkillboard_watcher.cancel()
 
-    @guild_listener()
-    async def on_guild_leave(self, guild: discord.Guild):
+    # Cleanup must run whether or not the guild had the module enabled.
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild):
         """Remove all subscriptions for a guild when the bot leaves it."""
         try:
             subscriptions = [
@@ -90,9 +91,10 @@ class Killmail(BaseCog):
                 )
             ]
             for sub in subscriptions:
+                # adelete() clears the primary key, so remember it first.
+                sub_id = sub.id
                 await sub.adelete()
-                if sub.id in self.subs:
-                    del self.subs[sub.id]
+                self.subs.pop(sub_id, None)
             logger.info(
                 f"Removed {len(subscriptions)} killmail subscriptions for guild {guild.name} ({guild.id}) on leave."
             )
@@ -259,7 +261,15 @@ class Killmail(BaseCog):
         if killmail and killmail.zkb.is_npc:
             return
         if killmail:
-            asyncio.gather(*[sub.mail(killmail) for sub in self.subs.values()])
+            asyncio.gather(
+                *[self._deliver(sub, killmail) for sub in self.subs.values()]
+            )
+
+    async def _deliver(self, sub: Subscription, killmail) -> None:
+        """Send the killmail to a subscription unless its guild disabled the module."""
+        if not await self.is_enabled(sub.channel.guild.id):
+            return
+        await sub.mail(killmail)
 
     async def get_sequence_from_r2z2(self) -> int | None:
         """Fetches and returns a sequence ID from ZKB R2Z2 endpoint.
@@ -348,7 +358,7 @@ class Killmail(BaseCog):
 
         try:
             return await asyncio.wait_for(request_with_lock(), timeout=30)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Killmail: Anfrage hat den Lock-Timeout (30s) überschritten und wurde abgebrochen."
             )

@@ -42,6 +42,7 @@ class Demolizzen(commands.Bot):
         self.preload_ext = config.PRELOAD_EXTENSIONS
         self.logger = logger.init_logger(debug_flag="info")
         self.launch_time = timezone.now()
+        self._connected_once = False
         # Created in start(), once the event loop is running.
         self.session: aiohttp.ClientSession | None = None
         self.esi_data: OpenAPI | None = None
@@ -140,11 +141,9 @@ class Demolizzen(commands.Bot):
             self.logger.error(f"Interaction Failed {e}", stack_info=True)
 
     async def on_connect(self):
-        if hasattr(self, "launch_time"):
+        if self._connected_once:
             return print("Reconnected.")
-
-        if not hasattr(self, "launch_time"):
-            self.launch_time = timezone.now()
+        self._connected_once = True
 
         print(Red("==========================================="))
         print(Red("Demolizzen - The Discord Bot for EVE Online"))

@@ -86,11 +86,9 @@ class Games(BaseCog):
         server_id = ctx.guild.id
 
         try:
-            bank_account = await UserBankAccount.get(
-                session=self.bot.sessionmaker(),
-                user_id=ctx.author.id,
-                guild_id=server_id,
-            )
+            bank_account = await UserBankAccount.objects.filter(
+                user__user_id=ctx.author.id, user__guild_id=server_id
+            ).afirst()
 
             if bank_account is None:
                 em = discord.Embed(
@@ -150,7 +148,7 @@ class Games(BaseCog):
                 )
 
             # Update the bank account
-            await bank_account.save(self.bot.sessionmaker())
+            await bank_account.asave(update_fields=["wallet"])
 
             # Send Message
             await ctx.respond(embed=em)
@@ -180,11 +178,9 @@ class Games(BaseCog):
         server_id = ctx.guild.id
 
         try:
-            bank_account = await UserBankAccount.get(
-                session=self.bot.sessionmaker(),
-                user_id=ctx.author.id,
-                guild_id=server_id,
-            )
+            bank_account = await UserBankAccount.objects.filter(
+                user__user_id=ctx.author.id, user__guild_id=server_id
+            ).afirst()
 
             if bank_account is None:
                 em = discord.Embed(
@@ -255,7 +251,7 @@ class Games(BaseCog):
                 )
 
             # Update the bank account
-            await bank_account.save(self.bot.sessionmaker())
+            await bank_account.asave(update_fields=["wallet"])
 
             # Send Message
             await ctx.respond(embed=em)

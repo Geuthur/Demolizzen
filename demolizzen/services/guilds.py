@@ -11,6 +11,8 @@ from demolizzen import config
 from demolizzen.models import GuildProfile, UserProfile, UserSettings
 from demolizzen.services.errors import GuildNotRegistered
 
+MEMBER_BATCH_SIZE = 1000
+
 
 async def ensure_guild(guild_id: int, name: str) -> tuple[GuildProfile, bool]:
     """Make sure the guild has a profile and its settings rows.
@@ -58,9 +60,18 @@ async def ensure_members(guild_id: int, members: Iterable[tuple[int, str]]) -> i
         raise GuildNotRegistered(guild_id)
 
     wanted = dict(members)
-    if not wanted:
-        return 0
+    user_ids = list(wanted)
+    created = 0
+    # Large guilds are handled in batches to keep the IN lists bounded.
+    for start in range(0, len(user_ids), MEMBER_BATCH_SIZE):
+        batch = user_ids[start : start + MEMBER_BATCH_SIZE]
+        created += await _ensure_member_batch(
+            guild_id, {uid: wanted[uid] for uid in batch}
+        )
+    return created
 
+
+async def _ensure_member_batch(guild_id: int, wanted: dict[int, str]) -> int:
     existing = {
         profile.user_id
         async for profile in UserProfile.objects.filter(

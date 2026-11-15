@@ -114,6 +114,8 @@ class BankConfig(BaseCog):
                 )
             ]
             for guild_bank in guild_bank_settings:
+                if not await self.is_enabled(guild_bank.guild_id):
+                    continue
                 bank_accounts = [
                     r
                     async for r in models.UserBankAccount.objects.filter(

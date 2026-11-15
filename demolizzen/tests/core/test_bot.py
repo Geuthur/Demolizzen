@@ -132,3 +132,22 @@ class BotReadyTest(TestCase):
         self.assertEqual(
             (await GuildProfile.objects.aget(guild_id=1)).guild_name, "New Name"
         )
+
+
+class BotConnectTest(SimpleTestCase):
+    async def test_banner_is_printed_on_first_connect_only(self):
+        bot = Demolizzen()
+        with (
+            patch.object(
+                Demolizzen, "invite_url", new_callable=PropertyMock, return_value="url"
+            ),
+            patch("builtins.print") as printed,
+        ):
+            await bot.on_connect()
+            first = [str(call.args[0]) for call in printed.call_args_list if call.args]
+            printed.reset_mock()
+            await bot.on_connect()
+            second = [str(call.args[0]) for call in printed.call_args_list if call.args]
+
+        self.assertTrue(any("Demolizzen - The Discord Bot" in line for line in first))
+        self.assertEqual(second, ["Reconnected."])

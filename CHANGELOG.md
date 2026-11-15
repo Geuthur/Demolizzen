@@ -24,6 +24,10 @@ Section Order:
 
 ## Fixed
 
+- `/help` hides admin-only commands such as `/panel` from members; start banner is printed on first connect
+- `/games slots` and `/games dice` failed on every call because of a removed database helper
+- Killmail subscriptions are removed when the bot leaves a server (listened to a non-existent event and never cleared the in-memory entries)
+- Killmails are no longer posted and bank interest is no longer paid in servers that disabled the module
 - Remove non-existent `test` extension from `PRELOAD_EXTENSIONS`
 - Update add_sub method to ensure only 1 km tracker per `group_id` [PR](https://github.com/Geuthur/Demolizzen/pull/53)
 - Multiple Objects Returned [t7fa7fe8t](https://github.com/Geuthur/Demolizzen/commit/7fa7fe879105d2f34b4e3aa1f95b3906fd39fca9)
@@ -33,6 +37,7 @@ Section Order:
 
 ## Changed
 
+- Drop Python 3.10; Python 3.11 or newer is required
 - `/help` no longer lists modules that are disabled on the server
 - Guild and member bookkeeping moved into `demolizzen/services/guilds.py`; the periodic guild check now uses one query per guild instead of one per member
 - Bot construction no longer loads extensions or opens network connections; `launch.py` loads extensions and `start()` creates the HTTP session and ESI client
