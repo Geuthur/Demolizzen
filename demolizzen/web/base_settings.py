@@ -49,7 +49,10 @@ TEMPLATES = [
         "DIRS": [WEB_DIR / "templates"],
         "APP_DIRS": False,
         "OPTIONS": {
-            "context_processors": ["django.template.context_processors.request"],
+            "context_processors": [
+                "django.template.context_processors.request",
+                "demolizzen.web.assets.context",
+            ],
         },
     },
 ]

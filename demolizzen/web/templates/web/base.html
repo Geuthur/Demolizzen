@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Demolizzen panel{% endblock %}</title>
-<link rel="stylesheet" href="{% url 'stylesheet' %}">
+<link rel="stylesheet" href="{% url 'stylesheet' %}?v={{ stylesheet_version }}">
 </head>
 <body>
 <div class="shell{% if not user %} guest{% endif %}">

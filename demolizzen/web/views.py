@@ -8,6 +8,7 @@ import secrets
 from django.conf import settings
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
+from django.utils.cache import patch_cache_control
 from django.views.decorators.cache import cache_control
 from django.views.decorators.http import (
     require_GET,
@@ -24,12 +25,9 @@ from demolizzen.services.errors import (
     UnknownCog,
 )
 from demolizzen.web import access, directory, discord_api, session
-from demolizzen.web.base_settings import WEB_DIR
+from demolizzen.web.assets import FONT, STYLESHEET, STYLESHEET_VERSION
 from demolizzen.web.discord_api import BotTokenMissing, DiscordError
 from demolizzen.web.module_settings import PAGES, InvalidInput
-
-STYLESHEET = (WEB_DIR / "static" / "panel.css").read_bytes()
-FONT = (WEB_DIR / "static" / "exo2.woff2").read_bytes()
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +45,17 @@ def healthz(request) -> HttpResponse:  # pylint: disable=unused-argument
 
 
 @require_GET
-@cache_control(public=True, max_age=3600)
-def stylesheet(request) -> HttpResponse:  # pylint: disable=unused-argument
-    return HttpResponse(STYLESHEET, content_type="text/css; charset=utf-8")
+def stylesheet(request) -> HttpResponse:
+    """The stylesheet. Pages link it with a fingerprint of its content."""
+    response = HttpResponse(STYLESHEET, content_type="text/css; charset=utf-8")
+    if request.GET.get("v") == STYLESHEET_VERSION:
+        # This address never serves anything else: keep it for good.
+        patch_cache_control(
+            response, public=True, max_age=365 * 24 * 3600, immutable=True
+        )
+    else:
+        patch_cache_control(response, public=True, max_age=3600)
+    return response
 
 
 @require_GET

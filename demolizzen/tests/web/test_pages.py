@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 from django.test import SimpleTestCase, override_settings
 
 # Demolizzen
-from demolizzen.web import base_settings
+from demolizzen.web import assets, base_settings
 
 CSP = (
     "default-src 'none'; style-src 'self'; font-src 'self'; "
@@ -29,7 +29,36 @@ class PagesTest(SimpleTestCase):
         self.assertContains(response, 'href="/login"')
         self.assertContains(response, "Sign in with Discord")
         self.assertNotContains(response, "Sign out")
-        self.assertContains(response, '<link rel="stylesheet" href="/panel.css">')
+        self.assertContains(
+            response,
+            f'<link rel="stylesheet" href="/panel.css?v={assets.STYLESHEET_VERSION}">',
+        )
+
+    def test_stylesheet_address_changes_with_its_content(self):
+        # Otherwise a browser keeps yesterday's stylesheet for today's pages.
+        self.assertRegex(assets.STYLESHEET_VERSION, r"^[0-9a-f]{12}$")
+        self.assertEqual(assets.STYLESHEET_VERSION, assets.version(assets.STYLESHEET))
+        self.assertEqual(assets.version(b"a {}"), assets.version(b"a {}"))
+        self.assertNotEqual(assets.version(b"a {}"), assets.version(b"b {}"))
+
+    @override_settings(DEBUG=False)  # with DEBUG Django shows its own 404 page
+    def test_error_pages_link_the_current_stylesheet_too(self):
+        response = self.client.get("/nowhere")
+
+        self.assertContains(
+            response, f"/panel.css?v={assets.STYLESHEET_VERSION}", status_code=404
+        )
+
+    def test_stylesheet_under_its_current_address_may_be_kept_for_good(self):
+        current = self.client.get(f"/panel.css?v={assets.STYLESHEET_VERSION}")
+        outdated = self.client.get("/panel.css?v=000000000000")
+
+        self.assertIn("max-age=31536000", current["Cache-Control"])
+        self.assertIn("immutable", current["Cache-Control"])
+        # An address from an older page must not pin today's content for a year.
+        self.assertIn("max-age=3600", outdated["Cache-Control"])
+        self.assertNotIn("immutable", outdated["Cache-Control"])
+        self.assertEqual(current.content, outdated.content)
 
     def test_stylesheet_is_served(self):
         response = self.client.get("/panel.css")

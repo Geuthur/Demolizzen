@@ -37,6 +37,7 @@ Section Order:
 
 ## Fixed
 
+- Web panel: after an update browsers styled the new pages with the old stylesheet for up to an hour; its address now changes with its content
 - A click on a command entry Discord no longer has (the global one from before commands went per server, or one of a module just switched off) ended in "The application did not respond"; the command now runs or the member is told it is gone
 - `/owner load`, `unload`, `reload` and `/guild sync` answer Discord before registering, which now takes longer than Discord waits
 - Command links in `/help` and in hints showed `None` or a wrong id; they carry the id of the server they are shown in, the invite link asks for the `applications.commands` scope
