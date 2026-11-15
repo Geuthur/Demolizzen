@@ -1,6 +1,7 @@
 """Pages of the web panel."""
 
 # Standard Library
+import logging
 import secrets
 
 # Django
@@ -13,11 +14,18 @@ from django.views.decorators.http import require_GET, require_POST
 # Demolizzen
 from demolizzen.core import registry
 from demolizzen.services import cog_settings, guilds
+from demolizzen.services.errors import (
+    DependencyConflict,
+    GuildNotRegistered,
+    UnknownCog,
+)
 from demolizzen.web import access, discord_api, session
 from demolizzen.web.base_settings import WEB_DIR
 from demolizzen.web.discord_api import DiscordError
 
 STYLESHEET = (WEB_DIR / "static" / "panel.css").read_bytes()
+
+logger = logging.getLogger(__name__)
 
 
 def message(request, title: str, text: str, status: int = 200) -> HttpResponse:
@@ -132,16 +140,29 @@ def logout(request) -> HttpResponse:
     return redirect("home")
 
 
-async def guild(request, guild_id: int) -> HttpResponse:
-    """One server: its modules and their state."""
+async def _guild_access(request, guild_id: int):
+    """Check that the signed-in user may manage the server.
+
+    Returns the user and the server's name; a redirect to the start when nobody
+    is signed in. A server the user may not manage raises 404, exactly like one
+    that does not exist.
+    """
     user = session.current_user(request)
     guild_ids = await session.current_guild_ids(request, discord_api.get_client())
     if user is None or guild_ids is None:
         return redirect("home")
-    # A server the user may not manage looks exactly like one that does not exist.
     known = await guilds.known_guilds([guild_id]) if guild_id in guild_ids else []
     if not known:
         raise Http404
+    return user, known[0][1]
+
+
+async def guild(request, guild_id: int) -> HttpResponse:
+    """One server: its modules and their state."""
+    access_result = await _guild_access(request, guild_id)
+    if isinstance(access_result, HttpResponse):
+        return access_result
+    user, name = access_result
 
     states = await cog_settings.get_states(guild_id)
     modules = [
@@ -159,7 +180,95 @@ async def guild(request, guild_id: int) -> HttpResponse:
         "web/guild.html",
         {
             "user": user,
-            "guild": {"id": guild_id, "name": known[0][1]},
+            "guild": {"id": guild_id, "name": name},
             "modules": modules,
+            # Shown once: what the last switch did.
+            "notice": request.session.pop("notice", None),
         },
     )
+
+
+def _titles(keys: list[str]) -> str:
+    """Module titles as a phrase: "A", "A and B", "A, B and C"."""
+    titles = [registry.get(key).title for key in keys]
+    if len(titles) == 1:
+        return titles[0]
+    return f"{', '.join(titles[:-1])} and {titles[-1]}"
+
+
+def _dependency_question(title: str, enabled: bool, affected: list[str]) -> str:
+    one = len(affected) == 1
+    names = _titles(affected)
+    it = "It" if one else "They"
+    if enabled:
+        return (
+            f"{title} needs {names}, which {'is' if one else 'are'} off. "
+            f"{it} will be switched on as well."
+        )
+    return (
+        f"{names} need{'s' if one else ''} {title}. "
+        f"{it} will be switched off as well."
+    )
+
+
+@require_POST
+async def switch_module(request, guild_id: int, key: str) -> HttpResponse:
+    """Switch a module of a server on or off."""
+    access_result = await _guild_access(request, guild_id)
+    if isinstance(access_result, HttpResponse):
+        return access_result
+    user, name = access_result
+
+    try:
+        info = registry.get(key)
+    except UnknownCog as error:
+        raise Http404 from error
+    if not info.toggleable:
+        return message(
+            request,
+            "Not possible",
+            f"{info.title} is always on and cannot be switched.",
+            status=400,
+        )
+    if request.POST.get("enabled") not in ("0", "1"):
+        return message(
+            request, "Not possible", "This request could not be understood.", status=400
+        )
+    enabled = request.POST["enabled"] == "1"
+    word = "on" if enabled else "off"
+
+    try:
+        changed = await cog_settings.set_enabled(
+            guild_id, key, enabled, cascade=request.POST.get("confirm") == "1"
+        )
+    except DependencyConflict as conflict:
+        # Nothing was changed. Ask, and repeat the request with the confirmation.
+        return render(
+            request,
+            "web/confirm.html",
+            {
+                "user": user,
+                "guild": {"id": guild_id, "name": name},
+                "module": info,
+                "enabled": enabled,
+                "word": word,
+                "question": _dependency_question(
+                    info.title, enabled, conflict.affected
+                ),
+            },
+        )
+    except GuildNotRegistered as error:
+        raise Http404 from error
+
+    logger.info(
+        "user %s switched %s %s in guild %s",
+        user["id"],
+        ", ".join(changed),
+        word,
+        guild_id,
+    )
+    notice = f"{info.title} switched {word}"
+    if len(changed) > 1:
+        notice += f", together with {_titles(changed[1:])}"
+    request.session["notice"] = f"{notice}."
+    return redirect("guild", guild_id)

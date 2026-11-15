@@ -3,16 +3,26 @@
 {% block content %}
 <p class="small"><a href="{% url 'home' %}">Your servers</a></p>
 <h1>{{ guild.name }}</h1>
+{% if notice %}<p class="notice done" role="status">{{ notice }}</p>{% endif %}
 <h2>Modules</h2>
+<p class="small">A switch reaches the bot within a minute.</p>
 <ul class="rows">
   {% for module in modules %}
-  <li>
+  <li{% if not module.on %} class="off"{% endif %}>
     <span class="lamp{% if module.on %} on{% endif %}" aria-hidden="true"></span>
     <div class="grow">
-      <div class="name">{{ module.title }}</div>
+      <div class="name">{{ module.title }} <span class="state">{% if module.on %}on{% else %}off{% endif %}</span></div>
       <div class="about">{{ module.description }}</div>
     </div>
-    <span class="state">{% if module.fixed %}Always on{% elif module.on %}On{% else %}Off{% endif %}</span>
+    {% if module.fixed %}
+    <span class="state">Always on</span>
+    {% else %}
+    <form method="post" action="{% url 'switch_module' guild.id module.key %}">
+      {% csrf_token %}
+      <input type="hidden" name="enabled" value="{% if module.on %}0{% else %}1{% endif %}">
+      <button class="quiet" type="submit" aria-label="Switch {{ module.title }} {% if module.on %}off{% else %}on{% endif %}">Switch {% if module.on %}off{% else %}on{% endif %}</button>
+    </form>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>

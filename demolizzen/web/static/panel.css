@@ -95,6 +95,16 @@ h2 {
   cursor: pointer;
 }
 
+.notice.done { border-left-color: var(--lamp-on); }
+
+.choice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
 button.quiet {
   padding: 0.35rem 0.8rem;
   border-color: var(--seam);
@@ -125,7 +135,12 @@ button.quiet {
 .rows .grow { flex: 1; min-width: 0; }
 .rows .name { font-weight: 600; }
 .rows .about { color: var(--muted); font-size: 0.875rem; }
-.rows .state { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
+.rows .state { color: var(--muted); font-size: 0.875rem; font-weight: 400; white-space: nowrap; }
+.rows .name .state { margin-left: 0.35rem; }
+.rows form { margin: 0; }
+.rows button { white-space: nowrap; }
+/* A module that is off steps back. */
+.rows > li.off .name { color: var(--muted); }
 .rows a.name { color: var(--text); text-decoration: none; }
 .rows a.name:hover { text-decoration: underline; }
 

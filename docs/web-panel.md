@@ -4,8 +4,9 @@ Server admins manage Demolizzen in a browser: they sign in with Discord and see 
 may manage. The panel is a small web application of its own. It shares nothing with the bot but the
 database, so it can run on a different machine.
 
-At the moment the panel shows each server's modules. Switching modules and changing settings
-follow.
+Per server they can switch modules on and off. A module that others need, or that needs another
+one, is only switched after a confirmation that names the modules switched with it, as in the
+bot's own panel. Changing module settings follows.
 
 ## What it needs
 

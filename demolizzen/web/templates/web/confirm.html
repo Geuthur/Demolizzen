@@ -1,0 +1,14 @@
+{% extends "web/base.html" %}
+{% block title %}Switch {{ word }} {{ module.title }}? – Demolizzen panel{% endblock %}
+{% block content %}
+<p class="small"><a href="{% url 'guild' guild.id %}">{{ guild.name }}</a></p>
+<h1>Switch {{ word }} {{ module.title }}?</h1>
+<p class="lead">{{ question }}</p>
+<form class="choice" method="post" action="{% url 'switch_module' guild.id module.key %}">
+  {% csrf_token %}
+  <input type="hidden" name="enabled" value="{% if enabled %}1{% else %}0{% endif %}">
+  <input type="hidden" name="confirm" value="1">
+  <button type="submit">Switch {{ word }}</button>
+  <a href="{% url 'guild' guild.id %}">Keep as it is</a>
+</form>
+{% endblock %}

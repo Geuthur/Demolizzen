@@ -12,6 +12,11 @@ urlpatterns = [
     path("callback", views.callback, name="callback"),
     path("logout", views.logout, name="logout"),
     path("guilds/<int:guild_id>/", views.guild, name="guild"),
+    path(
+        "guilds/<int:guild_id>/modules/<slug:key>",
+        views.switch_module,
+        name="switch_module",
+    ),
     path("healthz", views.healthz, name="healthz"),
     path("panel.css", views.stylesheet, name="stylesheet"),
 ]
