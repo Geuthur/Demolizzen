@@ -337,8 +337,9 @@ async def module_settings(request, guild_id: int, key: str) -> HttpResponse:
 
     error = None
     if request.method == "POST":
+        extra = {"user": user} if page.needs_user else {}
         try:
-            await page.save(guild_id, request.POST, listing)
+            saved = await page.save(guild_id, request.POST, listing, **extra)
         except InvalidInput as invalid:
             # Nothing was saved. Show the form again and say what is wrong.
             error = invalid.message
@@ -348,7 +349,7 @@ async def module_settings(request, guild_id: int, key: str) -> HttpResponse:
             logger.info(
                 "user %s changed the %s settings in guild %s", user["id"], key, guild_id
             )
-            request.session["notice"] = f"{page.title} settings saved."
+            request.session["notice"] = saved or f"{page.title} settings saved."
             return redirect("module_settings", guild_id, key)
 
     states = await cog_settings.get_states(guild_id)

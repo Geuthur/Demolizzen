@@ -374,7 +374,7 @@ button.wake:hover { background: var(--lamp-on); color: var(--deep); filter: none
 .field .label { font-weight: 600; }
 .help { margin: 0; color: var(--muted); font-size: 0.875rem; }
 
-select {
+select, input[type="text"] {
   width: 100%;
   max-width: 22rem;
   padding: 0.5rem 0.7rem;
@@ -414,3 +414,48 @@ fieldset.field legend { padding: 0; }
 }
 
 .check.plain { font-weight: 400; }
+
+/* ---- Killmail feeds: one card per subscription, side by side on wide screens */
+
+.feeds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1rem;
+  max-width: 62rem;
+  margin-top: 1rem;
+}
+
+.feeds .settings { max-width: none; margin-top: 0; align-content: start; }
+
+/* What the card is about leads it: the followed id, set like a readout. */
+.follows { display: grid; gap: 0.1rem; margin: 0; }
+.follows .label { color: var(--muted); font-size: 0.875rem; }
+
+.follows .target {
+  font: 600 1.375rem/1.25 var(--display);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Removing takes two steps without a script: open, then press. */
+.remove { position: relative; }
+
+.remove summary {
+  padding: 0.4rem 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.remove[open] summary { margin-bottom: 0.6rem; color: var(--text); }
+
+button.danger {
+  border-color: var(--alarm);
+  background: transparent;
+  color: var(--alarm);
+  font-size: 0.9375rem;
+}
+
+button.danger:hover { background: var(--alarm); color: var(--deep); filter: none; }
+
+.crumb.back { margin-top: 2rem; }

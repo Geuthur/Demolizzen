@@ -7,6 +7,11 @@ from django.test import SimpleTestCase, TestCase
 # Demolizzen
 from demolizzen.models import UserProfile, ZKillboard
 from demolizzen.services import guilds, killmails
+from demolizzen.services.errors import (
+    DuplicateSubscription,
+    InvalidThreshold,
+    SubscriptionNotFound,
+)
 from demolizzen.services.killmails import KillFacts, SubscriptionRule
 
 FACTS = KillFacts(
@@ -148,3 +153,96 @@ class SubscriptionStoreTest(TestCase):
         )
         self.assertEqual(await killmails.remove_for_guild(1), [third.id])
         self.assertEqual(await killmails.remove_for_guild(1), [])
+
+
+class SubscriptionUpdateTest(TestCase):
+    """Changing a subscription, as the web panel does."""
+
+    async def asyncSetUp(self):
+        await guilds.ensure_guild(1, "Alpha")
+        await guilds.ensure_guild(2, "Bravo")
+
+    async def add(self, channel_id=10, group_id=100, guild_id=1, **kwargs):
+        rule, _ = await killmails.add_subscription(
+            guild_id, 7, "owner", channel_id, group_id, **kwargs
+        )
+        return rule
+
+    async def test_channel_threshold_and_losses_are_changed(self):
+        await self.asyncSetUp()
+        rule = await self.add(threshold=5, losses=False)
+
+        changed = await killmails.update_subscription(
+            rule.id, 1, channel_id=11, threshold=1_000_000, losses=True
+        )
+
+        self.assertEqual(
+            (changed.channel_id, changed.threshold, changed.losses),
+            (11, 1_000_000, True),
+        )
+        self.assertEqual(changed.group_id, 100)
+        self.assertEqual(await killmails.rules_for_guild(1), [changed])
+
+    async def test_channel_is_kept_when_none_is_given(self):
+        await self.asyncSetUp()
+        rule = await self.add()
+
+        changed = await killmails.update_subscription(
+            rule.id, 1, threshold=9, losses=False
+        )
+
+        self.assertEqual(changed.channel_id, 10)
+        self.assertEqual(changed.threshold, 9)
+
+    async def test_subscription_of_another_guild_is_not_touched(self):
+        await self.asyncSetUp()
+        foreign = await self.add(guild_id=2)
+
+        with self.assertRaises(SubscriptionNotFound):
+            await killmails.update_subscription(
+                foreign.id, 1, channel_id=11, threshold=9, losses=True
+            )
+
+        self.assertEqual(await killmails.rules_for_guild(2), [foreign])
+
+    async def test_channel_cannot_follow_the_same_id_twice(self):
+        await self.asyncSetUp()
+        await self.add(channel_id=11)
+        rule = await self.add(channel_id=10)
+
+        with self.assertRaises(DuplicateSubscription):
+            await killmails.update_subscription(
+                rule.id, 1, channel_id=11, threshold=1, losses=False
+            )
+
+        self.assertEqual((await killmails.rules_for_guild(1))[1].channel_id, 10)
+
+    async def test_saving_a_subscription_unchanged_is_no_duplicate(self):
+        await self.asyncSetUp()
+        rule = await self.add()
+
+        changed = await killmails.update_subscription(
+            rule.id, 1, channel_id=10, threshold=rule.threshold, losses=False
+        )
+
+        self.assertEqual(changed, rule)
+
+    async def test_threshold_outside_the_limits_is_refused(self):
+        await self.asyncSetUp()
+        rule = await self.add(threshold=5)
+
+        for threshold in (-1, killmails.MAX_THRESHOLD + 1):
+            with self.subTest(threshold=threshold), self.assertRaises(InvalidThreshold):
+                await killmails.update_subscription(
+                    rule.id, 1, threshold=threshold, losses=False
+                )
+
+        self.assertEqual((await killmails.rules_for_guild(1))[0].threshold, 5)
+
+    async def test_new_subscription_checks_the_threshold_too(self):
+        await self.asyncSetUp()
+
+        with self.assertRaises(InvalidThreshold):
+            await self.add(threshold=killmails.MAX_THRESHOLD + 1)
+
+        self.assertEqual(await killmails.rules_for_guild(1), [])

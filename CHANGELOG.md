@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Web panel: zKillboard settings list a server's killmail subscriptions and change, remove or add them; the bot re-reads subscriptions once a minute
 - Slash commands of a module that is switched off on a server are no longer shown there: commands of switchable modules are registered per server, a switch in the web panel reaches Discord within a minute, one in `/panel` at once
 - `python -m demolizzen.web.check` tells whether the web panel is set up: settings, database access, encryption and missing migrations; `docs/web-panel.md` describes database access from the container and going live with backup and way back
 - Web panel: Ticket System settings (categories, log channel, staff roles, limits) and the channel for level-ups; channels and roles are read from Discord with the bot token

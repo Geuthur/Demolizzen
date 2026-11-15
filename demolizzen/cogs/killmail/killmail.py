@@ -22,7 +22,7 @@ from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
 from demolizzen.services import guilds, killmails
-from demolizzen.services.errors import GuildNotRegistered
+from demolizzen.services.errors import GuildNotRegistered, KillmailError
 from demolizzen.services.killmails import SubscriptionRule
 
 from ._feed import KillmailFeed
@@ -35,6 +35,9 @@ PAUSED_NOTICE = (
 )
 
 logger = logging.getLogger(__name__)
+
+# How often subscriptions changed outside the bot (the web panel) are read.
+WATCH_SECONDS = 60
 
 
 class _Pages(View):
@@ -105,6 +108,7 @@ class Killmail(BaseCog):
         self._retry_at: dict[int, float] = {}
         # Loops
         self.check_subscriptions.start()
+        self.watch_subscriptions.start()
         self.zkillboard_watcher.start()
 
     killmail = SlashCommandGroup(
@@ -116,6 +120,7 @@ class Killmail(BaseCog):
 
     def cog_unload(self):
         self.check_subscriptions.cancel()
+        self.watch_subscriptions.cancel()
         self.zkillboard_watcher.cancel()
         for delivery in list(self._deliveries):
             delivery.cancel()
@@ -177,6 +182,22 @@ class Killmail(BaseCog):
 
     @check_subscriptions.before_loop
     async def before_check_subscriptions(self):
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(seconds=WATCH_SECONDS)
+    async def watch_subscriptions(self):
+        """Follow subscriptions changed outside the bot.
+
+        The web panel runs in another process and only writes to the database.
+        """
+        try:
+            await self.load_rules()
+        except Exception:  # pylint: disable=broad-exception-caught
+            # The subscriptions known so far stay in use.
+            logger.exception("Reading the killmail subscriptions failed")
+
+    @watch_subscriptions.before_loop
+    async def before_watch_subscriptions(self):
         await self.bot.wait_until_ready()
 
     @tasks.loop(seconds=KillmailFeed.SUCCESS_DELAY)
@@ -428,6 +449,9 @@ class Killmail(BaseCog):
                 "Failed to add killmail subscription, please try again later.",
                 ephemeral=True,
             )
+            return
+        except KillmailError as error:
+            await ctx.respond(error.message, ephemeral=True)
             return
 
         if not created:

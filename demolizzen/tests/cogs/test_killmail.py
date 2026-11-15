@@ -397,6 +397,42 @@ class KillmailUpkeepTest(KillmailCogTestCase):
 
         self.assertEqual(self.cog.rules, {rule.id: rule})
 
+    async def test_watcher_picks_up_what_the_web_panel_changed(self):
+        rule = await self.subscribe(10)
+        await self.cog.load_rules()
+        # The panel is another process: only the database changes.
+        await ZKillboard.objects.filter(pk=rule.id).aupdate(channel_id=11)
+        added = await self.subscribe(12)
+
+        await self.cog.watch_subscriptions.coro(self.cog)
+
+        self.assertEqual(self.cog.rules[rule.id].channel_id, 11)
+        self.assertIn(added.id, self.cog.rules)
+
+    async def test_watcher_forgets_what_the_web_panel_removed(self):
+        rule = await self.subscribe(10)
+        await self.cog.load_rules()
+        await ZKillboard.objects.filter(pk=rule.id).adelete()
+
+        await self.cog.watch_subscriptions.coro(self.cog)
+
+        self.assertEqual(self.cog.rules, {})
+
+    async def test_watcher_keeps_the_known_subscriptions_when_the_database_fails(self):
+        rule = await self.subscribe(10)
+        await self.cog.load_rules()
+
+        with (
+            patch.object(killmails, "load_rules", side_effect=RuntimeError("away")),
+            self.assertLogs(level="ERROR"),
+        ):
+            await self.cog.watch_subscriptions.coro(self.cog)
+
+        self.assertEqual(self.cog.rules, {rule.id: rule})
+
+    def test_watcher_looks_once_a_minute(self):
+        self.assertEqual(Killmail.watch_subscriptions.seconds, 60)
+
     async def test_daily_check_removes_subscriptions_of_deleted_channels(self):
         self.channel(11)
         await self.subscribe(10)

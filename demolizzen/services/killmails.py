@@ -6,10 +6,17 @@ from dataclasses import dataclass
 # Demolizzen
 from demolizzen.models import UserProfile, ZKillboard
 from demolizzen.services import guilds
+from demolizzen.services.errors import (
+    DuplicateSubscription,
+    InvalidThreshold,
+    SubscriptionNotFound,
+)
 
 # Subscriptions stored with this group id follow every killmail.
 GLOBAL_GROUP_ID = 6
 DEFAULT_THRESHOLD = 1
+# Far above any killmail; keeps typing mistakes out of the database.
+MAX_THRESHOLD = 10**15
 
 
 @dataclass(frozen=True)
@@ -117,6 +124,7 @@ async def add_subscription(
     ).afirst()
     if existing is not None:
         return _rule(existing), False
+    _check_threshold(threshold)
 
     await guilds.ensure_members(guild_id, [(owner_user_id, owner_name)])
     owner = (
@@ -133,6 +141,47 @@ async def add_subscription(
         threshold=threshold if threshold is not None else DEFAULT_THRESHOLD,
     )
     return _rule(row), True
+
+
+def _check_threshold(threshold: int | None) -> None:
+    if threshold is not None and not 0 <= threshold <= MAX_THRESHOLD:
+        raise InvalidThreshold(MAX_THRESHOLD)
+
+
+async def update_subscription(
+    subscription_id: int,
+    guild_id: int,
+    *,
+    channel_id: int | None = None,
+    threshold: int,
+    losses: bool,
+) -> SubscriptionRule:
+    """Change a subscription of the guild. ``channel_id=None`` keeps the channel.
+
+    Raises ``SubscriptionNotFound`` when the guild has no such subscription and
+    ``DuplicateSubscription`` when the new channel already follows the same id.
+    """
+    _check_threshold(threshold)
+    row = await ZKillboard.objects.filter(
+        pk=subscription_id, guild_id=guild_id
+    ).afirst()
+    if row is None:
+        raise SubscriptionNotFound()
+    if channel_id is not None and channel_id != row.channel_id:
+        taken = (
+            await ZKillboard.objects.filter(
+                channel_id=channel_id, group_id=row.group_id
+            )
+            .exclude(pk=row.pk)
+            .aexists()
+        )
+        if taken:
+            raise DuplicateSubscription()
+        row.channel_id = channel_id
+    row.threshold = threshold
+    row.losses = bool(losses)
+    await row.asave(update_fields=["channel_id", "threshold", "losses"])
+    return _rule(row)
 
 
 async def remove_subscription(subscription_id: int, guild_id: int) -> bool:

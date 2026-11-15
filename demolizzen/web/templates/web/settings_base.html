@@ -7,6 +7,7 @@
 {% if notice %}<p class="notice done" role="status">{{ notice }}</p>{% endif %}
 {% if listing_problem %}<p class="notice">{{ listing_problem }}</p>{% endif %}
 {% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
+{% block form %}
 <form class="settings" method="post" action="{% url 'module_settings' guild.id page.key %}">
   {% csrf_token %}
 {% block fields %}{% endblock %}
@@ -15,4 +16,5 @@
     <a href="{% url 'guild' guild.id %}">Back to the modules</a>
   </div>
 </form>
+{% endblock %}
 {% endblock %}

@@ -195,3 +195,32 @@ class PriceUnavailable(PriceError):
         super().__init__(
             f"The price service did not answer for {tradehub}. Please try again later."
         )
+
+
+class KillmailError(ServiceError):
+    """Base class of killmail subscription errors. ``message`` is for the user."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class SubscriptionNotFound(KillmailError):
+    """The subscription does not exist in this guild."""
+
+    def __init__(self):
+        super().__init__("That subscription no longer exists.")
+
+
+class DuplicateSubscription(KillmailError):
+    """The channel already follows that id."""
+
+    def __init__(self):
+        super().__init__("That channel already follows this id.")
+
+
+class InvalidThreshold(KillmailError):
+    """The ISK threshold is outside the accepted range."""
+
+    def __init__(self, maximum: int):
+        super().__init__(f"The ISK threshold must be between 0 and {maximum:,}.")

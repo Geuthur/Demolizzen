@@ -10,10 +10,11 @@ from dataclasses import dataclass
 
 # Demolizzen
 from demolizzen.core import registry
-from demolizzen.services import bank, guilds, levels, missions, tickets
+from demolizzen.services import bank, guilds, killmails, levels, missions, tickets
 from demolizzen.services.errors import (
     BankError,
     InvalidEventFactor,
+    KillmailError,
     MissionError,
     TicketError,
 )
@@ -42,9 +43,12 @@ class SettingsPage:
     template: str
     # async (guild_id, directory) -> the values the form shows
     load: Callable[[int, Directory | None], Awaitable[dict]]
-    # async (guild_id, submitted form, directory) -> None; raises InvalidInput
-    save: Callable[[int, dict, Directory | None], Awaitable[None]]
+    # async (guild_id, submitted form, directory) -> the notice to show, or
+    # None for "<title> settings saved."; raises InvalidInput. A page with
+    # ``needs_user`` is also given ``user``, the signed-in ``{"id", "name"}``.
+    save: Callable[..., Awaitable[str | None]]
     needs_directory: bool = False
+    needs_user: bool = False
 
 
 NOT_ON_SERVER = (
@@ -319,7 +323,156 @@ async def _economy_save(guild_id: int, data, _directory=None) -> None:
         raise InvalidInput(error.message) from error
 
 
-def _page(key: str, load, save, needs_directory: bool = False) -> SettingsPage:
+# -------------------------------------------------------------------- killmails
+
+NO_SUBSCRIPTION = "That subscription no longer exists. Reload the page."
+NO_CHANNEL_LIST = (
+    "Channels could not be loaded from Discord, so nothing can be added right now."
+)
+BAD_GROUP = (
+    "Enter the id to follow as a whole number: an alliance, corporation, "
+    "character, region or system id."
+)
+BAD_THRESHOLD = "The ISK threshold must be a whole number of at least 0."
+# EVE ids have ten digits today.
+_GROUP_DIGITS = 12
+_THRESHOLD_DIGITS = len(str(killmails.MAX_THRESHOLD))
+
+
+def _digits(raw: str, limit: int) -> int | None:
+    """A plain non-negative whole number of at most ``limit`` digits."""
+    if raw.isascii() and raw.isdecimal() and len(raw) <= limit:
+        return int(raw)
+    return None
+
+
+def _threshold(data) -> int:
+    raw = data.get("threshold", "").strip()
+    if raw == "":
+        return killmails.DEFAULT_THRESHOLD
+    threshold = _digits(raw, _THRESHOLD_DIGITS)
+    if threshold is None:
+        raise InvalidInput(BAD_THRESHOLD)
+    return threshold
+
+
+def _channel_options(choices: list[Choice], current: int) -> list[dict]:
+    """The channels a subscription can post to: what Discord listed, and its
+    own channel if Discord no longer lists it."""
+    options = [
+        {"value": choice.id, "label": choice.name, "selected": choice.id == current}
+        for choice in choices
+    ]
+    if all(choice.id != current for choice in choices):
+        options.append(
+            {
+                "value": current,
+                "label": f"Deleted channel ({current})",
+                "selected": True,
+            }
+        )
+    return options
+
+
+async def _killmail_load(guild_id: int, directory: Directory | None = None) -> dict:
+    rules = await killmails.rules_for_guild(guild_id)
+    channels = directory.text_channels if directory is not None else None
+    return {
+        "has_directory": directory is not None,
+        "subscriptions": [
+            {
+                "id": rule.id,
+                "follows": str(rule.group_id) if rule.group_id else "Every killmail",
+                "threshold": rule.threshold,
+                "losses": rule.losses,
+                "channel_id": rule.channel_id,
+                "channels": (
+                    _channel_options(channels, rule.channel_id)
+                    if channels is not None
+                    else None
+                ),
+            }
+            for rule in rules
+        ],
+        "channels": channels,
+    }
+
+
+async def _killmail_add(guild_id: int, data, directory: Directory | None, user) -> str:
+    if directory is None:
+        raise InvalidInput(NO_CHANNEL_LIST)
+    channel_id = _id(
+        data.get("channel", ""), {choice.id for choice in directory.text_channels}
+    )
+    group_id = _digits(data.get("group", "").strip(), _GROUP_DIGITS)
+    if not group_id:
+        raise InvalidInput(BAD_GROUP)
+    _, created = await killmails.add_subscription(
+        guild_id,
+        user["id"],
+        user["name"],
+        channel_id,
+        group_id,
+        threshold=_threshold(data),
+        losses="losses" in data,
+    )
+    if not created:
+        raise InvalidInput("That channel already follows this id.")
+    return "Subscription added."
+
+
+async def _killmail_change(
+    guild_id: int, data, directory: Directory | None, action: str
+) -> str:
+    subscription_id = _digits(data.get("subscription", ""), _GROUP_DIGITS)
+    # Only a subscription of this server can be named.
+    rule = next(
+        (
+            rule
+            for rule in await killmails.rules_for_guild(guild_id)
+            if rule.id == subscription_id
+        ),
+        None,
+    )
+    if rule is None:
+        raise InvalidInput(NO_SUBSCRIPTION)
+    if action == "remove":
+        if not await killmails.remove_subscription(rule.id, guild_id):
+            raise InvalidInput(NO_SUBSCRIPTION)
+        return "Subscription removed."
+
+    channel_id = None  # without the channel list the channel stays
+    if directory is not None:
+        allowed = {choice.id for choice in directory.text_channels} | {rule.channel_id}
+        channel_id = _id(data.get("channel", ""), allowed)
+    await killmails.update_subscription(
+        rule.id,
+        guild_id,
+        channel_id=channel_id,
+        threshold=_threshold(data),
+        losses="losses" in data,
+    )
+    return "Subscription saved."
+
+
+async def _killmail_save(
+    guild_id: int, data, directory: Directory | None = None, user=None
+) -> str:
+    """One page, three forms: ``action`` says which one was sent."""
+    action = data.get("action", "")
+    try:
+        if action == "add":
+            return await _killmail_add(guild_id, data, directory, user)
+        if action in ("update", "remove"):
+            return await _killmail_change(guild_id, data, directory, action)
+    except KillmailError as error:
+        raise InvalidInput(error.message) from error
+    raise InvalidInput("That did not work. Reload the page and try again.")
+
+
+def _page(
+    key: str, load, save, needs_directory: bool = False, needs_user: bool = False
+) -> SettingsPage:
     return SettingsPage(
         key=key,
         title=registry.get(key).title,
@@ -327,6 +480,7 @@ def _page(key: str, load, save, needs_directory: bool = False) -> SettingsPage:
         load=load,
         save=save,
         needs_directory=needs_directory,
+        needs_user=needs_user,
     )
 
 
@@ -337,5 +491,12 @@ PAGES: dict[str, SettingsPage] = {
         _page("levelsystem", _levels_load, _levels_save, needs_directory=True),
         _page("economy", _economy_load, _economy_save),
         _page("ticket", _ticket_load, _ticket_save, needs_directory=True),
+        _page(
+            "killmail",
+            _killmail_load,
+            _killmail_save,
+            needs_directory=True,
+            needs_user=True,
+        ),
     )
 }
