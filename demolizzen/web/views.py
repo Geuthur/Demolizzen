@@ -9,7 +9,11 @@ from django.conf import settings
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import cache_control
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import (
+    require_GET,
+    require_http_methods,
+    require_POST,
+)
 
 # Demolizzen
 from demolizzen.core import registry
@@ -22,6 +26,7 @@ from demolizzen.services.errors import (
 from demolizzen.web import access, discord_api, session
 from demolizzen.web.base_settings import WEB_DIR
 from demolizzen.web.discord_api import DiscordError
+from demolizzen.web.module_settings import PAGES, InvalidInput
 
 STYLESHEET = (WEB_DIR / "static" / "panel.css").read_bytes()
 FONT = (WEB_DIR / "static" / "exo2.woff2").read_bytes()
@@ -195,6 +200,7 @@ async def guild(request, guild_id: int) -> HttpResponse:
             "on": states.get(info.key, True),
             # The modules this one cannot run without.
             "needs": _titles(list(info.requires)) if info.requires else "",
+            "settings": info.key in PAGES,
         }
         for info in registry.REGISTRY.values()
     ]
@@ -298,3 +304,48 @@ async def switch_module(request, guild_id: int, key: str) -> HttpResponse:
         notice += f", together with {_titles(changed[1:])}"
     request.session["notice"] = f"{notice}."
     return redirect("guild", guild_id)
+
+
+@require_http_methods(["GET", "POST"])
+async def module_settings(request, guild_id: int, key: str) -> HttpResponse:
+    """The settings of one module of a server: show the form, or save it."""
+    access_result = await _guild_access(request, guild_id)
+    if isinstance(access_result, HttpResponse):
+        return access_result
+    user, name, servers = access_result
+    page = PAGES.get(key)
+    if page is None:
+        raise Http404
+
+    error = None
+    if request.method == "POST":
+        try:
+            await page.save(guild_id, request.POST)
+        except InvalidInput as invalid:
+            # Nothing was saved. Show the form again and say what is wrong.
+            error = invalid.message
+        except GuildNotRegistered as missing:
+            raise Http404 from missing
+        else:
+            logger.info(
+                "user %s changed the %s settings in guild %s", user["id"], key, guild_id
+            )
+            request.session["notice"] = f"{page.title} settings saved."
+            return redirect("module_settings", guild_id, key)
+
+    states = await cog_settings.get_states(guild_id)
+    return render(
+        request,
+        page.template,
+        {
+            "user": user,
+            "servers": servers,
+            "guild": {"id": guild_id, "name": name},
+            "page": page,
+            "values": await page.load(guild_id),
+            "module_off": not states.get(key, True),
+            "error": error,
+            "notice": request.session.pop("notice", None),
+        },
+        status=400 if error else 200,
+    )

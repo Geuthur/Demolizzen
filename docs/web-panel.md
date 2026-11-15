@@ -6,7 +6,11 @@ database, so it can run on a different machine.
 
 Per server they can switch modules on and off. A module that others need, or that needs another
 one, is only switched after a confirmation that names the modules switched with it, as in the
-bot's own panel. Changing module settings follows.
+bot's own panel.
+
+Banksystem, Levelsystem and Economy have a settings page each: interest and whether members may
+deposit and withdraw, whether level-ups are announced, and the economy event with its payout
+factor. Ticket settings and the channel for level-ups follow.
 
 ## What it needs
 

@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Web panel: settings pages for Banksystem (interest, deposits, withdrawals), Levelsystem (announcements) and the Economy event
 - Web panel: switch modules of a server on and off, with the same dependency confirmation as `/panel`
 - The web panel encrypts its session cookie; `DATABASE_SSL_MODE` and `DATABASE_SSL_CA` encrypt the database connection of bot and panel
 - Web panel (`demolizzen/web/`): sign in with Discord and see the servers you may manage with their modules; shipped as a Docker image with a compose file, see `docs/web-panel.md`

@@ -18,6 +18,11 @@ urlpatterns = [
         name="switch_module",
     ),
     path("healthz", views.healthz, name="healthz"),
+    path(
+        "guilds/<int:guild_id>/settings/<slug:key>",
+        views.module_settings,
+        name="module_settings",
+    ),
     path("panel.css", views.stylesheet, name="stylesheet"),
     path("exo2.woff2", views.font, name="font"),
 ]

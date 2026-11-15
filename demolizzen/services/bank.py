@@ -43,6 +43,8 @@ ACCOUNT_KINDS = ("wallet", "bank")
 
 # Highest interest rate that can be set, and how often interest is paid.
 MAX_INTEREST_RATE = 0.10
+# The interest rates the panels offer, in percent per week.
+INTEREST_CHOICES = (0, 0.1, 0.25, 0.5, 1, 2, 5, 10)
 INTEREST_PERIOD = timedelta(days=7)
 
 # Interest is computed in whole millionths so the database does exact integer maths.

@@ -24,6 +24,7 @@
   --lamp-on: #5fd0a5;
   --lamp-off: #56617a;
   --caution: #e8b04a;
+  --alarm: #f08a7b;
   --display: "Exo 2", system-ui, "Segoe UI", Roboto, sans-serif;
   --body: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   color-scheme: dark;
@@ -188,6 +189,7 @@ h2 {
 }
 
 .notice.done { border-left-color: var(--lamp-on); }
+.notice.bad { border-left-color: var(--alarm); }
 
 .button, button {
   display: inline-block;
@@ -309,6 +311,8 @@ button.wake:hover { background: var(--lamp-on); color: var(--deep); filter: none
 }
 
 .slot-foot form { margin: 0; }
+.slot-foot .needs { flex: 1; }
+.to-settings { font-size: 0.9375rem; }
 .slot .needs { color: var(--muted); font-size: 0.8125rem; }
 
 /* A slot whose module is off steps back. */
@@ -352,3 +356,42 @@ button.wake:hover { background: var(--lamp-on); color: var(--deep); filter: none
 
 .fixed > li { display: flex; align-items: baseline; gap: 0.6rem; }
 .fixed .name { font-weight: 600; }
+
+/* ---- Settings forms */
+
+.settings {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 30rem;
+  margin-top: 1.75rem;
+  padding: 1.5rem;
+  border: 1px solid var(--seam);
+  border-radius: 0.5rem;
+  background: var(--plating);
+}
+
+.field { display: grid; gap: 0.4rem; }
+.field .label { font-weight: 600; }
+.help { margin: 0; color: var(--muted); font-size: 0.875rem; }
+
+select {
+  width: 100%;
+  max-width: 14rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--seam);
+  border-radius: 0.375rem;
+  background: var(--hull);
+  color: var(--text);
+  font: inherit;
+}
+
+.check { display: flex; align-items: center; gap: 0.7rem; font-weight: 600; cursor: pointer; }
+
+.check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  accent-color: var(--lamp-on);
+}
+
+.settings .choice { margin-top: 0.5rem; }

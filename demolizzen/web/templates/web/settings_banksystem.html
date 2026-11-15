@@ -1,0 +1,19 @@
+{% extends "web/settings_base.html" %}
+{% block fields %}
+  <label class="field">
+    <span class="label">Interest per week</span>
+    <select name="interest">
+      {% for choice in values.choices %}<option value="{{ choice.value }}"{% if choice.selected %} selected{% endif %}>{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+    <span class="help">Paid once a week on the money members keep in the bank.</span>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="allow_deposits"{% if values.allow_deposits %} checked{% endif %}>
+    <span>Members may deposit money</span>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="allow_withdrawals"{% if values.allow_withdrawals %} checked{% endif %}>
+    <span>Members may withdraw money</span>
+  </label>
+{% endblock %}

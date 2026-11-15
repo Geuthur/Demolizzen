@@ -1,0 +1,8 @@
+{% extends "web/settings_base.html" %}
+{% block fields %}
+  <label class="check">
+    <input type="checkbox" name="announce"{% if values.announce %} checked{% endif %}>
+    <span>Announce level-ups</span>
+  </label>
+  <p class="help">A rank card is posted when a member reaches a new level. The channel for these posts is chosen with /panel in Discord for now.</p>
+{% endblock %}

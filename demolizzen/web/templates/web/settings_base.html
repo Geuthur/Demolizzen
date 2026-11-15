@@ -1,0 +1,17 @@
+{% extends "web/base.html" %}
+{% block title %}{{ page.title }} settings – {{ guild.name }} – Demolizzen panel{% endblock %}
+{% block content %}
+<p class="crumb always"><a href="{% url 'guild' guild.id %}">{{ guild.name }}</a></p>
+<h1>{{ page.title }} settings</h1>
+{% if module_off %}<p class="notice">{{ page.title }} is switched off on this server. Settings are kept and apply once it is switched on.</p>{% endif %}
+{% if notice %}<p class="notice done" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
+<form class="settings" method="post" action="{% url 'module_settings' guild.id page.key %}">
+  {% csrf_token %}
+{% block fields %}{% endblock %}
+  <div class="choice">
+    <button type="submit">Save changes</button>
+    <a href="{% url 'guild' guild.id %}">Back to the modules</a>
+  </div>
+</form>
+{% endblock %}

@@ -10,8 +10,7 @@ from demolizzen.models import GuildBankSettings
 from demolizzen.services import bank, guilds
 from demolizzen.services.errors import BankError
 
-# Interest rates offered in the panel, in percent per week.
-INTEREST_CHOICES = (0, 0.1, 0.25, 0.5, 1, 2, 5, 10)
+INTEREST_CHOICES = bank.INTEREST_CHOICES
 
 _SWITCHES = (("Deposits", "allow_deposits"), ("Withdrawals", "allow_withdrawals"))
 
