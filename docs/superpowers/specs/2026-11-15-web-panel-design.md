@@ -72,6 +72,21 @@ as a Docker container whose port the host's nginx forwards.
   user's id.
 - The bot notices a switch within a minute.
 
+## Behaviour (step 3: module settings)
+
+- Modules with settings show a *Settings* link on the server page:
+  - **Banksystem:** interest per week (the same choices as in the bot: 0, 0.1, 0.25, 0.5, 1, 2,
+    5, 10 %), deposits allowed, withdrawals allowed.
+  - **Levelsystem:** announce level-ups. The channel follows in step 4, which brings channel
+    pickers.
+  - **Economy:** event running, payout factor 1 to 10.
+- A page is a form; saving is a POST with CSRF protection to
+  `/guilds/<id>/settings/<key>` behind the same access check. Afterwards the page says *saved*,
+  once.
+- A value the form does not offer changes nothing and the page says what is wrong.
+- Settings can be changed while the module is off; the page says that it is off.
+- Every change is logged with the user's id.
+
 ## Technical decisions
 
 - `demolizzen/web/`: settings on top of the bot's, URLs, async views, templates. Runs under ASGI
