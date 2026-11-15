@@ -103,19 +103,71 @@ class DiscordClient:
         headers = {"User-Agent": USER_AGENT_TEXT}
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
-        try:
-            async with self._session_factory(timeout=TIMEOUT) as session:
-                async with getattr(session, method)(
-                    url, headers=headers, **kwargs
-                ) as response:
-                    if response.status == 401 and token is not None:
-                        raise DiscordUnauthorized("Discord rejected the token")
-                    if response.status != 200:
-                        raise DiscordError(f"Discord answered {response.status}")
-                    return await response.json(content_type=None)
-        except (aiohttp.ClientError, TimeoutError, ValueError) as error:
-            logger.warning("Discord request failed: %r", error)
-            raise DiscordError("Discord could not be reached") from error
+        return await _request(
+            self._session_factory,
+            method,
+            url,
+            headers,
+            # Only a user's token can be "no longer accepted".
+            unauthorized=DiscordUnauthorized if token is not None else None,
+            **kwargs,
+        )
+
+
+async def _request(
+    session_factory, method: str, url: str, headers: dict, unauthorized=None, **kwargs
+):
+    """Send one request to Discord and return the decoded answer.
+
+    Error texts never contain a token: they are logged and may be shown.
+    """
+    try:
+        async with session_factory(timeout=TIMEOUT) as session:
+            async with getattr(session, method)(
+                url, headers=headers, **kwargs
+            ) as response:
+                if response.status == 401 and unauthorized is not None:
+                    raise unauthorized("Discord rejected the token")
+                if response.status != 200:
+                    raise DiscordError(f"Discord answered {response.status}")
+                return await response.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as error:
+        logger.warning("Discord request failed: %r", error)
+        raise DiscordError("Discord could not be reached") from error
+
+
+class BotTokenMissing(DiscordError):
+    """The panel has no bot token, so it cannot ask for channels and roles."""
+
+
+class DiscordBotClient:
+    """What the panel asks Discord as the bot: a server's channels and roles.
+
+    The token is only ever sent to Discord.
+    """
+
+    def __init__(self, token: str, session_factory=aiohttp.ClientSession):
+        self._token = token
+        self._session_factory = session_factory
+
+    async def _list(self, path: str) -> list[dict]:
+        data = await _request(
+            self._session_factory,
+            "get",
+            f"{API_URL}{path}",
+            {"User-Agent": USER_AGENT_TEXT, "Authorization": f"Bot {self._token}"},
+        )
+        if not isinstance(data, list):
+            raise DiscordError("Discord sent no list")
+        return data
+
+    async def fetch_channels(self, guild_id: int) -> list[dict]:
+        """The server's channels and categories, without threads."""
+        return await self._list(f"/guilds/{int(guild_id)}/channels")
+
+    async def fetch_roles(self, guild_id: int) -> list[dict]:
+        """The server's roles, @everyone included."""
+        return await self._list(f"/guilds/{int(guild_id)}/roles")
 
 
 def get_client() -> DiscordClient:
@@ -125,3 +177,11 @@ def get_client() -> DiscordClient:
         settings.DISCORD_CLIENT_SECRET,
         f"{settings.WEB_BASE_URL}/callback",
     )
+
+
+def get_bot_client() -> DiscordBotClient:
+    """The client that asks Discord as the bot."""
+    token = getattr(settings, "BOT_TOKEN", None)
+    if not token:
+        raise BotTokenMissing("No bot token is configured")
+    return DiscordBotClient(token)

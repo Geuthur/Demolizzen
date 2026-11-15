@@ -27,6 +27,8 @@ def allowed_hosts(base_url: str | None, extra: str | None) -> list[str]:
 # The Discord application members sign in with.
 DISCORD_CLIENT_ID = config.DISCORD_CLIENT_ID or ""
 DISCORD_CLIENT_SECRET = config.DISCORD_CLIENT_SECRET or ""
+# The bot's token: the panel asks Discord for a server's channels and roles with it.
+BOT_TOKEN = config.BOT_TOKEN or ""
 # Where browsers reach the panel, e.g. https://panel.example.com
 WEB_BASE_URL = (config.WEB_BASE_URL or "").rstrip("/")
 
