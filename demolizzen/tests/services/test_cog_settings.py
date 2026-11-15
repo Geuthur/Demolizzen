@@ -243,3 +243,51 @@ class DependencyTest(CogSettingsTestCase):
         self.assertEqual(changed, ["games", "banksystem"])
         self.assertTrue(await cog_settings.is_enabled(1, "banksystem"))
         self.assertFalse(await cog_settings.is_enabled(1, "shop"))
+
+
+class FreshStatesTest(CogSettingsTestCase):
+    """What the bot asks to decide which commands a server gets."""
+
+    async def switch_off_elsewhere(self, key: str) -> None:
+        # The web panel runs in another process: the row changes without this
+        # process's cache knowing.
+        await GuildSettings.objects.filter(guild_id=1).aupdate(disabled_cogs=[key])
+
+    async def test_every_asked_guild_is_answered_and_defaults_to_enabled(self):
+        await guilds.ensure_guild(1, "Alpha")
+
+        states = await cog_settings.fresh_states([1, 99])
+
+        self.assertEqual(set(states), {1, 99})
+        self.assertEqual(states[1], await cog_settings.get_states(1))
+        self.assertTrue(all(states[99].values()))
+
+    async def test_sees_a_change_another_process_made(self):
+        await guilds.ensure_guild(1, "Alpha")
+        await cog_settings.get_states(1)  # fills the cache
+        await self.switch_off_elsewhere("ticket")
+        self.assertTrue(await cog_settings.is_enabled(1, "ticket"))
+
+        states = await cog_settings.fresh_states([1])
+
+        self.assertFalse(states[1]["ticket"])
+        self.assertTrue(states[1]["eveonline"])
+
+    async def test_renews_the_cache_so_the_bot_refuses_at_the_same_moment(self):
+        await guilds.ensure_guild(1, "Alpha")
+        await cog_settings.get_states(1)
+        await self.switch_off_elsewhere("ticket")
+
+        await cog_settings.fresh_states([1])
+
+        self.assertFalse(await cog_settings.is_enabled(1, "ticket"))
+
+    async def test_asks_the_database_in_chunks_never_once_per_guild(self):
+        guild_ids = list(range(1, 1201))
+
+        manager = GuildSettings.objects
+        with patch.object(manager, "filter", wraps=manager.filter) as queries:
+            states = await cog_settings.fresh_states(guild_ids)
+
+        self.assertEqual(len(states), len(guild_ids))
+        self.assertEqual(queries.call_count, 3)

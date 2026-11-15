@@ -28,6 +28,8 @@ from demolizzen.services.errors import (
 # Settings are cached per guild. The lifetime bounds how long a change made by
 # another process (the web panel) takes to reach the bot.
 CACHE_TTL_SECONDS = 60
+# Guilds per query in fresh_states; stays below SQLite's variable limit.
+_FRESH_CHUNK = 500
 
 _clock = time.monotonic
 _cache: dict[int, tuple[float, frozenset[str], frozenset[str]]] = {}
@@ -91,6 +93,34 @@ async def get_states(guild_id: int) -> dict[str, bool]:
     return {
         info.key: _active(info.key, disabled, enabled) for info in registry.toggleable()
     }
+
+
+async def fresh_states(guild_ids: Iterable[int]) -> dict[int, dict[str, bool]]:
+    """The state of every toggleable cog in each guild, read from the database now.
+
+    The bot uses this to decide which commands a server gets, so a change made
+    by another process must not wait for the cache; the cache is renewed with
+    what was read. Every asked guild is answered, known to the database or not.
+    """
+    wanted = list(dict.fromkeys(guild_ids))
+    stored: dict[int, tuple[frozenset[str], frozenset[str]]] = {}
+    for start in range(0, len(wanted), _FRESH_CHUNK):
+        rows = GuildSettings.objects.filter(
+            guild_id__in=wanted[start : start + _FRESH_CHUNK]
+        ).values_list("guild_id", "disabled_cogs", "enabled_cogs")
+        async for guild_id, disabled, enabled in rows:
+            stored[guild_id] = (_clean(disabled), _clean(enabled))
+
+    expires = _clock() + CACHE_TTL_SECONDS
+    states: dict[int, dict[str, bool]] = {}
+    for guild_id in wanted:
+        disabled, enabled = stored.get(guild_id, (frozenset(), frozenset()))
+        _cache[guild_id] = (expires, disabled, enabled)
+        states[guild_id] = {
+            info.key: _active(info.key, disabled, enabled)
+            for info in registry.toggleable()
+        }
+    return states
 
 
 async def enabled_guild_ids(key: str, guild_ids: Iterable[int]) -> set[int]:
