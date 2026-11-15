@@ -35,43 +35,49 @@
 ## Review Focus
 
 1. Befehl oder Event ohne Guild (DM): Schalter lässt durch, kein Fehler. → Aufgabe 5
-2. Guild ohne `GuildProfile`/`GuildSettings`-Zeile oder mit `null`-Feldern: gilt als „alles aktiv"; Lesen legt keine Zeilen an. → Aufgabe 4
-3. Unbekannte Schlüssel oder Müll in den JSON-Feldern (entferntes Cog, kein Listen-Typ): werden ignoriert, Panel und Schalter laufen weiter. → Aufgabe 4
-4. Zwei Admins schalten kurz nacheinander verschiedene Cogs: beide Änderungen bleiben erhalten (kein Überschreiben aus altem Zwischenspeicher). → Aufgabe 4
-5. Panel-Nachricht wird von jemand anderem bedient oder vom Aufrufer, der inzwischen die Berechtigung verloren hat: Klick wird abgewiesen, nichts geschaltet. → Aufgabe 6
+1. Guild ohne `GuildProfile`/`GuildSettings`-Zeile oder mit `null`-Feldern: gilt als „alles aktiv"; Lesen legt keine Zeilen an. → Aufgabe 4
+1. Unbekannte Schlüssel oder Müll in den JSON-Feldern (entferntes Cog, kein Listen-Typ): werden ignoriert, Panel und Schalter laufen weiter. → Aufgabe 4
+1. Zwei Admins schalten kurz nacheinander verschiedene Cogs: beide Änderungen bleiben erhalten (kein Überschreiben aus altem Zwischenspeicher). → Aufgabe 4
+1. Panel-Nachricht wird von jemand anderem bedient oder vom Aufrufer, der inzwischen die Berechtigung verloren hat: Klick wird abgewiesen, nichts geschaltet. → Aufgabe 6
 
 ## Dateien
 
-| Datei | Aufgabe | Verantwortung |
-|---|---|---|
-| `testenv/settings.py`, `tox.ini`, `demolizzen/config.py` | 1 | DB-Schalter, Cog `test` entfernen |
-| `demolizzen/tests/helpers.py` | 1 | Nachbauten für Guild, Member, ctx, Interaction |
-| `demolizzen/core/bot.py`, `demolizzen/launch.py` | 2 | Start entflochten |
-| `demolizzen/services/__init__.py`, `services/errors.py`, `services/guilds.py` | 3 | Guild- und Mitglieder-Logik |
-| `demolizzen/cogs/guild/guild.py` | 3 | dünnes Pilot-Cog |
-| `demolizzen/core/registry.py`, `services/cog_settings.py` | 4 | Verzeichnis und Schalter-Logik |
-| `demolizzen/core/errors.py`, `demolizzen/core/cog.py`, alle geladenen Cogs | 5 | `BaseCog`, `CogDisabled`, `guild_listener` |
-| `demolizzen/cogs/panel/{__init__,panel,_view}.py` | 6 | `/panel` |
-| `demolizzen/tests/{core,services,cogs}/…` | 1–6 | Tests je Aufgabe |
+| Datei                                                                         | Aufgabe | Verantwortung                                  |
+| ----------------------------------------------------------------------------- | ------- | ---------------------------------------------- |
+| `testenv/settings.py`, `tox.ini`, `demolizzen/config.py`                      | 1       | DB-Schalter, Cog `test` entfernen              |
+| `demolizzen/tests/helpers.py`                                                 | 1       | Nachbauten für Guild, Member, ctx, Interaction |
+| `demolizzen/core/bot.py`, `demolizzen/launch.py`                              | 2       | Start entflochten                              |
+| `demolizzen/services/__init__.py`, `services/errors.py`, `services/guilds.py` | 3       | Guild- und Mitglieder-Logik                    |
+| `demolizzen/cogs/guild/guild.py`                                              | 3       | dünnes Pilot-Cog                               |
+| `demolizzen/core/registry.py`, `services/cog_settings.py`                     | 4       | Verzeichnis und Schalter-Logik                 |
+| `demolizzen/core/errors.py`, `demolizzen/core/cog.py`, alle geladenen Cogs    | 5       | `BaseCog`, `CogDisabled`, `guild_listener`     |
+| `demolizzen/cogs/panel/{__init__,panel,_view}.py`                             | 6       | `/panel`                                       |
+| `demolizzen/tests/{core,services,cogs}/…`                                     | 1–6     | Tests je Aufgabe                               |
 
----
+______________________________________________________________________
 
 ### Task 1: Testgerüst und DB-Schalter
 
 **Files:**
+
 - Modify: `testenv/settings.py`, `tox.ini`, `demolizzen/config.py` (`"test"` aus `PRELOAD_EXTENSIONS`), `CHANGELOG.md`
 - Create: `demolizzen/tests/helpers.py`, `demolizzen/tests/core/__init__.py`, `demolizzen/tests/services/__init__.py`, `demolizzen/tests/cogs/__init__.py`, `demolizzen/tests/test_settings.py`
 
 **Interfaces – Produces:**
+
 - `helpers.make_guild(guild_id: int = 1, name: str = "Test Guild", members: list | None = None) -> MagicMock` (spec `discord.Guild`; `.id`, `.name`, `.members`, `.owner`)
+
 - `helpers.make_member(user_id: int = 10, name: str = "tester", *, bot: bool = False, manage_guild: bool = False, guild=None) -> MagicMock` (spec `discord.Member`; `.guild_permissions.manage_guild`)
+
 - `helpers.make_ctx(guild=None, author=None) -> MagicMock` (`.respond`, `.defer`, `.followup.send` als `AsyncMock`; `.guild`, `.author`, `.user`; `guild=None` bleibt `None` für DM-Fälle)
+
 - `helpers.make_interaction(guild=None, user=None) -> MagicMock` (`.response.edit_message`, `.response.send_message` als `AsyncMock`)
+
 - `testenv.settings.use_mysql(value: str | None) -> bool`
 
 - [ ] **Step 1: Failing test** `demolizzen/tests/test_settings.py`
 
-```python
+```text
 class UseMysqlTest(SimpleTestCase):
     def test_values(self):
         for value in ("1", "true", "TRUE", "yes"):
@@ -89,19 +95,25 @@ class UseMysqlTest(SimpleTestCase):
 ### Task 2: Bot-Start entflechten
 
 **Files:**
+
 - Modify: `demolizzen/core/bot.py:26-66`, `demolizzen/launch.py`
 - Create: `demolizzen/tests/core/test_bot.py`; Delete: `demolizzen/tests/test_bot.py`
 
 **Interfaces – Produces:**
+
 - `Demolizzen.__init__(**kwargs)`: nur Intents, `command_prefix="$"`, `config`, `token`, `req_perms`, `preload_ext`, `counter`, `logger`, `launch_time`; `self.session = None`, `self.esi_data = None`, `self._entity_task = None`. Kein Laden von Cogs, kein Netzwerk, kein `sys.exit`.
+
 - `Demolizzen.load_preload_extensions() -> dict[str, Exception | None]` – lädt `demolizzen.cogs.<ext>` je Eintrag, protokolliert Fehler, bricht nicht ab; Konsolenausgabe wie bisher.
+
 - `async Demolizzen.start(token: str | None = None, *, reconnect: bool = True)` – wirft `RuntimeError("Token must be set in order to login.")` ohne Token; erzeugt `aiohttp.ClientSession()`, `OpenAPI(session)`, startet `_entity_name_worker` als Task; dann `super().start(...)`.
+
 - `async Demolizzen.close()` – bricht `_entity_task` ab, schließt die Session, dann `super().close()`; mehrfach aufrufbar.
+
 - `launch.run_bot()`: `bot = Demolizzen(); bot.load_preload_extensions(); bot.run()`.
 
 - [ ] **Step 1: Failing tests** (`SimpleTestCase`, `aiohttp.ClientSession` und `demolizzen.core.bot.OpenAPI` gepatcht)
 
-```python
+```text
 def test_init_has_no_side_effects(self):
     with patch("aiohttp.ClientSession") as session, patch.object(Demolizzen, "load_extension") as load:
         bot = Demolizzen()
@@ -136,10 +148,12 @@ async def test_close_is_idempotent(self): ...  # zweimal close(), Session.close 
 ### Task 3: Guild-Fachlogik und Pilot-Cog
 
 **Files:**
+
 - Create: `demolizzen/services/__init__.py`, `demolizzen/services/errors.py`, `demolizzen/services/guilds.py`, `demolizzen/tests/services/test_guilds.py`, `demolizzen/tests/cogs/test_guild.py`
 - Modify: `demolizzen/cogs/guild/guild.py` (`check`, alle vier Listener), `demolizzen/core/bot.py` (`on_ready`: Umbenennung über Service)
 
 **Interfaces – Produces** (`demolizzen/services/guilds.py`, alles `async`):
+
 - `ensure_guild(guild_id: int, name: str) -> tuple[GuildProfile, bool]` – legt Profil und die Zeilen aus `GuildProfile.create_settings()` an; zweiter Wert = neu angelegt
 - `rename_guild(guild_id: int, name: str) -> bool` – `True` nur bei tatsächlicher Änderung; unbekannte Guild → `False`
 - `remove_guild(guild_id: int) -> bool`
@@ -152,7 +166,7 @@ Das Cog filtert Bots heraus und reicht dieselben Namen weiter wie heute (`displa
 
 - [ ] **Step 1: Failing tests** `test_guilds.py` (`TestCase`, async-Methoden)
 
-```python
+```text
 async def test_ensure_guild_creates_profile_and_settings(self):
     profile, created = await guilds.ensure_guild(1, "Alpha")
     self.assertTrue(created)
@@ -176,7 +190,7 @@ async def test_rename_member(self):
 - [ ] **Step 4:** → PASS
 - [ ] **Step 5: Failing tests** `test_guild.py` – Cog mit `MagicMock`-Bot, `check_guild.start` gepatcht:
 
-```python
+```text
 async def test_on_guild_join_registers_guild_and_humans(self):
     guild = make_guild(1, "Alpha", members=[make_member(10, "a"), make_member(11, "bot", bot=True)])
     await cog.on_guild_join(guild)
@@ -192,11 +206,13 @@ async def test_check_removes_guilds_the_bot_left(self): ...
 ### Task 4: Verzeichnis und Schalter-Logik
 
 **Files:**
+
 - Create: `demolizzen/core/registry.py`, `demolizzen/services/cog_settings.py`, `demolizzen/tests/core/test_registry.py`, `demolizzen/tests/services/test_cog_settings.py`
 
 **Interfaces – Consumes:** `services.errors.*`, `services.guilds.ensure_guild`
 
 **Interfaces – Produces:**
+
 - `registry.CogInfo` – `@dataclass(frozen=True)`: `key: str`, `title: str`, `description: str`, `toggleable: bool = True`, `default_enabled: bool = True`, `requires: tuple[str, ...] = ()`
 - `registry.requirements(key: str) -> list[str]` (alle benötigten Cogs, transitiv), `registry.dependents(key: str) -> list[str]` (alle abhängigen Cogs, transitiv), beide in Verzeichnis-Reihenfolge
 - `services.errors.DependencyConflict(ServiceError)` mit `.key: str`, `.enabled: bool`, `.affected: list[str]`
@@ -213,7 +229,7 @@ Regel: aktiv = (`default_enabled` und nicht in `disabled_cogs`) oder in `enabled
 
 - [ ] **Step 1: Failing tests**
 
-```python
+```text
 # test_registry.py
 def test_fixed_cogs_are_not_toggleable(self):
     self.assertEqual({k for k, c in REGISTRY.items() if not c.toggleable}, {"core", "owner", "guild", "panel"})
@@ -271,12 +287,14 @@ def test_requirements_reference_toggleable_known_cogs(self): ...
 ### Task 5: BaseCog, Schalter für Befehle und Events
 
 **Files:**
+
 - Create: `demolizzen/core/errors.py`, `demolizzen/core/cog.py`, `demolizzen/tests/core/test_cog.py`
 - Modify: jede Cog-Klasse der geladenen Erweiterungen (`core`, `owner`, `admin`, `guild`, `general`, `commands`, `levelsystem`, `banksystem`, `economy`, `shop`, `games`, `eveonline`, `killmail`, `ticket`); Listener in `levelsystem.py` (`on_message`, `on_guild_channel_delete`), `banksystem_config.py` (`on_guild_join`), `killmail.py` (`on_guild_leave`)
 
 **Interfaces – Consumes:** `cog_settings.is_enabled`, `registry.get`
 
 **Interfaces – Produces:**
+
 - `core.errors.CogDisabled(discord.ext.commands.CheckFailure)` – `CogDisabled(key)`, `str()` = `This module is disabled on this server.`
 - `core.cog.BaseCog(commands.Cog)` – Klassenattribut `key: str` (Pflicht; fehlt es oder ist es nicht im Verzeichnis, wirft `__init_subclass__` `TypeError`); `__init__(self, bot)` setzt `self.bot`; `async is_enabled(self, guild_id: int | None) -> bool` (`None` → `True`); `async cog_check(self, ctx) -> bool` (wirft `CogDisabled`)
 - `core.cog.guild_listener(name: str | None = None)` – Ersatz für `commands.Cog.listener()`; ruft den Listener nicht auf, wenn das Cog in der Guild des Events abgeschaltet ist
@@ -286,7 +304,7 @@ def test_requirements_reference_toggleable_known_cogs(self): ...
 
 - [ ] **Step 1: Failing tests** `test_cog.py`
 
-```python
+```text
 class Dummy(BaseCog):
     key = "games"
     def __init__(self, bot): super().__init__(bot); self.calls = []
@@ -321,21 +339,27 @@ def test_every_loaded_cog_uses_basecog(self):
 ### Task 6: `/panel`
 
 **Files:**
+
 - Create: `demolizzen/cogs/panel/__init__.py`, `panel.py`, `_view.py`, `demolizzen/tests/cogs/test_panel.py`
 - Modify: `demolizzen/config.py` (`"panel"` nach `"guild"` in `PRELOAD_EXTENSIONS`), `CHANGELOG.md`
 
 **Interfaces – Consumes:** `cog_settings.get_states/set_enabled`, `guilds.ensure_guild`, `registry`, `checks.check_is_admin(ctx, precheck=True)`, `BaseCog`
 
 **Interfaces – Produces:**
+
 - `_view.build_embed(guild_name: str, states: dict[str, bool], selected: str | None = None) -> discord.Embed` – Titel `⚙️ Demolizzen Panel – {guild_name}`; je Cog ein Inline-Feld `🟢 {title}` bzw. `🔴 {title}`; bei `selected` Beschreibung = Titel, Beschreibung und Zustand des Cogs
+
 - `_view.PanelView(guild_id: int, guild_name: str, author_id: int, states: dict[str, bool])` – `discord.ui.View`, `timeout=180`, `disable_on_timeout=True`; ein `string_select` (Platzhalter `Select a module`, eine Option je abschaltbarem Cog), Buttons `Enable` (grün) und `Disable` (rot), beide deaktiviert, bis ein Modul gewählt ist; nach Wahl ist nur der sinnvolle Button aktiv
+
 - Meldet `set_enabled` einen `DependencyConflict`, zeigt die Ansicht statt zu schalten eine Rückfrage – `Disabling {title} will also disable: {titles}.` bzw. `Enabling {title} will also enable: {titles}.` – mit den Buttons `Confirm` und `Cancel`; `Confirm` ruft `set_enabled(..., cascade=True)`, `Cancel` zeigt wieder die Übersicht
+
 - `PanelView.interaction_check`: weist ab, wenn `interaction.user.id != author_id` oder der Nutzer weder Owner ist noch `manage_guild` hat; Antwort ephemeral `You are not allowed to use this panel.`
+
 - `panel.Panel(BaseCog)`, `key = "panel"`; Slash-Befehl `/panel` (`contexts=[guild]`, `default_member_permissions=Permissions(manage_guild=True)`, `@checks.is_admin()`), antwortet ephemeral mit Embed und View; ruft vorher `ensure_guild(ctx.guild.id, ctx.guild.name)`
 
 - [ ] **Step 1: Failing tests** `test_panel.py`
 
-```python
+```text
 def test_embed_lists_every_toggleable_cog(self):
     embed = build_embed("Alpha", {"games": False, "ticket": True})
     self.assertEqual(embed.title, "⚙️ Demolizzen Panel – Alpha")
@@ -366,7 +390,7 @@ def test_select_has_no_fixed_cogs(self):  # Optionswerte ∩ {"core","owner","gu
 - [ ] **Step 4:** `python runtests.py demolizzen` → OK; `coverage run runtests.py demolizzen && coverage report --include="demolizzen/services/*"` → ≥ 90 %
 - [ ] **Step 5:** CHANGELOG (`Added`: Panel, Cog-Schalter), Commit `feat: add /panel to toggle cogs per guild`
 
----
+______________________________________________________________________
 
 ## Bekannte Grenzen dieser Etappe
 

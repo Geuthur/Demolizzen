@@ -22,7 +22,7 @@ class Admin(BaseCog):
     key = "admin"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Admin"
         self.alias = "admin"
         self.command_ids = {}

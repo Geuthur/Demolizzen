@@ -25,7 +25,7 @@ class Guild(BaseCog):
     key = "guild"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Guild"
         self.alias = "guild"
         self.command_ids = {}

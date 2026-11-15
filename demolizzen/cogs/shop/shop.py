@@ -25,7 +25,7 @@ class Shop(BaseCog):
     key = "shop"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self._shop = []
         self.title = "Shop"
         self.alias = "shop"

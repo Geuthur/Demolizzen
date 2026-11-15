@@ -55,7 +55,7 @@ class Killmail(BaseCog):
     key = "killmail"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "zKillboard"
         self.alias = "killmail"
         # ZKB R2Z2 Tracking

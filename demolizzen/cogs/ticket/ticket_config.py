@@ -28,7 +28,7 @@ class TicketSystemConfig(BaseCog):
     key = "ticket"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Ticket System Configuration"
         self.alias = "ticket_config"
         # Instantiate and start the channel/archiver processor which owns background loops

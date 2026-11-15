@@ -27,7 +27,7 @@ class BankConfig(BaseCog):
     key = "banksystem"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.last_update_time = timezone.now()
         self.title = "Banksystem"
         self.alias = "bank_config"

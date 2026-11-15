@@ -34,7 +34,7 @@ class TicketSystem(BaseCog):
     key = "ticket"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Ticket System"
         self.alias = "ticket"
 

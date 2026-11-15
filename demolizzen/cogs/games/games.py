@@ -27,7 +27,7 @@ class Games(BaseCog):
     key = "games"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Games"
         self.alias = "games"
         self.max_amount = 240

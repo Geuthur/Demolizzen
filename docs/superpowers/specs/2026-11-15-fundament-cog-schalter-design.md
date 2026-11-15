@@ -16,9 +16,9 @@ Design, das auf dieser Etappe aufbaut.
 ## Ziele
 
 1. Fachlogik liegt in einer eigenen Schicht ohne Discord-Abhängigkeit und ist mit SQLite testbar.
-2. Der Bot lässt sich in Tests erzeugen, ohne Netzwerk, Token oder laufende Event-Loop.
-3. Guild-Admins schalten Cogs für ihre Guild über `/panel` an und ab.
-4. Ein neues Cog hinzuzufügen heißt: eine Klasse von `BaseCog` ableiten, einen Eintrag
+1. Der Bot lässt sich in Tests erzeugen, ohne Netzwerk, Token oder laufende Event-Loop.
+1. Guild-Admins schalten Cogs für ihre Guild über `/panel` an und ab.
+1. Ein neues Cog hinzuzufügen heißt: eine Klasse von `BaseCog` ableiten, einen Eintrag
    im Verzeichnis der angebotenen Cogs machen – Schalter und Panel funktionieren dann von selbst.
 
 ## Nicht-Ziele (dieser Etappe)
@@ -37,11 +37,11 @@ Design, das auf dieser Etappe aufbaut.
 
 ## Ansätze
 
-| | Ansatz | Abwägung |
-|---|---|---|
-| **A** | Schrittweise im bestehenden Bot: Fachlogik in eine eigene Schicht, Cogs werden dünn, Umzug Cog für Cog | Bot bleibt lauffähig; eine Zeit lang alter und neuer Stil nebeneinander |
-| B | Neuaufbau daneben | Sauberstes Ergebnis, aber lange nichts lauffähig und ohne Tests kein Schutz vor verlorenem Verhalten |
-| C | Nur Panel und Ticketsystem aufsetzen | Am schnellsten, löst „schwer erweiterbar, nicht testbar" nicht |
+|       | Ansatz                                                                                                 | Abwägung                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **A** | Schrittweise im bestehenden Bot: Fachlogik in eine eigene Schicht, Cogs werden dünn, Umzug Cog für Cog | Bot bleibt lauffähig; eine Zeit lang alter und neuer Stil nebeneinander                              |
+| B     | Neuaufbau daneben                                                                                      | Sauberstes Ergebnis, aber lange nichts lauffähig und ohne Tests kein Schutz vor verlorenem Verhalten |
+| C     | Nur Panel und Ticketsystem aufsetzen                                                                   | Am schnellsten, löst „schwer erweiterbar, nicht testbar" nicht                                       |
 
 **Gewählt: A** (Entscheidung von Geuthur, 2026-11-15).
 
@@ -153,11 +153,11 @@ sieht dafür eine Erweiterungsstelle vor.
 ## Reihenfolge
 
 1. Testgerüst und Reparatur des `USE_MYSQL`-Schalters
-2. Bot-Start entflechten
-3. `services/guilds.py`, Cog `guild` als erstes dünnes Cog (Pilot)
-4. `registry`, `BaseCog`, `services/cog_settings.py`, Schalter für Befehle und Events
-5. `/panel`
-6. Danach, je eigener Schritt: Ticketsystem (eigenes Design), Bank, Levelsystem, Economy/Shop/Games,
+1. Bot-Start entflechten
+1. `services/guilds.py`, Cog `guild` als erstes dünnes Cog (Pilot)
+1. `registry`, `BaseCog`, `services/cog_settings.py`, Schalter für Befehle und Events
+1. `/panel`
+1. Danach, je eigener Schritt: Ticketsystem (eigenes Design), Bank, Levelsystem, Economy/Shop/Games,
    EVE Online/Killmail
 
 ## Dem Umsetzenden überlassen

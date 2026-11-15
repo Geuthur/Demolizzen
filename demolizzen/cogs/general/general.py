@@ -17,7 +17,7 @@ class General(BaseCog):
     key = "general"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.status_checker.start()
         self.is_okay = True
 

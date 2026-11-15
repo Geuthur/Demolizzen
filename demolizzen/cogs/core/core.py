@@ -20,7 +20,7 @@ class Core(BaseCog):
     key = "core"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Core"
         self.alias = "core"
 

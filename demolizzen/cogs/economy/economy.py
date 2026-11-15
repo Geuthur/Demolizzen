@@ -31,7 +31,7 @@ class Economy(BaseCog):
     key = "economy"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.alias = "economy"
         self.title = "Economy"
 

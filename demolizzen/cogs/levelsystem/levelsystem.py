@@ -25,7 +25,7 @@ class Levelsystem(BaseCog):
     key = "levelsystem"
 
     def __init__(self, bot: "Demolizzen"):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Levelsystem"
         self.alias = "levelsystem"
         self.level = CheckLevelUp(bot)

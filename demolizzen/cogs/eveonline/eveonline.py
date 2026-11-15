@@ -35,7 +35,7 @@ class EveOnline(BaseCog):
     key = "eveonline"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "EVEOnline"
         self.alias = "eve"
 

@@ -106,11 +106,11 @@ Cogs live in `demolizzen/cogs/<name>/` and follow three rules:
    name. Set `toggleable=False` for cogs every server needs, and `requires=(...)` if the cog only
    makes sense together with another one. The server panel (`/panel`) and the per-server switch
    pick the entry up on their own.
-2. **Derive from `BaseCog`.** Set `key` to the registry key. Commands of the cog are then refused
+1. **Derive from `BaseCog`.** Set `key` to the registry key. Commands of the cog are then refused
    with a notice in servers that disabled it. Declare event listeners with `@guild_listener()`
    from `demolizzen.core.cog` instead of `@commands.Cog.listener()` so they are skipped as well.
    Background loops must ask `cog_settings.enabled_guild_ids(key, guild_ids)` which servers to serve.
-3. **Keep logic out of the cog.** Database access and rules go into `demolizzen/services/`, which
+1. **Keep logic out of the cog.** Database access and rules go into `demolizzen/services/`, which
    must not import `discord`. The cog only translates between Discord and the service.
 
 Add the folder name to `PRELOAD_EXTENSIONS` in `demolizzen/config.py` to load the cog.

@@ -13,7 +13,6 @@ from discord.ext import commands
 # Demolizzen
 from demolizzen.cogs.banksystem import Bank
 from demolizzen.cogs.economy import Economy
-from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
 
 
@@ -21,9 +20,6 @@ class Owner(BaseCog):
     """Owner Only Commands."""
 
     key = "owner"
-
-    def __init__(self, bot: Demolizzen):
-        self.bot = bot
 
     owner = SlashCommandGroup(
         "owner", "Owner Commands", contexts=[discord.InteractionContextType.bot_dm]

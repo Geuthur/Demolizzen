@@ -34,7 +34,7 @@ class TextAdventure(BaseCog):
     key = "economy"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.alias = "text_adventure"
         self.title = "Text Adventure Games"
 
