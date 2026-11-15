@@ -6,6 +6,7 @@ changes: status message, channel permissions, channel name and category.
 """
 
 # Standard Library
+import io
 import logging
 import re
 
@@ -14,6 +15,7 @@ import discord
 
 # Demolizzen
 from demolizzen.cogs.ticket._renamer import ChannelRenamer
+from demolizzen.cogs.ticket._transcript import MAX_MESSAGES, render_transcript
 from demolizzen.cogs.ticket._views import (
     DELETE_QUESTION,
     ConfirmDeleteView,
@@ -366,4 +368,43 @@ class TicketActions:
         ticket: GuildTicket,
         settings: GuildTicketSettings,
     ) -> None:
-        """Hook that runs after the delete was confirmed and before the channel goes."""
+        """Post the transcript to the log channel, if one is set.
+
+        A failing transcript never keeps the ticket from being deleted.
+        """
+        if not settings.log_channel_id:
+            return
+        log_channel = interaction.guild.get_channel(settings.log_channel_id)
+        if log_channel is None:
+            return
+        try:
+            messages = [
+                message
+                async for message in interaction.channel.history(
+                    limit=MAX_MESSAGES, oldest_first=True
+                )
+            ]
+            text = render_transcript(ticket, messages, deleted_by=interaction.user.name)
+            number = f"{ticket.ticket_number:04d}"
+            embed = discord.Embed(
+                title=f"🗑️ Ticket #{number} deleted",
+                description=(
+                    f"Subject: {ticket.subject or '–'}\n"
+                    f"Created by: <@{ticket.user_id}>\n"
+                    f"Deleted by: {interaction.user.mention}\n"
+                    f"Messages: {len(messages)}"
+                ),
+            )
+            await log_channel.send(
+                embed=embed,
+                file=discord.File(
+                    io.BytesIO(text.encode("utf-8")), filename=f"ticket-{number}.txt"
+                ),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Could not write transcript of ticket #%s of guild %s",
+                ticket.ticket_number,
+                ticket.guild_id,
+            )

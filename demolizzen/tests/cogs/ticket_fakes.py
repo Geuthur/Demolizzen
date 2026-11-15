@@ -34,6 +34,32 @@ def make_category(category_id: int, channel_count: int = 0):
     return category
 
 
+class AsyncIter:
+    """Async iterator over a list, standing in for ``channel.history()``."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
+def make_message(author: str, content: str, when, attachments=()):
+    message = MagicMock()
+    message.author = MagicMock()
+    message.author.name = author
+    message.author.display_name = author
+    message.content = content
+    message.created_at = when
+    message.attachments = [MagicMock(url=url) for url in attachments]
+    return message
+
+
 def make_channel(channel_id: int, name: str, guild=None, category=None):
     channel = MagicMock(spec=discord.TextChannel)
     channel.id = channel_id
@@ -54,6 +80,14 @@ def make_channel(channel_id: int, name: str, guild=None, category=None):
     sent = MagicMock()
     sent.id = channel_id + 1
     channel.send = AsyncMock(return_value=sent)
+    channel.messages = []
+    channel.history = MagicMock(
+        side_effect=lambda **kwargs: AsyncIter(channel.messages)
+    )
+    partial = MagicMock()
+    partial.edit = AsyncMock()
+    channel.partial_message = partial
+    channel.get_partial_message = MagicMock(return_value=partial)
     return channel
 
 

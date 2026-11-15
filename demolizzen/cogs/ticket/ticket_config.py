@@ -9,15 +9,10 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen.cogs.ticket._staffview import RoleSelectView
-from demolizzen.cogs.ticket._ticketprocess import ChannelUpdateProcessor
-from demolizzen.cogs.ticket._ticketview import TicketControlView
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
-from demolizzen.models.guild import (
-    GuildTicket,
-    GuildTicketSettings,
-)
+from demolizzen.models.guild import GuildTicketSettings
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +26,6 @@ class TicketSystemConfig(BaseCog):
         super().__init__(bot)
         self.title = "Ticket System Configuration"
         self.alias = "ticket_config"
-        # Instantiate and start the channel/archiver processor which owns background loops
-        self.channel_processor = ChannelUpdateProcessor(bot)
-        self.channel_processor.start()
 
     ticket_config = SlashCommandGroup(
         name="ticket_config",
@@ -41,14 +33,6 @@ class TicketSystemConfig(BaseCog):
         contexts=[discord.InteractionContextType.guild],
         default_member_permissions=discord.Permissions(manage_guild=True),
     )
-
-    def cog_unload(self):
-        # Stop background processor tasks
-        try:
-            self.channel_processor.stop()
-            logger.debug("Stopped channel processor.")
-        except Exception:
-            logger.exception("Failed to stop channel processor.")
 
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
         guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
@@ -58,38 +42,6 @@ class TicketSystemConfig(BaseCog):
         logger.debug(f"GuildSettings loaded for {ctx.guild}.")
         if created:
             logger.info(f"Created new GuildSettings for {ctx.guild}.")
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        logger.debug("Loading persistent tickets...")
-        tickets = [ticket async for ticket in GuildTicket.objects.all()]
-        deleted_views = 0
-        added_views = 0
-
-        for ticket in tickets:
-            guild = discord.utils.get(self.bot.guilds, id=ticket.guild_id)
-            ticket_owner = discord.utils.get(guild.members, id=ticket.user_id)
-            # Skip if Opener has left the guild or cannot be found, keep the ticket
-            if not ticket_owner:
-                continue
-            channel = discord.utils.get(
-                ticket_owner.guild.channels, id=ticket.channel_id
-            )
-            # Ensure not adding views for deleted channels
-            if not channel:
-                deleted_views += 1
-                await ticket.adelete()
-                continue
-            view = TicketControlView(
-                channel=channel,
-                ticket_owner=ticket_owner,
-                ticket_number=ticket.ticket_number,
-            )
-            added_views += 1
-            self.bot.add_view(view)
-        logger.info(
-            f"Added {added_views} Persistent tickets, deleted missing {deleted_views} tickets."
-        )
 
     @ticket_config.command(name="set", help="Set the category channel for tickets")
     @commands.guild_only()
