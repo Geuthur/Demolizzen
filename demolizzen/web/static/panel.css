@@ -428,7 +428,19 @@ fieldset.field legend { padding: 0; }
 .feeds .settings { max-width: none; margin-top: 0; align-content: start; }
 
 /* What the card is about leads it: the followed id, set like a readout. */
-.follows { display: grid; gap: 0.1rem; margin: 0; }
+.follows p { display: grid; gap: 0.1rem; margin: 0; min-width: 0; }
+.follows.with-logo { display: flex; align-items: center; gap: 0.9rem; }
+
+/* The logo sits in a socket of its own, so a missing image leaves no hole. */
+.follows .logo {
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 1px solid var(--seam);
+  border-radius: 0.375rem;
+  background: var(--hull);
+}
+
 .follows .label { color: var(--muted); font-size: 0.875rem; }
 
 .follows .target {

@@ -232,7 +232,9 @@ Register `http://localhost:8000/callback` as redirect for this.
   about visitors is stored in the database.
 - The zKillboard page asks EVE's public API (`esi.evetech.net`) what a followed id stands for:
   its kind (alliance, corporation, system, …) and name. No token is involved. Answers are kept
-  for a day; when the API cannot be reached the page shows the bare ids.
+  for a day; when the API cannot be reached the page shows the bare ids. Logos of alliances and
+  corporations are loaded by the visitor's browser from `images.evetech.net`, the only outside
+  address the content security policy allows.
 - A module switched in the panel takes effect in the bot within a minute. The bot then registers
   that server's slash commands again, so the commands of a switched-off module disappear from
   the server and return when it is switched on.

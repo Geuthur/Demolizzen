@@ -159,6 +159,42 @@ class KillmailNamesTest(KillmailPageTestCase):
         # All ids of the page in one question.
         self.assertEqual(self.eve_asked, [[30000142, 98000001, 99003581]])
 
+    def test_alliances_and_corporations_show_their_logo(self):
+        self.subscribe(11, 99003581)
+        self.subscribe(14, 98000001)
+        self.subscribe(11, 30000142)
+        self.subscribe(14, 424242)
+        self.eve = {
+            99003581: EveName(99003581, "alliance", "Voices of War"),
+            98000001: EveName(98000001, "corporation", "Hell Riders"),
+            30000142: EveName(30000142, "solar_system", "Jita"),
+        }
+
+        response = self.client.get(PAGE)
+
+        self.assertEqual(
+            [sub["logo"] for sub in self.listed(response)],
+            [
+                "https://images.evetech.net/alliances/99003581/logo?size=128",
+                "https://images.evetech.net/corporations/98000001/logo?size=128",
+                None,
+                None,
+            ],
+        )
+        self.assertContains(response, "<img", count=2)
+        self.assertContains(
+            response,
+            'src="https://images.evetech.net/alliances/99003581/logo?size=128"',
+        )
+        # The name stands next to it; a screen reader need not hear it twice.
+        self.assertContains(response, 'alt=""', count=2)
+
+    def test_page_may_load_images_from_eves_image_server_only(self):
+        policy = self.client.get(PAGE)["Content-Security-Policy"]
+
+        self.assertIn("img-src https://images.evetech.net;", policy)
+        self.assertIn("default-src 'none'", policy)
+
     def test_id_stands_alone_when_eve_cannot_say_what_it_is(self):
         self.subscribe(11, 424242)
 

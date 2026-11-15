@@ -386,8 +386,23 @@ KIND_LABELS = {
 }
 
 
+# The kinds EVE's image server has a logo for, and where it is.
+_LOGO_PATHS = {"alliance": "alliances", "corporation": "corporations"}
+
+
 def _kind_label(kind: str) -> str:
     return KIND_LABELS.get(kind) or kind.replace("_", " ").capitalize()
+
+
+def _logo(name: eve_names.EveName | None) -> str | None:
+    """The address of an alliance's or corporation's logo. The content
+    security policy allows images from this host only."""
+    if name is None or name.kind not in _LOGO_PATHS:
+        return None
+    return (
+        f"https://images.evetech.net/{_LOGO_PATHS[name.kind]}/{int(name.id)}"
+        "/logo?size=128"
+    )
 
 
 async def _killmail_load(guild_id: int, directory: Directory | None = None) -> dict:
@@ -404,6 +419,7 @@ async def _killmail_load(guild_id: int, directory: Directory | None = None) -> d
                 "follows": str(rule.group_id) if rule.group_id else "Every killmail",
                 "kind": _kind_label(known[rule.id].kind) if known[rule.id] else None,
                 "name": known[rule.id].name if known[rule.id] else None,
+                "logo": _logo(known[rule.id]),
                 # False for a kind of id no killmail is matched by.
                 "matched": known[rule.id] is None or known[rule.id].kind in KIND_LABELS,
                 "threshold": rule.threshold,
