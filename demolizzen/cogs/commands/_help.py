@@ -4,6 +4,7 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 
 class CommandsHelp:
@@ -41,6 +42,9 @@ class CommandsHelp:
             if alias == "None":
                 continue
             if access != "None" and str(access) != str(server_id):
+                continue
+            # Modules the server switched off are not offered
+            if isinstance(cog, BaseCog) and not await cog.is_enabled(server_id):
                 continue
 
             # Check if the user has permission to view any command in the cog

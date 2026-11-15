@@ -33,6 +33,7 @@ Section Order:
 
 ## Changed
 
+- `/help` no longer lists modules that are disabled on the server
 - Guild and member bookkeeping moved into `demolizzen/services/guilds.py`; the periodic guild check now uses one query per guild instead of one per member
 - Bot construction no longer loads extensions or opens network connections; `launch.py` loads extensions and `start()` creates the HTTP session and ESI client
 - Tests run on in-memory SQLite by default; `USE_MYSQL=1` selects MySQL (set by tox and CI)
