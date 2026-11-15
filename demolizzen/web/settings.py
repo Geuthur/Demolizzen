@@ -20,3 +20,7 @@ CSRF_TRUSTED_ORIGINS = [WEB_BASE_URL] if WEB_BASE_URL else []
 # Cookies travel over HTTPS only, except while developing locally.
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+
+# The panel does not use EVE's single sign-on. Without this, management
+# commands run with these settings stop at the missing ESI application.
+SILENCED_SYSTEM_CHECKS = ["esi.E001"]

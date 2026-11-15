@@ -103,6 +103,96 @@ arrived over HTTPS.
 Database migrations are applied where the bot is updated (`python manage.py migrate`); the panel
 adds no tables.
 
+## Reaching the database from the container
+
+Inside a container `127.0.0.1` is the container itself, not the machine it runs on. Which
+`DATABASE_HOST` works depends on where the database is:
+
+| Where the database runs                        | `DATABASE_HOST`                 | What the database has to allow                                                   |
+| ---------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| On another machine (the bot's server)          | that machine's address          | Connections from the panel's machine: `bind-address`, firewall, user's host      |
+| On the same machine, installed normally        | `host.docker.internal`          | Connections from Docker's network (`172.16.0.0/12`): `bind-address`, user's host |
+| On the same machine, in a container of its own | the name of its compose service | Both services in the same compose network                                        |
+
+`host.docker.internal` is provided by the compose file. A database that only listens on
+`127.0.0.1` (the default `bind-address`) accepts neither of the first two; let it listen on the
+address in question and close port 3306 in the firewall for everyone but the panel.
+
+Give the panel a database user of its own. It reads and writes settings and never changes
+tables:
+
+```sql
+CREATE USER 'demolizzen_panel'@'<address the panel connects from>'
+    IDENTIFIED BY '<password>' REQUIRE SSL;
+GRANT SELECT, INSERT, UPDATE ON <database>.* TO 'demolizzen_panel'@'<address the panel connects from>';
+```
+
+Leave out `REQUIRE SSL` only when the database runs on the same machine.
+
+## Check the setup
+
+```shell
+docker compose run --rm panel python -m demolizzen.web.check
+```
+
+prints one line per check and names what is wrong, for example:
+
+```text
+OK    Sign-in with Discord is configured.
+OK    Address https://panel.example.com; redirect to register: https://panel.example.com/callback
+FAIL  Database not reachable: (2003, "Can't connect to MySQL server on '10.0.0.5:3306' (111)")
+      The server does not answer. Check DATABASE_HOST and DATABASE_PORT, the database's bind-address and the firewall.
+```
+
+It tells apart: server not answering, user not allowed, connection not encrypted, and a database
+that lacks migrations. It never prints a secret.
+
+## Going live
+
+The panel needs the database as the current bot version leaves it, so bot and panel are updated
+together. The update changes tables and cannot be undone except from a backup.
+
+Try it first where nothing can break: a second Discord application as test bot, a test server and
+a copy of the database.
+
+1. **Back up the database.**
+
+   ```shell
+   mysqldump --single-transaction -u <user> -p <database> > demolizzen-before-update.sql
+   ```
+
+1. **Stop the bot.**
+
+1. **Update the bot** where it is installed.
+
+   ```shell
+   git pull
+   pip install -e .
+   python manage.py migrate
+   ```
+
+1. **Start the bot** and look at its log. In Discord, open `/panel` once.
+
+1. **Start the panel.**
+
+   ```shell
+   docker compose up -d --build
+   docker compose run --rm panel python -m demolizzen.web.check
+   ```
+
+1. **Sign in** at `WEB_BASE_URL` and switch a module off and on again.
+
+### Going back
+
+```shell
+docker compose down
+# stop the bot, then:
+mysql -u <user> -p <database> < demolizzen-before-update.sql
+git checkout <the version that ran before>
+pip install -e .
+# start the bot
+```
+
 ## Run it without Docker
 
 ```shell

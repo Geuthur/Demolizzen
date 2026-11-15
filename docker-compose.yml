@@ -5,6 +5,10 @@ services:
     image: demolizzen-panel
     restart: unless-stopped
     env_file: .env
+    extra_hosts:
+      # Lets the container reach a database on the Docker host itself:
+      # DATABASE_HOST=host.docker.internal
+      - "host.docker.internal:host-gateway"
     ports:
       # For the host's nginx only. Set PANEL_BIND=0.0.0.0 if the proxy runs on
       # another machine, and PANEL_PORT to publish a different port.

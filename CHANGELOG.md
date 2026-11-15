@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- `python -m demolizzen.web.check` tells whether the web panel is set up: settings, database access, encryption and missing migrations; `docs/web-panel.md` describes database access from the container and going live with backup and way back
 - Web panel: Ticket System settings (categories, log channel, staff roles, limits) and the channel for level-ups; channels and roles are read from Discord with the bot token
 - Web panel: settings pages for Banksystem (interest, deposits, withdrawals), Levelsystem (announcements) and the Economy event
 - Web panel: switch modules of a server on and off, with the same dependency confirmation as `/panel`

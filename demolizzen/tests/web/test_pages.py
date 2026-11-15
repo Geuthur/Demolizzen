@@ -115,3 +115,6 @@ class SettingsTest(SimpleTestCase):
         # The container's health check asks the panel on its own address.
         self.assertIn("127.0.0.1", production.ALLOWED_HOSTS)
         self.assertIn("localhost", production.ALLOWED_HOSTS)
+        # The panel does not use EVE's single sign-on; its check must not
+        # stop management commands run with the panel's settings.
+        self.assertIn("esi.E001", production.SILENCED_SYSTEM_CHECKS)

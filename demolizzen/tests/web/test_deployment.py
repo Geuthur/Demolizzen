@@ -47,3 +47,8 @@ class DeploymentFilesTest(SimpleTestCase):
 
         self.assertIn('"--port", "8000"', dockerfile)
         self.assertIn("${PANEL_BIND:-127.0.0.1}:${PANEL_PORT:-8000}:8000", compose)
+
+    def test_compose_lets_the_container_reach_a_database_on_the_host(self):
+        compose = (ROOT / "docker-compose.yml").read_text()
+
+        self.assertIn('"host.docker.internal:host-gateway"', compose)
