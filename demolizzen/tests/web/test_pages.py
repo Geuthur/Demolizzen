@@ -112,3 +112,6 @@ class SettingsTest(SimpleTestCase):
             production.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https")
         )
         self.assertIn("demolizzen", production.INSTALLED_APPS)
+        # The container's health check asks the panel on its own address.
+        self.assertIn("127.0.0.1", production.ALLOWED_HOSTS)
+        self.assertIn("localhost", production.ALLOWED_HOSTS)

@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Web panel (`demolizzen/web/`): sign in with Discord and see the servers you may manage with their modules; shipped as a Docker image with a compose file, see `docs/web-panel.md`
 - Level system settings page in `/panel` (level-up posts on/off, channel)
 - Bank settings page in `/panel` (interest per week, deposits and withdrawals on/off); `allow_deposits` and `allow_withdrawals` are now enforced
 - Ticket subject and description form, `Open ticket` button message, transcript of deleted tickets in a log channel, ticket settings page in `/panel`

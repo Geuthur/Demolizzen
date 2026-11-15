@@ -38,9 +38,9 @@ def stylesheet(request) -> HttpResponse:  # pylint: disable=unused-argument
     return HttpResponse(STYLESHEET, content_type="text/css; charset=utf-8")
 
 
-def not_found(
-    request, exception=None
-) -> HttpResponse:  # pylint: disable=unused-argument
+def not_found(request, exception=None) -> HttpResponse:
+    """The page for an address that does not exist."""
+    del exception  # Django passes it; the page says the same for every cause.
     return message(request, "Not found", "This page does not exist.", status=404)
 
 

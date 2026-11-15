@@ -1,0 +1,11 @@
+# Runs the web panel of Demolizzen. Settings come from .env (see .env.example).
+services:
+  panel:
+    build: .
+    image: demolizzen-panel
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # For the host's nginx only. Set PANEL_BIND=0.0.0.0 if the proxy runs on
+      # another machine, and PANEL_PORT to publish a different port.
+      - "${PANEL_BIND:-127.0.0.1}:${PANEL_PORT:-8000}:8000"

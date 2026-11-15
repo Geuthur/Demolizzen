@@ -169,3 +169,9 @@ The owner commands are for small changes without a restart:
 
 All three load commands register added, changed or removed slash commands with Discord
 afterwards.
+
+## Web panel
+
+The web panel lives in `demolizzen/web/` and calls the same service layer as the cogs. How to run
+and deploy it is described in [docs/web-panel.md](docs/web-panel.md). Its tests are in
+`demolizzen/tests/web/` and replace Discord with `FakeDiscord` from `fakes.py`.
