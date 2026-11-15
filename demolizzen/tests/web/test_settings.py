@@ -41,10 +41,10 @@ class SettingsPagesTest(SettingsTestCase):
     def test_modules_with_settings_link_to_their_page(self):
         response = self.client.get("/guilds/1/")
 
-        for key in ("banksystem", "levelsystem", "economy"):
+        for key in ("banksystem", "levelsystem", "economy", "ticket"):
             self.assertContains(response, f'href="/guilds/1/settings/{key}"')
         self.assertNotContains(response, 'href="/guilds/1/settings/games"')
-        self.assertContains(response, ">Settings</a>", count=3)
+        self.assertContains(response, ">Settings</a>", count=4)
 
     def test_bank_page_shows_the_stored_values(self):
         self.run_async(

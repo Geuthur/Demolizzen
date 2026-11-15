@@ -5,6 +5,7 @@
 <h1>{{ page.title }} settings</h1>
 {% if module_off %}<p class="notice">{{ page.title }} is switched off on this server. Settings are kept and apply once it is switched on.</p>{% endif %}
 {% if notice %}<p class="notice done" role="status">{{ notice }}</p>{% endif %}
+{% if listing_problem %}<p class="notice">{{ listing_problem }}</p>{% endif %}
 {% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
 <form class="settings" method="post" action="{% url 'module_settings' guild.id page.key %}">
   {% csrf_token %}

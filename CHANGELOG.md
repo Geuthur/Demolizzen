@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Web panel: Ticket System settings (categories, log channel, staff roles, limits) and the channel for level-ups; channels and roles are read from Discord with the bot token
 - Web panel: settings pages for Banksystem (interest, deposits, withdrawals), Levelsystem (announcements) and the Economy event
 - Web panel: switch modules of a server on and off, with the same dependency confirmation as `/panel`
 - The web panel encrypts its session cookie; `DATABASE_SSL_MODE` and `DATABASE_SSL_CA` encrypt the database connection of bot and panel

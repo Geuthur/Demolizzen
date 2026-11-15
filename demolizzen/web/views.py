@@ -23,9 +23,9 @@ from demolizzen.services.errors import (
     GuildNotRegistered,
     UnknownCog,
 )
-from demolizzen.web import access, discord_api, session
+from demolizzen.web import access, directory, discord_api, session
 from demolizzen.web.base_settings import WEB_DIR
-from demolizzen.web.discord_api import DiscordError
+from demolizzen.web.discord_api import BotTokenMissing, DiscordError
 from demolizzen.web.module_settings import PAGES, InvalidInput
 
 STYLESHEET = (WEB_DIR / "static" / "panel.css").read_bytes()
@@ -317,10 +317,28 @@ async def module_settings(request, guild_id: int, key: str) -> HttpResponse:
     if page is None:
         raise Http404
 
+    # Channels and roles to choose from, for the pages that need them. When
+    # Discord cannot be asked the page still works, without those fields.
+    listing, listing_problem = None, None
+    if page.needs_directory:
+        try:
+            listing = await directory.load(guild_id)
+        except BotTokenMissing:
+            listing_problem = (
+                "Channels and roles could not be loaded from Discord: the panel "
+                "has no bot token. The operator has to set BOT_TOKEN. The other "
+                "settings can still be changed."
+            )
+        except DiscordError:
+            listing_problem = (
+                "Channels and roles could not be loaded from Discord. The other "
+                "settings can still be changed."
+            )
+
     error = None
     if request.method == "POST":
         try:
-            await page.save(guild_id, request.POST)
+            await page.save(guild_id, request.POST, listing)
         except InvalidInput as invalid:
             # Nothing was saved. Show the form again and say what is wrong.
             error = invalid.message
@@ -342,7 +360,8 @@ async def module_settings(request, guild_id: int, key: str) -> HttpResponse:
             "servers": servers,
             "guild": {"id": guild_id, "name": name},
             "page": page,
-            "values": await page.load(guild_id),
+            "values": await page.load(guild_id, listing),
+            "listing_problem": listing_problem,
             "module_off": not states.get(key, True),
             "error": error,
             "notice": request.session.pop("notice", None),

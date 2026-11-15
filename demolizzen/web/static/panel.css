@@ -362,7 +362,7 @@ button.wake:hover { background: var(--lamp-on); color: var(--deep); filter: none
 .settings {
   display: grid;
   gap: 1.25rem;
-  max-width: 30rem;
+  max-width: 34rem;
   margin-top: 1.75rem;
   padding: 1.5rem;
   border: 1px solid var(--seam);
@@ -376,7 +376,7 @@ button.wake:hover { background: var(--lamp-on); color: var(--deep); filter: none
 
 select {
   width: 100%;
-  max-width: 14rem;
+  max-width: 22rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--seam);
   border-radius: 0.375rem;
@@ -395,3 +395,22 @@ select {
 }
 
 .settings .choice { margin-top: 0.5rem; }
+
+fieldset.field { min-width: 0; margin: 0; padding: 0; border: 0; }
+fieldset.field legend { padding: 0; }
+
+/* Several boxes of one setting, such as the staff roles. */
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem 1rem;
+  max-height: 16rem;
+  margin-top: 0.4rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--seam);
+  border-radius: 0.375rem;
+  background: var(--hull);
+  overflow-y: auto;
+}
+
+.check.plain { font-weight: 400; }

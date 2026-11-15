@@ -9,8 +9,9 @@ one, is only switched after a confirmation that names the modules switched with 
 bot's own panel.
 
 Banksystem, Levelsystem and Economy have a settings page each: interest and whether members may
-deposit and withdraw, whether level-ups are announced, and the economy event with its payout
-factor. Ticket settings and the channel for level-ups follow.
+deposit and withdraw, whether and where level-ups are announced, and the economy event with its payout
+factor. Ticket System has one for its categories, log channel, staff roles and limits; the
+button members open tickets with is still posted from Discord with `/panel`.
 
 ## What it needs
 
@@ -31,13 +32,16 @@ Set in `.env` (see `.env.example`):
 | `SECRET_KEY`                                            | Long random text. Encrypts and signs the session cookies; changing it signs everyone out. |
 | `DATABASE_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_NAME` | The bot's database.                                                                       |
 | `DATABASE_SSL_MODE`, `DATABASE_SSL_CA`                  | Encrypt the database connection, see below. Optional on one machine.                      |
+| `BOT_TOKEN`                                             | The bot's token, to read a server's channels and roles.                                   |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`            | OAuth2 client of the Discord application.                                                 |
 | `WEB_BASE_URL`                                          | Where browsers reach the panel, e.g. `https://panel.example.com`.                         |
 | `WEB_ALLOWED_HOSTS`                                     | Further host names, comma separated. Optional.                                            |
 | `WEB_DEBUG`                                             | `1` only for local development.                                                           |
 | `PANEL_BIND`, `PANEL_PORT`                              | Address and port docker compose publishes. Default `127.0.0.1:8000`.                      |
 
-The panel does not need `BOT_TOKEN` yet. Leave it empty on the machine that only runs the panel.
+The panel uses `BOT_TOKEN` to ask Discord for a server's channels and roles, for the ticket
+settings and the level-up channel. Without it those fields are left out and everything else works.
+The token is only ever sent to Discord and never reaches a browser.
 
 ## Encrypting the database connection
 

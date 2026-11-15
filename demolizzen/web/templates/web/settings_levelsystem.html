@@ -4,5 +4,15 @@
     <input type="checkbox" name="announce"{% if values.announce %} checked{% endif %}>
     <span>Announce level-ups</span>
   </label>
-  <p class="help">A rank card is posted when a member reaches a new level. The channel for these posts is chosen with /panel in Discord for now.</p>
+  <p class="help">A rank card is posted when a member reaches a new level.</p>
+  {% if values.has_directory %}
+  <label class="field">
+    <span class="label">Channel for level-ups</span>
+    <select name="channel">
+      {% for option in values.channels %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <span class="help">The system channel is the one Discord uses for welcome messages.</span>
+  </label>
+  {% endif %}
 {% endblock %}

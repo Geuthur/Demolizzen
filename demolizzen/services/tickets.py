@@ -43,6 +43,11 @@ SETTING_FIELDS = (
 _ID_FIELDS = ("category_id", "archive_category_id", "log_channel_id")
 _FLAG_FIELDS = ("allow_user_close", "allow_user_reopen")
 _RANGES = {"auto_archive_days": (1, 365), "max_open_tickets": (1, 10)}
+# What the panels offer for these two settings.
+ARCHIVE_DAY_CHOICES = (1, 3, 7, 14, 30)
+OPEN_TICKET_CHOICES = (1, 2, 3, 5)
+# Discord's own limit for a role picker; the panels keep to it.
+MAX_STAFF_ROLES = 25
 
 
 def _is_int(value) -> bool:

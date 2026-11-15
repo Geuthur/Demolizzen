@@ -11,8 +11,8 @@ from demolizzen.models import GuildTicketSettings
 from demolizzen.services import guilds, tickets
 from demolizzen.services.errors import TicketError
 
-ARCHIVE_DAY_CHOICES = (1, 3, 7, 14, 30)
-OPEN_TICKET_CHOICES = (1, 2, 3, 5)
+ARCHIVE_DAY_CHOICES = tickets.ARCHIVE_DAY_CHOICES
+OPEN_TICKET_CHOICES = tickets.OPEN_TICKET_CHOICES
 
 
 def _channel(channel_id: int | None, required: bool = False) -> str:
