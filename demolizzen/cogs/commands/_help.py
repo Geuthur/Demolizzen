@@ -5,6 +5,7 @@ from discord.ext import commands
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
 from demolizzen.core.cog import BaseCog
+from demolizzen.utils.functions import command_link
 
 
 class CommandsHelp:
@@ -101,11 +102,15 @@ class CategorySelect(discord.ui.Select):
         commands_info = []
         for command in cog.get_commands():
             options_info = []
+            # The id this server knows the command by; it differs per server.
+            command_id = self.bot.command_scope.command_id(
+                command, interaction.guild_id
+            )
             if isinstance(command, discord.commands.SlashCommandGroup):
                 for subcommand in command.walk_commands():
                     if not subcommand.description == "No description provided":
                         commands_info.append(
-                            f"</{subcommand}:{command.id}> \n {subcommand.description}\n"
+                            f"{command_link(str(subcommand), command_id)} \n {subcommand.description}\n"
                         )
             else:
                 for opt in command.options:
@@ -114,7 +119,7 @@ class CategorySelect(discord.ui.Select):
                     )
                 options_info_str = " ".join(options_info)
                 commands_info.append(
-                    f"</{command.name}:{command.id}> {options_info_str} \n {command.description}\n"
+                    f"{command_link(command.name, command_id)} {options_info_str} \n {command.description}\n"
                 )
         info.add_field(
             name=f"**{plugin_name} Plugin**",

@@ -221,6 +221,7 @@ class Levelsystem(BaseCog):
                 cog="Guild",
                 slash_command="guild",
                 slash_command_group="set_channel",
+                guild_id=guild.id,
             )
             embed = discord.Embed(
                 description=(

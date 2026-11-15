@@ -1,5 +1,5 @@
 # Standard Library
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Django
 from django.test import SimpleTestCase, TestCase
@@ -54,7 +54,8 @@ class PanelTestCase(TestCase):
 
 class PanelCommandTest(PanelTestCase):
     async def test_command_registers_guild_and_responds_ephemeral(self):
-        cog = Panel(MagicMock())
+        with patch("discord.ext.tasks.Loop.start"):
+            cog = Panel(MagicMock())
         ctx = make_ctx(guild=self.guild, author=self.admin)
 
         await cog.panel.callback(cog, ctx)
@@ -208,3 +209,102 @@ class PanelPermissionTest(PanelTestCase):
 
         self.assertFalse(await view.interaction_check(interaction))
         self.assertTrue(await cog_settings.is_enabled(1, "games"))
+
+
+class PanelCommandListTest(PanelTestCase):
+    """A switch shows or hides the module's slash commands on the server."""
+
+    def watched(self, interaction) -> list[str]:
+        order: list[str] = []
+        interaction.response.edit_message = AsyncMock(
+            side_effect=lambda **_: order.append("answer")
+        )
+        interaction.client.command_scope.refresh = AsyncMock(
+            side_effect=lambda: order.append("register")
+        )
+        return order
+
+    async def test_switch_registers_the_commands_after_answering(self):
+        # Discord wants the answer within three seconds; registering can take longer.
+        view = await self.make_view()
+        await view.choose(self.interaction(), "ticket")
+        interaction = self.interaction()
+        order = self.watched(interaction)
+
+        await view.toggle(interaction, False)
+
+        self.assertEqual(order, ["answer", "register"])
+
+    async def test_confirmed_switch_registers_the_commands_too(self):
+        view = await self.make_view()
+        await view.choose(self.interaction(), "banksystem")
+        await view.toggle(self.interaction(), False)  # asks about the dependents
+        interaction = self.interaction()
+        order = self.watched(interaction)
+
+        await view.confirm(interaction)
+
+        self.assertEqual(order, ["answer", "register"])
+
+    async def test_looking_around_registers_nothing(self):
+        view = await self.make_view()
+        interaction = self.interaction()
+
+        await view.choose(interaction, "ticket")
+        await view.cancel(interaction)
+
+        interaction.client.command_scope.refresh.assert_not_awaited()
+
+    async def test_failed_registration_leaves_the_switch_in_place(self):
+        view = await self.make_view()
+        await view.choose(self.interaction(), "ticket")
+        interaction = self.interaction()
+        interaction.client.command_scope.refresh = AsyncMock(
+            side_effect=RuntimeError("Discord is down")
+        )
+
+        with self.assertLogs(level="ERROR"):
+            await view.toggle(interaction, False)
+
+        self.assertFalse(await cog_settings.is_enabled(1, "ticket"))
+        interaction.response.edit_message.assert_awaited()
+
+
+class PanelWatcherTest(SimpleTestCase):
+    """Switches made in the web panel reach Discord without a restart."""
+
+    def make_cog(self):
+        bot = MagicMock()
+        bot.command_scope.refresh = AsyncMock(return_value=[])
+        bot.wait_until_ready = AsyncMock()
+        with patch("discord.ext.tasks.Loop.start") as start:
+            cog = Panel(bot)
+        return cog, bot, start
+
+    def test_watcher_starts_with_the_module_and_stops_with_it(self):
+        cog, _, start = self.make_cog()
+        start.assert_called_once()
+
+        with patch("discord.ext.tasks.Loop.cancel") as cancel:
+            cog.cog_unload()
+
+        cancel.assert_called_once()
+
+    def test_watcher_looks_once_a_minute(self):
+        self.assertEqual(Panel.watch_modules.seconds, 60)
+
+    async def test_watcher_waits_for_the_bot_then_refreshes(self):
+        cog, bot, _ = self.make_cog()
+
+        await cog.before_watch_modules()
+        await cog.watch_modules.coro(cog)
+
+        bot.wait_until_ready.assert_awaited_once()
+        bot.command_scope.refresh.assert_awaited_once_with()
+
+    async def test_watcher_survives_a_failure(self):
+        cog, bot, _ = self.make_cog()
+        bot.command_scope.refresh.side_effect = RuntimeError("database is away")
+
+        with self.assertLogs(level="ERROR"):
+            await cog.watch_modules.coro(cog)

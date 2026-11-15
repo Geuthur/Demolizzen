@@ -37,6 +37,7 @@ class CommandsBase:
                 cog="Shop",
                 slash_command="shop",
                 slash_command_group="buy",
+                guild_id=ctx.guild.id,
             )
             em = discord.Embed(
                 description=f"{ctx.author.mention}, Your Bag is empty... Buy something with {app_command}",

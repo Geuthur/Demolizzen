@@ -1,5 +1,5 @@
 # Standard Library
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Django
 from django.test import TestCase
@@ -125,3 +125,56 @@ class GuildChannelCommandTest(TestCase):
 
         embed = ctx.respond.await_args.kwargs["embed"]
         self.assertIn("already", embed.description)
+
+
+class GuildSyncCommandTest(TestCase):
+    """The owner's way to register the slash commands again by hand."""
+
+    def make_ctx(self):
+        ctx = make_ctx(guild=make_guild(1, "Alpha"))
+        ctx.bot.sync_commands = AsyncMock()
+        ctx.bot.command_scope.sync_guild = AsyncMock(return_value=True)
+        return ctx
+
+    async def test_global_registers_everything(self):
+        cog, ctx = make_cog(), self.make_ctx()
+
+        await cog.sync.callback(cog, ctx, "global")
+
+        ctx.bot.sync_commands.assert_awaited_once_with()
+        ctx.bot.command_scope.sync_guild.assert_not_awaited()
+
+    async def test_guild_registers_this_server_only(self):
+        # It must not turn every command into a command of this one server.
+        cog, ctx = make_cog(), self.make_ctx()
+
+        await cog.sync.callback(cog, ctx, "guild")
+
+        ctx.bot.command_scope.sync_guild.assert_awaited_once_with(1)
+        ctx.bot.sync_commands.assert_not_awaited()
+        self.assertIn(
+            "synchronized", ctx.respond.await_args.kwargs["embed"].description
+        )
+
+    async def test_guild_says_so_when_discord_did_not_take_the_commands(self):
+        cog, ctx = make_cog(), self.make_ctx()
+        ctx.bot.command_scope.sync_guild.return_value = False
+
+        await cog.sync.callback(cog, ctx, "guild")
+
+        self.assertIn("could not", ctx.respond.await_args.kwargs["embed"].description)
+
+    async def test_discord_is_answered_before_the_registration_starts(self):
+        for scope in ("global", "guild"):
+            with self.subTest(scope=scope):
+                cog, ctx = make_cog(), self.make_ctx()
+                order: list[str] = []
+                ctx.defer = AsyncMock(side_effect=lambda **_: order.append("defer"))
+                ctx.bot.sync_commands.side_effect = lambda: order.append("register")
+                ctx.bot.command_scope.sync_guild.side_effect = lambda _id: bool(
+                    order.append("register") or True
+                )
+
+                await cog.sync.callback(cog, ctx, scope)
+
+                self.assertEqual(order, ["defer", "register"])

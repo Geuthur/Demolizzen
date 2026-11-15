@@ -1,5 +1,8 @@
 """The message and controls of the server panel."""
 
+# Standard Library
+import logging
+
 # Discord
 import discord
 
@@ -9,8 +12,23 @@ from demolizzen.core import registry, settings_pages
 from demolizzen.services import cog_settings, guilds
 from demolizzen.services.errors import DependencyConflict
 
+logger = logging.getLogger(__name__)
+
 ON = "🟢"
 OFF = "🔴"
+
+
+async def _register_commands(interaction: discord.Interaction) -> None:
+    """Show or hide the switched module's slash commands on the server.
+
+    Called after the panel has answered: Discord wants the answer within
+    three seconds and registering can take longer.
+    """
+    try:
+        await interaction.client.command_scope.refresh()
+    except Exception:  # pylint: disable=broad-exception-caught
+        # The switch itself is stored; the panel cog's watcher tries again.
+        logger.exception("Registering the commands after a module switch failed")
 
 
 def _mark(enabled: bool) -> str:
@@ -150,6 +168,7 @@ class PanelView(discord.ui.View):
         if self.selected is not None:
             await self._apply(self.selected, enabled, cascade=False)
         await self._redraw(interaction)
+        await _register_commands(interaction)
 
     async def confirm(self, interaction: discord.Interaction) -> None:
         """Switch the cog together with the cogs named in the open question."""
@@ -158,6 +177,7 @@ class PanelView(discord.ui.View):
             self.pending = None
             await self._apply(key, enabled, cascade=True)
         await self._redraw(interaction)
+        await _register_commands(interaction)
 
     async def cancel(self, interaction: discord.Interaction) -> None:
         """Drop the open question without switching anything."""

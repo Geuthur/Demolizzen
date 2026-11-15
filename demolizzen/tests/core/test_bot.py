@@ -249,6 +249,23 @@ class CommandSyncTest(TestCase):
 
         sync.assert_awaited_once()
 
+    async def test_reconnect_only_follows_changes(self):
+        # on_ready fires again after every reconnect; registering every
+        # server each time would be dozens of requests for nothing.
+        bot = Demolizzen()
+        bot.preload_ext = ["core"]
+        with patch("discord.ext.tasks.Loop.start"):
+            bot.load_preload_extensions()
+        bot.command_scope.refresh = AsyncMock(return_value=[])
+
+        first, _ = await self.ready(bot)
+        bot.command_scope.refresh.assert_not_awaited()
+        second, _ = await self.ready(bot)
+
+        first.assert_awaited_once()
+        second.assert_not_awaited()
+        bot.command_scope.refresh.assert_awaited_once_with()
+
     async def test_an_empty_command_list_is_never_synced(self):
         bot = Demolizzen()
 
@@ -258,3 +275,55 @@ class CommandSyncTest(TestCase):
         sync.assert_not_awaited()
         self.assertIn("NOT synced", printed)
         self.assertIn("left untouched", " ".join(logs.output))
+
+
+class CommandScopeWiringTest(SimpleTestCase):
+    def test_py_cord_never_syncs_on_its_own(self):
+        # Its sync knows nothing of per-server modules.
+        self.assertFalse(Demolizzen().auto_sync_commands)
+
+    def test_invite_link_asks_for_the_scope_guild_commands_need(self):
+        bot = Demolizzen()
+        with patch.object(
+            Demolizzen, "user", new_callable=PropertyMock, return_value=MagicMock(id=7)
+        ):
+            url = bot.invite_url
+
+        self.assertIn("scope=bot+applications.commands", url)
+
+    async def test_sync_commands_ignores_py_cords_arguments(self):
+        # sync_commands(guild_ids=[...]) of py-cord would turn every command
+        # into a command of those servers.
+        bot = Demolizzen()
+        bot.command_scope.sync_all = AsyncMock(return_value=[])
+
+        await bot.sync_commands(guild_ids=[1])
+
+        bot.command_scope.sync_all.assert_awaited_once_with()
+
+
+class GuildJoinTest(SimpleTestCase):
+    def joined(self):
+        guild = make_guild(1, "Alpha")
+        guild.owner.send = AsyncMock()
+        return guild
+
+    async def test_joined_server_gets_its_commands_at_once(self):
+        bot = Demolizzen()
+        bot.command_scope.refresh = AsyncMock(return_value=[1])
+        guild = self.joined()
+
+        await bot.on_guild_join(guild)
+
+        bot.command_scope.refresh.assert_awaited_once_with()
+        guild.owner.send.assert_awaited_once()
+
+    async def test_owner_is_greeted_even_when_registering_fails(self):
+        bot = Demolizzen()
+        bot.command_scope.refresh = AsyncMock(side_effect=RuntimeError("down"))
+        guild = self.joined()
+
+        with self.assertLogs(level="ERROR"):
+            await bot.on_guild_join(guild)
+
+        guild.owner.send.assert_awaited_once()

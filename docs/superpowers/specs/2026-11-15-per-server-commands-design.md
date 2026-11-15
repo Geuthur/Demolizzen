@@ -35,9 +35,9 @@ admins included, and come back when the module is switched on again.
    once (per-command overrides under *Integrations* are lost once more), and
    switchable commands are no longer offered in direct messages (all of them
    are guild-only today).
-2. **Discord command permissions set by the panel.** Needs an extra OAuth scope
+1. **Discord command permissions set by the panel.** Needs an extra OAuth scope
    on the panel login and still shows every command to administrators.
-3. **Leave it.** Admins can hide commands by hand under *Integrations*.
+1. **Leave it.** Admins can hide commands by hand under *Integrations*.
 
 The owner picked 1.
 

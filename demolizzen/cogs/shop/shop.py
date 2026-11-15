@@ -126,7 +126,7 @@ class Shop(BaseCog):
             em = discord.Embed(
                 title=f"Shop (Seite {page + 1}/{total_pages})",
                 color=discord.Color.teal(),
-                description=f"Use {get_command_mention(bot=self.bot, cog='Shop', slash_command='shop', slash_command_group='price')} `item` to get more information about the item. \n Use {get_command_mention(bot=self.bot, cog='Shop', slash_command='shop', slash_command_group='buy')} `item` to buy the item. \n\n:money_with_wings: Here are the available items:\n\n ",
+                description=f"Use {get_command_mention(bot=self.bot, guild_id=ctx.guild.id, cog='Shop', slash_command='shop', slash_command_group='price')} `item` to get more information about the item. \n Use {get_command_mention(bot=self.bot, guild_id=ctx.guild.id, cog='Shop', slash_command='shop', slash_command_group='buy')} `item` to buy the item. \n\n:money_with_wings: Here are the available items:\n\n ",
             )
             for name, price, __ in fields[
                 page * items_per_page : (page + 1) * items_per_page

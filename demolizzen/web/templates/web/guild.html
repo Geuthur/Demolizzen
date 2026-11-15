@@ -8,7 +8,7 @@
 {% if notice %}<p class="notice done" role="status">{{ notice }}</p>{% endif %}
 
 <h2>Modules</h2>
-<p class="small">A switch reaches the bot within a minute.</p>
+<p class="small">A switch reaches Discord within a minute: the slash commands of the module appear on this server or disappear from it.</p>
 <ul class="rack">
   {% for module in modules %}{% if not module.fixed %}
   <li class="slot{% if not module.on %} off{% endif %}">

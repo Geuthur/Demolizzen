@@ -170,6 +170,23 @@ The owner commands are for small changes without a restart:
 All three load commands register added, changed or removed slash commands with Discord
 afterwards.
 
+### Where a slash command is registered
+
+- Commands of the always-on modules (`toggleable=False` in `demolizzen/core/registry.py`) are
+  global.
+- Commands of the modules a server can switch are registered per server, only where the module is
+  on (`demolizzen/core/command_scope.py`). Do not give them `guild_ids`; the scope sets them.
+- Modules outside the registry (`vow`, `geuthur`) are registered as they declare themselves.
+
+The bot registers every server at start. Afterwards the panel cog looks into the database once a
+minute and registers only the servers whose modules changed, so a switch in the web panel needs no
+restart. `/guild sync guild` registers the current server again by hand. A server that answers
+403 is named in the log with the invite link and tried again after an hour.
+
+Discord gives such a command a different id in every server. Build command links with
+`get_command_mention(..., guild_id=...)` or `bot.command_scope.command_id(command, guild_id)`,
+never with `command.id`.
+
 ## Web panel
 
 The web panel lives in `demolizzen/web/` and calls the same service layer as the cogs. How to run

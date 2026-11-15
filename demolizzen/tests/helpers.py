@@ -65,4 +65,6 @@ def make_interaction(guild=None, user=None) -> MagicMock:
     interaction.response = MagicMock()
     interaction.response.edit_message = AsyncMock()
     interaction.response.send_message = AsyncMock()
+    interaction.client = MagicMock()
+    interaction.client.command_scope.refresh = AsyncMock(return_value=[])
     return interaction

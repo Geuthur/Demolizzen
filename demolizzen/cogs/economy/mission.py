@@ -165,7 +165,7 @@ class TextAdventure(BaseCog):
         no_ship = discord.Embed(
             title="",
             color=discord.Color.red(),
-            description=f"{ctx.author.mention}, You don't have a ship yet. \nYou can buy a ship with {get_command_mention(bot=self.bot, cog='Mission', slash_command='mission', slash_command_group='buy')}. \nGet information about available ships with {get_command_mention(bot=self.bot, cog='Mission', slash_command='mission', slash_command_group='price')}.",
+            description=f"{ctx.author.mention}, You don't have a ship yet. \nYou can buy a ship with {get_command_mention(bot=self.bot, guild_id=ctx.guild.id, cog='TextAdventure', slash_command='mission', slash_command_group='buy')}. \nGet information about available ships with {get_command_mention(bot=self.bot, guild_id=ctx.guild.id, cog='TextAdventure', slash_command='mission', slash_command_group='price')}.",
         )
         if mission_account.ship is None:
             await ctx.respond(embed=no_ship)
@@ -373,7 +373,7 @@ class TextAdventure(BaseCog):
             em = discord.Embed(
                 title=f"Shop (Seite {page + 1}/{total_pages})",
                 color=discord.Color.teal(),
-                description=f"Use {get_command_mention(bot=self.bot, cog='TextAdventure', slash_command='mission', slash_command_group='price')} `shipname` to learn more about the item. Use. \n Use {get_command_mention(bot=self.bot, cog='TextAdventure', slash_command='mission', slash_command_group='buy')} `shipname` to purchase the item. \n\n:money_with_wings: Here are the items:\n\n ",
+                description=f"Use {get_command_mention(bot=self.bot, guild_id=ctx.guild.id, cog='TextAdventure', slash_command='mission', slash_command_group='price')} `shipname` to learn more about the item. Use. \n Use {get_command_mention(bot=self.bot, guild_id=ctx.guild.id, cog='TextAdventure', slash_command='mission', slash_command_group='buy')} `shipname` to purchase the item. \n\n:money_with_wings: Here are the items:\n\n ",
             )
             for name, price, desc in fields[
                 page * items_per_page : (page + 1) * items_per_page

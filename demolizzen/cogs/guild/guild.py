@@ -96,6 +96,8 @@ class Guild(BaseCog):
         :param scope: The scope of the sync. Can be `global` or `guild`.
         """
 
+        # Registering takes longer than Discord waits for an answer.
+        await context.defer(ephemeral=True)
         if scope == "global":
             await context.bot.sync_commands()
             embed = discord.Embed(
@@ -104,11 +106,15 @@ class Guild(BaseCog):
             )
             await context.respond(embed=embed)
             return
-        await context.bot.sync_commands(guild_ids=[context.guild.id])
-        embed = discord.Embed(
-            description="Slash commands have been synchronized in this guild.",
-            color=0xBEBEFE,
-        )
+        # Only this server: its modules decide which commands it gets.
+        if await context.bot.command_scope.sync_guild(context.guild.id):
+            description = "Slash commands have been synchronized in this guild."
+        else:
+            description = (
+                "Slash commands could not be synchronized in this guild. "
+                "The log says why."
+            )
+        embed = discord.Embed(description=description, color=0xBEBEFE)
         await context.respond(embed=embed, ephemeral=True)
         return
 

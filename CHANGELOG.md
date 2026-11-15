@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- Slash commands of a module that is switched off on a server are no longer shown there: commands of switchable modules are registered per server, a switch in the web panel reaches Discord within a minute, one in `/panel` at once
 - `python -m demolizzen.web.check` tells whether the web panel is set up: settings, database access, encryption and missing migrations; `docs/web-panel.md` describes database access from the container and going live with backup and way back
 - Web panel: Ticket System settings (categories, log channel, staff roles, limits) and the channel for level-ups; channels and roles are read from Discord with the bot token
 - Web panel: settings pages for Banksystem (interest, deposits, withdrawals), Levelsystem (announcements) and the Economy event
@@ -33,6 +34,9 @@ Section Order:
 
 ## Fixed
 
+- `/owner load`, `unload`, `reload` and `/guild sync` answer Discord before registering, which now takes longer than Discord waits
+- Command links in `/help` and in hints showed `None` or a wrong id; they carry the id of the server they are shown in, the invite link asks for the `applications.commands` scope
+- `/guild sync guild` turned every command into a command of that one server; it now registers only that server's own commands again
 - The Voices of War module loads again: its ticket button is registered once the bot is running and opens tickets through the rebuilt ticket module
 - A bot started the old way (`Demolizzen().run()` without `load_preload_extensions()`) ran without modules and deleted every slash command at Discord; `run()` and `start()` now load the modules themselves, and an empty command list is never synced
 - `/owner load`, `unload` and `reload` did not register added, changed or removed commands with Discord

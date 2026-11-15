@@ -38,11 +38,15 @@
 **Files:** `demolizzen/core/command_scope.py`, `demolizzen/core/bot.py`, `demolizzen/tests/core/test_command_scope.py`, `demolizzen/tests/core/command_fakes.py`, `demolizzen/tests/core/test_bot.py`
 
 **Interfaces:** Produces
+
 - `module_key(command) -> str | None`
+
 - `CommandScope(bot)` with `async sync_all() -> list[int]` (servers that failed), `async refresh() -> list[int]` (servers registered), `async sync_guild(guild_id: int) -> bool`, `command_id(command, guild_id: int | None) -> int | str | None`, `REFUSED_RETRY_SECONDS = 3600`
+
 - `Demolizzen.command_scope`; `Demolizzen.sync_commands()` delegates to `sync_all()`; `auto_sync_commands=False`; invite link carries `applications.commands`.
 
 - [ ] Tests against a fake command store with the real modules loaded: scope per server, module off, refresh only touches changed servers, no request when unchanged, 403 and 500 handling, routing by id per server, ids per server, joined server, stale routes, empty global list.
+
 - [ ] Implement, run, commit.
 
 ### Task 3: Follow changes

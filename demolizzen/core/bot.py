@@ -16,6 +16,7 @@ from django.utils import timezone
 
 # Demolizzen
 from demolizzen import config, logger
+from demolizzen.core.command_scope import CommandScope
 from demolizzen.core.openapi import OpenAPI
 from demolizzen.services import guilds
 
@@ -33,6 +34,9 @@ class Demolizzen(commands.Bot):
         intents.members = True
         intents.message_content = True
         kwargs["command_prefix"] = "$"
+        # Commands are synced only where this class says so, through
+        # command_scope; py-cord's own sync knows nothing of per-server modules.
+        kwargs["auto_sync_commands"] = False
         super().__init__(intents=intents, **kwargs)
         self.counter = Counter()
         self.config = config
@@ -43,6 +47,8 @@ class Demolizzen(commands.Bot):
         self.launch_time = timezone.now()
         self._connected_once = False
         self._modules_loaded = False
+        self.command_scope = CommandScope(self)
+        self._commands_synced = False
         # Created in start(), once the event loop is running.
         self.session: aiohttp.ClientSession | None = None
         self.esi_data: OpenAPI | None = None
@@ -117,8 +123,14 @@ class Demolizzen(commands.Bot):
 
     @cached_property
     def invite_url(self):
-        invite_url = discord.utils.oauth_url(self.user.id, permissions=self.req_perms)
-        return invite_url
+        # Guild commands need the applications.commands scope. Discord adds it
+        # to the bot scope by itself today; naming it also repairs servers that
+        # invited the bot before that.
+        return discord.utils.oauth_url(
+            self.user.id,
+            permissions=self.req_perms,
+            scopes=("bot", "applications.commands"),
+        )
 
     @property
     def uptime(self):
@@ -171,8 +183,12 @@ class Demolizzen(commands.Bot):
         guild_count = len(self.guilds)
         users = len(list(self.get_all_members()))
 
-        if self.pending_application_commands:
+        if self._commands_synced:
+            # on_ready fires again after a reconnect: only follow changes.
+            await self.command_scope.refresh()
+        elif self.pending_application_commands:
             await self.sync_commands()
+            self._commands_synced = True
         else:
             # Syncing an empty list would delete every command at Discord.
             self.logger.error(
@@ -203,25 +219,21 @@ class Demolizzen(commands.Bot):
             status=discord.Status.online,
         )
 
-    async def sync_commands(self, *args, **kwargs):
-        try:
-            return await super(__class__, self).sync_commands(*args, **kwargs)
-        except discord.Forbidden as e:
-            self.logger.error("-----------------------------------------------------")
-            self.logger.error("Demolizzen was Unable to Sync Slash Commands!!!!")
-            self.logger.error(
-                "Please ensure your bot was invited to the server with the correct scopes"
+    async def sync_commands(self, *_args, **_kwargs) -> None:
+        """Register every server's commands, then the global ones.
+
+        The arguments of py-cord's method are not used: which server gets
+        which command is decided by its module settings alone, see
+        :mod:`demolizzen.core.command_scope`.
+        """
+        failed = await self.command_scope.sync_all()
+        if failed:
+            print(
+                Red(
+                    f"Slash commands could not be registered on {len(failed)} "
+                    "server(s); the log names them."
+                )
             )
-            self.logger.error("")
-            self.logger.error("To redo your scopes,")
-            self.logger.error("1. Refresh Scopes with this link:")
-            self.logger.error(f"{self.invite_url}")
-            self.logger.error(
-                "2. Move the bots role to top of the roles tree if its not there already"
-            )
-            self.logger.error("3. Restart Bot")
-            self.logger.error("-----------------------------------------------------")
-            self.logger.error(e)
 
     async def send_resp(
         self, ctx: discord.ApplicationContext, exp: discord.DiscordException
@@ -312,6 +324,13 @@ class Demolizzen(commands.Bot):
             )
 
     async def on_guild_join(self, guild: discord.Guild):
+        try:
+            # The commands of the switchable modules are registered per server.
+            await self.command_scope.refresh()
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.logger.exception(
+                f"Could not register the slash commands of {guild.name} ({guild.id})"
+            )
         owner = guild.owner
         em = discord.Embed(
             title="Demolizzen - EVE Online Discord Bot",

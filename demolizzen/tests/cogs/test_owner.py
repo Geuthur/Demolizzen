@@ -44,6 +44,23 @@ class OwnerTest(SimpleTestCase):
                 action.assert_called_once_with("demolizzen.cogs.games")
                 self.bot.sync_commands.assert_awaited_once_with()
 
+    async def test_discord_is_answered_before_the_registration_starts(self):
+        # Every server is registered on its own; that takes longer than the
+        # three seconds Discord waits for an answer.
+        for command in (self.cog.load, self.cog.unload, self.cog.reload):
+            with self.subTest(command=command.name):
+                order: list[str] = []
+                self.ctx.defer = AsyncMock(
+                    side_effect=lambda **_: order.append("defer")
+                )
+                self.bot.sync_commands = AsyncMock(
+                    side_effect=lambda: order.append("register")
+                )
+
+                await command.callback(self.cog, self.ctx, "games")
+
+                self.assertEqual(order, ["defer", "register"])
+
     async def test_failed_load_registers_nothing(self):
         self.bot.sync_commands = AsyncMock()
         self.bot.load_extension.side_effect = RuntimeError("broken")
