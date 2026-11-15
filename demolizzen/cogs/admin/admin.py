@@ -26,12 +26,6 @@ class Admin(BaseCog):
         self.alias = "admin"
         self.command_ids = {}
 
-    admin = SlashCommandGroup(
-        "admin",
-        "Adminsystem",
-        contexts=[discord.InteractionContextType.guild],
-        default_member_permissions=discord.Permissions(manage_guild=True),
-    )
     mod = SlashCommandGroup(
         "moderation",
         "Moderation System",
