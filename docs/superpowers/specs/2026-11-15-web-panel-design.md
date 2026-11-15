@@ -59,6 +59,19 @@ as a Docker container whose port the host's nginx forwards.
   `SameSite=Lax`.
 - **Sign-out:** a POST with CSRF protection.
 
+## Behaviour (step 2: switching modules)
+
+- Every module that can be switched has a button on the server page: *Switch off* or *Switch on*.
+  Modules that are always on have none.
+- A switch is a POST with CSRF protection to `/guilds/<id>/modules/<key>`; the same access check as
+  for the page runs first.
+- **Dependencies** work as in the bot. Switching off a module others need, or switching on a module
+  whose requirement is off, changes nothing at first: a page names the modules that would be
+  switched with it and asks. Confirming switches them together.
+- After a switch the server page says what was switched, once. Every switch is logged with the
+  user's id.
+- The bot notices a switch within a minute.
+
 ## Technical decisions
 
 - `demolizzen/web/`: settings on top of the bot's, URLs, async views, templates. Runs under ASGI
