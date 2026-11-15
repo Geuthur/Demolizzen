@@ -216,21 +216,6 @@ class ResolveNamesTest(OpenAPITestCase):
         self.assertEqual(OpenAPI.NAME_BATCH, 1000)
         self.assertEqual(OpenAPI.NAME_TIMEOUT, 15)
 
-    async def test_single_name_helpers_use_the_same_path(self):
-        universe = self.use(FakeUniverse())
-
-        self.assertEqual(await self.api.get_or_create_character_name(10), "Alice")
-        self.assertEqual(
-            await self.api.get_or_create_corporation_name(20), "Alpha Corp"
-        )
-        self.assertEqual(
-            await self.api.get_or_create_alliance_name(30), "Alpha Alliance"
-        )
-        self.assertIsNone(await self.api.get_or_create_character_name(None))
-        self.assertEqual(len(universe.calls), 3)
-        self.assertEqual(await self.api.get_or_create_character_name(10), "Alice")
-        self.assertEqual(len(universe.calls), 3)
-
 
 class RegionTest(OpenAPITestCase):
     async def test_region_is_read_once_per_system(self):

@@ -512,3 +512,22 @@ class KillmailCommandTest(KillmailCogTestCase):
         )
 
         self.assertEqual(self.said(), "No subscriptions found.")
+
+
+class KillmailNoticeFailureTest(KillmailCogTestCase):
+    async def test_failing_notice_does_not_stop_other_channels(self):
+        self.channel(10, can_send=False)
+        fine = self.channel(11)
+        await self.subscribe(10)
+        await self.subscribe(11)
+
+        with (
+            patch(
+                "demolizzen.cogs.killmail.killmail.guilds.get_main_channel",
+                AsyncMock(side_effect=RuntimeError("database away")),
+            ),
+            self.assertLogs("demolizzen.cogs.killmail.killmail", "ERROR"),
+        ):
+            await self.feed(package())
+
+        fine.send.assert_awaited_once()

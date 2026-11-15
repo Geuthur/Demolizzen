@@ -320,7 +320,13 @@ class Killmail(BaseCog):
             channel.id,
             channel.guild.id,
         )
-        await self._notify_paused(channel)
+        try:
+            await self._notify_paused(channel)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Could not announce the paused killmail feed of channel %s.",
+                channel.id,
+            )
 
     async def _notify_paused(self, channel) -> None:
         guild = channel.guild

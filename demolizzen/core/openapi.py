@@ -179,23 +179,6 @@ class OpenAPI:
                 )
         return {entity_id: names[entity_id] for entity_id in wanted}
 
-    async def _name_of(self, entity_id: int | None) -> str | None:
-        if not entity_id:
-            return None
-        return (await self.resolve_names([entity_id]))[entity_id]
-
-    async def get_or_create_character_name(self, character_id: int):
-        """Get the name of a character."""
-        return await self._name_of(character_id)
-
-    async def get_or_create_corporation_name(self, corporation_id: int):
-        """Get the name of a corporation."""
-        return await self._name_of(corporation_id)
-
-    async def get_or_create_alliance_name(self, alliance_id: int):
-        """Get the name of an alliance."""
-        return await self._name_of(alliance_id)
-
     async def get_region_id(self, system_id: int | None) -> int | None:
         """Return the region of a solar system. Regions never change, so each
         system is read from the database once."""
@@ -244,19 +227,6 @@ class OpenAPI:
                 )
                 return new_system
             return None
-
-    async def get_region_info(self, system_id) -> models.MapSolarSystems | None:
-        """Fetches region info for a given solar system ID from the database."""
-        if not system_id:
-            return None
-
-        try:
-            query = await models.MapSolarSystems.objects.aget(solarSystemID=system_id)
-            if query:
-                return query
-        except models.MapSolarSystems.DoesNotExist:
-            pass
-        return None
 
     async def get_celestial_info(self, celestial_id):
         """Fetch celestial info by ID from OpenAPI with DB caching."""
