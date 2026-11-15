@@ -44,3 +44,35 @@ class DependencyConflict(ServiceError):
         super().__init__(
             f"Cog '{key}' cannot be {action} on its own; affected: {', '.join(affected)}."
         )
+
+
+class TicketError(ServiceError):
+    """Base class of ticket errors. ``message`` is meant to be shown to the user."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class TicketNotFound(TicketError):
+    """There is no ticket for the channel."""
+
+
+class TicketPermissionDenied(TicketError):
+    """The actor may not perform the action on the ticket."""
+
+
+class TicketStateError(TicketError):
+    """The action does not fit the ticket's current state."""
+
+
+class TicketLimitReached(TicketError):
+    """The member already has the maximum number of open tickets."""
+
+
+class TicketNotConfigured(TicketError):
+    """The guild has not finished setting up the ticket system."""
+
+
+class InvalidTicketSetting(TicketError):
+    """A ticket setting was given an unknown name or an invalid value."""

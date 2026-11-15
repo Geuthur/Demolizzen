@@ -81,6 +81,12 @@ class GuildTicket(models.Model):
     is_closed = models.BooleanField(default=False)
     is_archived = models.BooleanField(default=False)
     claimed_by = models.BigIntegerField(null=True, blank=True)
+    subject = models.CharField(
+        max_length=100, blank=True, default="", help_text="What the ticket is about"
+    )
+    control_message_id = models.BigIntegerField(
+        null=True, blank=True, help_text="ID of the message that shows the status"
+    )
 
     class Meta:
         db_table = "guild_tickets"
@@ -118,6 +124,13 @@ class GuildTicketSettings(models.Model):
     )
     allow_user_reopen = models.BooleanField(
         default=True, help_text="Whether users can reopen their closed tickets"
+    )
+    log_channel_id = models.PositiveBigIntegerField(
+        null=True,
+        help_text="ID of the channel that receives transcripts of deleted tickets",
+    )
+    max_open_tickets = models.PositiveSmallIntegerField(
+        default=1, help_text="Number of tickets a member may have open at once"
     )
 
     class Meta:
