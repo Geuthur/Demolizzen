@@ -27,6 +27,10 @@ Section Order:
 
 ## Fixed
 
+- `/eve price` never used its price cache and failed for a second trade hub of the same item; prices are cached for 30 minutes per item and trade hub (migration `0013` recreates the cache table)
+- `/eve price` showed `0 ISK` or a generic error when the price service failed or did not know the item, and could time out; it defers, waits at most 10 seconds and answers with a clear message
+- Item suggestions of `/eve price` lost names starting with the search text when more than 50 items contained it
+- `/eve status` answered a cooldown twice and showed `Server Online 🔴` during an outage; it now says `Server Offline 🔴` and gives up after 10 seconds
 - ESI requests blocked the whole bot while they ran; they now run in worker threads
 - Name resolution relied on a task table and an endless loop that could die silently; names are resolved directly with one batched request and a 15 second limit, unresolved names show as `Unknown`
 - Killmail feed requested the same killmail five times per second when processing it failed, ignored `Retry-After` and lost killmails after errors; it always moves on, waits 1 to 300 seconds on server and connection errors and continues at the same killmail afterwards
@@ -88,6 +92,7 @@ Section Order:
 
 ## Removed
 
+- Unused price list window of the EVE Online module and `utils/pricehandler.py`
 - ESI name task queue (`EveEntityTask`, migration `0012`) and the 6-hour killmail memory cleanup
 - `/levelsystem_config set-mention` and the empty `/levelsystem` command group; level-up posts and their channel are set in `/panel`
 - `/bank create` (accounts are created automatically) and the `/bank_config` commands; bank settings are changed in `/panel`

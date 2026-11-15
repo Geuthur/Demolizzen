@@ -69,8 +69,6 @@ class AppraisalClient:
                     )
                     raise PriceUnavailable(market)
                 return _quotes(await response.json(content_type=None))
-        except PriceUnavailable:
-            raise
         except (aiohttp.ClientError, TimeoutError) as error:
             logger.warning("Appraisal service is unreachable: %r", error)
         except (ValueError, TypeError, KeyError, AttributeError) as error:

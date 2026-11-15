@@ -37,11 +37,11 @@ Stand: 2026-11-15 · Branch: `development` · Status: freigegeben (Geuthur, 2026
 
 ## Ansätze
 
-|       | Ansatz                                                                                             | Abwägung                                                   |
-| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **A** | Preislogik in die Fachschicht, Zwischenspeicher je Item und Handelsplatz, Anbindung als Baustein  | Behebt alle Punkte; Migration verwirft alte Cache-Einträge |
-| B     | Nur die Vergleiche im Cog reparieren                                                               | Schlüssel-Fehler und fehlende Tests bleiben                |
-| C     | Zwischenspeicher im Arbeitsspeicher statt in der Datenbank                                         | Keine Migration, aber nach jedem Neustart leer             |
+|       | Ansatz                                                                                           | Abwägung                                                   |
+| ----- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| **A** | Preislogik in die Fachschicht, Zwischenspeicher je Item und Handelsplatz, Anbindung als Baustein | Behebt alle Punkte; Migration verwirft alte Cache-Einträge |
+| B     | Nur die Vergleiche im Cog reparieren                                                             | Schlüssel-Fehler und fehlende Tests bleiben                |
+| C     | Zwischenspeicher im Arbeitsspeicher statt in der Datenbank                                       | Keine Migration, aber nach jedem Neustart leer             |
 
 **Gewählt: A.**
 

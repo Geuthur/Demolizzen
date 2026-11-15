@@ -39,44 +39,6 @@ def convert_time(seconds: int) -> str:
     return f"{round(hours)} Stunden"
 
 
-# Converter for Numbers - Example: 1000 to 1.000
-def format_number(count, currency=None):
-    """
-    Diese Funktion nimmt eine Zahl als Eingabe und formatiert sie für die Ausgabe in einem benutzerfreundlichen Format.
-
-    Parameters
-    ----------
-    count : int or float
-        Die zu formatierende Zahl.
-    currency : str, optional
-        Die Währungseinheit, die der formatierten Zahl hinzugefügt werden soll. Standardmäßig ist dies None.
-
-    Returns
-    -------
-    str
-        Eine Zeichenkette, die die formatierte Zahl darstellt. Im Format "x.xxx,xx" für Dezimalzahlen, wobei
-        das Tausender-Trennzeichen durch einen Punkt ersetzt wird. Wenn eine Währung angegeben ist, wird diese
-        am Ende der formatierten Zahl angehängt.
-
-    Examples
-    --------
-    Beispiel 1:
-    >>> format_number(1000)
-    '1.000'
-
-    Beispiel 2 (mit Währung):
-    >>> format_number(5000, 'EUR')
-    '5.000 EUR'
-    """
-    # Anzahl formatieren und Komma durch Punkt ersetzen
-    formatted_number = f"{count:,}".replace(",", ".")
-
-    # Wenn eine Währung angegeben ist, füge sie hinzu
-    if currency is not None:
-        formatted_number = f"{formatted_number} {currency}"
-    return formatted_number
-
-
 def convert_to_bool(argument):
     lowered = argument.lower()
     if lowered in ("yes", "y", "true", "t", "1", "enable", "on"):

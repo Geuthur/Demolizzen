@@ -33,9 +33,13 @@ ______________________________________________________________________
 **Interfaces – Produces:**
 
 - `Tradehub(key: str, title: str, station: str)`; `TRADEHUBS: dict[str, Tradehub]` (jita, amarr, dodixie, rens, hek); `tradehub(name: str | None) -> Tradehub`
+
 - `Quote(item_name: str, sell: int, buy: int)`; `Price(item_name: str, hub: Tradehub, sell: int, buy: int, cached: bool)`
+
 - `async get_price(item_name: str, hub: Tradehub, fetch, now=None) -> Price`; `fetch` ist `async (market: str, names: list[str]) -> list[Quote]`
+
 - `async search_item_names(term: str, limit: int = 10) -> list[str]`
+
 - `PriceError(ServiceError)` mit `.message`; `PriceNotFound`, `PriceUnavailable`
 
 - [ ] **Step 1: Failing tests**
@@ -83,7 +87,9 @@ test_missing_session_is_unavailable
 **Files:** Rewrite `demolizzen/cogs/eveonline/eveonline.py`; Modify `demolizzen/utils/autocomplete.py`, `CHANGELOG.md`; Create `demolizzen/tests/cogs/test_eveonline.py`
 
 - `/eve price`: `defer`, `prices.get_price(...)` mit `AppraisalClient.quotes`, Embed wie bisher (Überschrift mit Stationsname, Felder Sell und Buy), Fehlermeldungen aus `PriceError.message`
+
 - `/eve status`: Zeitlimit 10 s, `Server Offline 🔴`
+
 - `PriceListModal` entfällt; `search_items` nutzt `prices.search_item_names`
 
 - [ ] **Step 1: Failing tests**
