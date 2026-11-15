@@ -54,7 +54,10 @@ class GuildBankSettings(models.Model):
     )
     allow_deposits = models.BooleanField(default=True, help_text="Allow deposits")
     allow_withdrawals = models.BooleanField(default=True, help_text="Allow withdrawals")
-    interest_rate = models.FloatField(default=0.001, help_text="Daily interest rate")
+    interest_rate = models.FloatField(
+        default=0.001,
+        help_text="Interest per week as a fraction of the bank balance (0.001 = 0.1%)",
+    )
     last_interest_update = models.DateTimeField(
         null=True, help_text="Timestamp of the last interest update"
     )

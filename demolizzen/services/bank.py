@@ -6,21 +6,33 @@ money, which they could while balances were changed on objects in memory.
 """
 
 # Standard Library
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 # Third Party
 from asgiref.sync import sync_to_async
 
 # Django
 from django.db import transaction
+from django.db.models import BigIntegerField, ExpressionWrapper, F, Value
+from django.db.models.functions import Floor
+from django.utils import timezone
 
 # Demolizzen
-from demolizzen.models import GuildBankSettings, UserBankAccount, UserProfile
+from demolizzen.models import (
+    GuildBankSettings,
+    GuildProfile,
+    UserBankAccount,
+    UserProfile,
+)
 from demolizzen.services import guilds
 from demolizzen.services.errors import (
     BankActionDisabled,
+    GuildNotRegistered,
     InsufficientFunds,
     InvalidAmount,
+    InvalidBankSetting,
     InvalidTransfer,
 )
 
@@ -28,6 +40,13 @@ from demolizzen.services.errors import (
 MAX_AMOUNT = 1_000_000_000_000
 
 ACCOUNT_KINDS = ("wallet", "bank")
+
+# Highest interest rate that can be set, and how often interest is paid.
+MAX_INTEREST_RATE = 0.10
+INTEREST_PERIOD = timedelta(days=7)
+
+# Interest is computed in whole millionths so the database does exact integer maths.
+_RATE_SCALE = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -215,3 +234,102 @@ async def reset(guild_id: int, user_id: int, user_name: str) -> None:
     """Set the member's wallet and bank to zero."""
     account = await ensure_account(guild_id, user_id, user_name)
     await sync_to_async(_reset_sync)(account.pk)
+
+
+# ---------------------------------------------------------------------- settings
+
+
+def _validate_setting(field: str, value) -> None:
+    if field == "interest_rate":
+        valid = (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and 0 <= value <= MAX_INTEREST_RATE
+        )
+    elif field in ("allow_deposits", "allow_withdrawals"):
+        valid = isinstance(value, bool)
+    else:
+        raise InvalidBankSetting(f"Unknown bank setting '{field}'.")
+    if not valid:
+        raise InvalidBankSetting(f"Invalid value for bank setting '{field}'.")
+
+
+async def get_settings(guild_id: int) -> GuildBankSettings:
+    """Return the guild's bank settings, creating the row when it is missing."""
+    if not await GuildProfile.objects.filter(guild_id=guild_id).aexists():
+        raise GuildNotRegistered(guild_id)
+    settings, _ = await GuildBankSettings.objects.aget_or_create(guild_id=guild_id)
+    return settings
+
+
+async def update_settings(guild_id: int, **fields) -> GuildBankSettings:
+    """Change bank settings. Nothing is saved unless every value is valid."""
+    for field, value in fields.items():
+        _validate_setting(field, value)
+    settings = await get_settings(guild_id)
+    for field, value in fields.items():
+        setattr(settings, field, value)
+    if fields:
+        await settings.asave(update_fields=list(fields))
+    return settings
+
+
+# ---------------------------------------------------------------------- interest
+
+
+def _is_due(last_update: datetime | None, now: datetime) -> bool:
+    return last_update is None or now - last_update >= INTEREST_PERIOD
+
+
+async def due_guild_ids(
+    guild_ids: Iterable[int], now: datetime | None = None
+) -> list[int]:
+    """The registered guilds out of ``guild_ids`` whose weekly interest is due."""
+    now = now or timezone.now()
+    wanted = list(guild_ids)
+    registered = {
+        guild.guild_id
+        async for guild in GuildProfile.objects.filter(guild_id__in=wanted)
+    }
+    last_updates = {
+        settings.guild_id: settings.last_interest_update
+        async for settings in GuildBankSettings.objects.filter(guild_id__in=wanted)
+    }
+    return sorted(
+        guild_id for guild_id in registered if _is_due(last_updates.get(guild_id), now)
+    )
+
+
+def _pay_interest_sync(guild_id: int, now: datetime) -> int:
+    with transaction.atomic():
+        if not GuildProfile.objects.filter(guild_id=guild_id).exists():
+            raise GuildNotRegistered(guild_id)
+        GuildBankSettings.objects.get_or_create(guild_id=guild_id)
+        # Lock the settings so two payouts cannot both find the guild due.
+        settings = GuildBankSettings.objects.select_for_update().get(guild_id=guild_id)
+        if not _is_due(settings.last_interest_update, now):
+            return 0
+
+        accounts = UserBankAccount.objects.filter(user__guild_id=guild_id, bank__gt=0)
+        paid = accounts.count()
+        rate = round(settings.interest_rate * _RATE_SCALE)
+        if paid and rate > 0:
+            # One UPDATE on the stored balances: a booking that happens at the
+            # same time is neither lost nor paid twice.
+            interest = ExpressionWrapper(
+                Floor(F("bank") * Value(rate) / Value(_RATE_SCALE)),
+                output_field=BigIntegerField(),
+            )
+            accounts.update(bank=F("bank") + interest)
+        settings.last_interest_update = now
+        settings.save(update_fields=["last_interest_update"])
+    return paid
+
+
+async def pay_interest(guild_id: int, now: datetime | None = None) -> int:
+    """Pay the weekly interest of a guild if it is due.
+
+    Returns the number of accounts that hold money in the bank, or 0 when the
+    guild is not due yet.
+    """
+    return await sync_to_async(_pay_interest_sync)(guild_id, now or timezone.now())
