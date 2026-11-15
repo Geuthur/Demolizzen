@@ -62,7 +62,6 @@ PRELOAD_EXTENSIONS = [
     # "automod",                                 # Automod Module
     # "token",                                   # Must be activated if Modules are enabled in this section
     # "vow"                                      # Voices of War Module
-    "test",  # Testing Module
 ]
 
 # ESI API - Here you need to setup your Application

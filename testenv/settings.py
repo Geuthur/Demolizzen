@@ -17,9 +17,14 @@ INSTALLED_APPS = [
     "demolizzen",
 ]
 
-# Use the USE_MYSQL environment variable to select the database backend (MySQL or Memcached).
-# NOTE: On Windows, set this variable in the system/user environment variables.
-if os.environ.get("USE_MYSQL", True) is True:
+
+def use_mysql(value: str | None) -> bool:
+    """Return True when the USE_MYSQL environment value asks for MySQL."""
+    return (value or "").strip().lower() in ("1", "true", "yes")
+
+
+# Tests run on in-memory SQLite by default. Set USE_MYSQL=1 (tox and CI do) to run against MySQL.
+if use_mysql(os.environ.get("USE_MYSQL")):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",

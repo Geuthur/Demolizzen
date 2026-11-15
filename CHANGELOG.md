@@ -21,6 +21,7 @@ Section Order:
 
 ## Fixed
 
+- Remove non-existent `test` extension from `PRELOAD_EXTENSIONS`
 - Update add_sub method to ensure only 1 km tracker per `group_id` [PR](https://github.com/Geuthur/Demolizzen/pull/53)
 - Multiple Objects Returned [t7fa7fe8t](https://github.com/Geuthur/Demolizzen/commit/7fa7fe879105d2f34b4e3aa1f95b3906fd39fca9)
 - Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
@@ -29,6 +30,7 @@ Section Order:
 
 ## Changed
 
+- Tests run on in-memory SQLite by default; `USE_MYSQL=1` selects MySQL (set by tox and CI)
 - Enhance logging configuration by adding custom handler for httpx and improving time formatting [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Update ticket handling to skip missing ticket owners and ensure proper view assignment [PR](https://github.com/Geuthur/Demolizzen/commit/8a37063068848fd695b9303e1844a3bf0563c827)
