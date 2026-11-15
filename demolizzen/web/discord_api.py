@@ -113,8 +113,6 @@ class DiscordClient:
                     if response.status != 200:
                         raise DiscordError(f"Discord answered {response.status}")
                     return await response.json(content_type=None)
-        except DiscordError:
-            raise
         except (aiohttp.ClientError, TimeoutError, ValueError) as error:
             logger.warning("Discord request failed: %r", error)
             raise DiscordError("Discord could not be reached") from error

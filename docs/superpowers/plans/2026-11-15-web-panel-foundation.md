@@ -54,7 +54,9 @@ test_unknown_page_is_404
 **Interfaces – Produces:**
 
 - `can_manage(guild: dict) -> bool`
+
 - `async manageable_guild_ids(discord_guilds: list[dict]) -> list[int]` (manageable and registered, sorted)
+
 - `async guilds.known_guilds(guild_ids) -> list[tuple[int, str]]` (id, name; sorted by name)
 
 - [ ] **Step 1: Failing tests**

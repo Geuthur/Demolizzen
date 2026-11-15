@@ -52,6 +52,9 @@ dependencies = [
 optional-dependencies.tests-demolizzen-latest = [
     "coverage",
 ]
+optional-dependencies.web = [
+    "uvicorn>=0.30,<1",
+]
 urls.Changelog = "https://github.com/Geuthur/Demolizzen/blob/master/CHANGELOG.md"
 urls.Documentation = "https://github.com/Geuthur/Demolizzen/blob/master/README.md"
 urls.Donations = "https://ko-fi.com/Geuthur"

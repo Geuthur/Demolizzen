@@ -28,6 +28,13 @@ DATABASE_NAME_WEBSITE = os.getenv("DATABASE_NAME_WEBSITE")
 
 ESI_USER_CONTACT_EMAIL = os.getenv("ESI_USER_CONTACT_EMAIL")
 
+# Web panel: the Discord application members sign in with, and where the panel is reached.
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+WEB_BASE_URL = os.getenv("WEB_BASE_URL")
+WEB_ALLOWED_HOSTS = os.getenv("WEB_ALLOWED_HOSTS")
+WEB_DEBUG = os.getenv("WEB_DEBUG")
+
 SETTINGS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SETTINGS_DIR)
 # DATA_DIR = os.path.join(ROOT_DIR, 'data')

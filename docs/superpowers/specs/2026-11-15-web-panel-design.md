@@ -29,11 +29,11 @@ as a Docker container whose port the host's nginx forwards.
 
 ## Approaches
 
-|       | Approach                                                        | Trade-off                                              |
-| ----- | --------------------------------------------------------------- | ------------------------------------------------------ |
+|       | Approach                                                        | Trade-off                                                 |
+| ----- | --------------------------------------------------------------- | --------------------------------------------------------- |
 | **A** | Server-rendered Django pages calling the existing service layer | Little technology, fully testable; a page load per change |
-| B     | JSON API plus a browser application                             | Smoother, but a second code base with its own build    |
-| C     | Django admin                                                    | Quick, but made for operators, not per-server admins   |
+| B     | JSON API plus a browser application                             | Smoother, but a second code base with its own build       |
+| C     | Django admin                                                    | Quick, but made for operators, not per-server admins      |
 
 **Chosen: A**, delivered in five steps, each usable on its own:
 
