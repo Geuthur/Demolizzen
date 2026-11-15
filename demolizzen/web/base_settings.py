@@ -52,8 +52,10 @@ TEMPLATES = [
     },
 ]
 
-# The session is a signed cookie: no table and no account in the database.
+# The session is a cookie: no table and no account in the database.
 SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
+# Signed and encrypted: the cookie holds the user's Discord token.
+SESSION_SERIALIZER = "demolizzen.web.crypto.EncryptedJSONSerializer"
 SESSION_COOKIE_NAME = "panel_session"
 SESSION_COOKIE_AGE = 7 * 24 * 3600
 SESSION_COOKIE_HTTPONLY = True

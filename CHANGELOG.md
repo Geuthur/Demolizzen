@@ -13,6 +13,7 @@ Section Order:
 
 ## Added
 
+- The web panel encrypts its session cookie; `DATABASE_SSL_MODE` and `DATABASE_SSL_CA` encrypt the database connection of bot and panel
 - Web panel (`demolizzen/web/`): sign in with Discord and see the servers you may manage with their modules; shipped as a Docker image with a compose file, see `docs/web-panel.md`
 - Level system settings page in `/panel` (level-up posts on/off, channel)
 - Bank settings page in `/panel` (interest per week, deposits and withdrawals on/off); `allow_deposits` and `allow_withdrawals` are now enforced

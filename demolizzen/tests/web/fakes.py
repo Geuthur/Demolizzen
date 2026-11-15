@@ -20,6 +20,7 @@ class FakeDiscord:
     def __init__(self):
         self.user = {"id": "10", "username": "alice", "global_name": "Alice"}
         self.guilds = []
+        self.token = "tok"
         self.login_error: DiscordError | None = None
         self.guilds_error: DiscordError | None = None
         self.calls = []
@@ -31,7 +32,7 @@ class FakeDiscord:
         self.calls.append(("code", code))
         if self.login_error is not None:
             raise self.login_error
-        return "tok"
+        return self.token
 
     async def fetch_user(self, token: str) -> dict:
         self.calls.append(("user", token))

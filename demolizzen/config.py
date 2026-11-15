@@ -20,6 +20,10 @@ DATABASE_PORT = os.getenv("DATABASE_PORT")
 DATABASE_USER = os.getenv("DATABASE_USER")
 DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD")
 DATABASE_NAME = os.getenv("DATABASE_NAME")
+# Encryption of the database connection: REQUIRED, VERIFY_CA or VERIFY_IDENTITY,
+# and the certificate authority file the server's certificate is checked against.
+DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE")
+DATABASE_SSL_CA = os.getenv("DATABASE_SSL_CA")
 
 
 ESI_USER_CONTACT_EMAIL = os.getenv("ESI_USER_CONTACT_EMAIL")

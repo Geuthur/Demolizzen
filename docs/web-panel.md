@@ -10,7 +10,8 @@ follow.
 ## What it needs
 
 - **The bot's database**, reachable from where the panel runs. If that is another machine, give
-  the panel its own database user restricted to that machine and use a private network or TLS.
+  the panel its own database user restricted to that machine and encrypt the connection (see
+  below).
 - **A Discord application** for the sign-in (the bot's own application works). In the
   [Developer Portal](https://discord.com/developers/applications) under *OAuth2*, add the redirect
   `<WEB_BASE_URL>/callback`, for example `https://panel.example.com/callback`.
@@ -20,17 +21,47 @@ follow.
 
 Set in `.env` (see `.env.example`):
 
-| Variable                                                | Meaning                                                                      |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `SECRET_KEY`                                            | Long random text. Signs the session cookies; changing it signs everyone out. |
-| `DATABASE_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_NAME` | The bot's database.                                                          |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`            | OAuth2 client of the Discord application.                                    |
-| `WEB_BASE_URL`                                          | Where browsers reach the panel, e.g. `https://panel.example.com`.            |
-| `WEB_ALLOWED_HOSTS`                                     | Further host names, comma separated. Optional.                               |
-| `WEB_DEBUG`                                             | `1` only for local development.                                              |
-| `PANEL_BIND`, `PANEL_PORT`                              | Address and port docker compose publishes. Default `127.0.0.1:8000`.         |
+| Variable                                                | Meaning                                                                                   |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `SECRET_KEY`                                            | Long random text. Encrypts and signs the session cookies; changing it signs everyone out. |
+| `DATABASE_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_NAME` | The bot's database.                                                                       |
+| `DATABASE_SSL_MODE`, `DATABASE_SSL_CA`                  | Encrypt the database connection, see below. Optional on one machine.                      |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`            | OAuth2 client of the Discord application.                                                 |
+| `WEB_BASE_URL`                                          | Where browsers reach the panel, e.g. `https://panel.example.com`.                         |
+| `WEB_ALLOWED_HOSTS`                                     | Further host names, comma separated. Optional.                                            |
+| `WEB_DEBUG`                                             | `1` only for local development.                                                           |
+| `PANEL_BIND`, `PANEL_PORT`                              | Address and port docker compose publishes. Default `127.0.0.1:8000`.                      |
 
 The panel does not need `BOT_TOKEN` yet. Leave it empty on the machine that only runs the panel.
+
+## Encrypting the database connection
+
+When the database is on another machine, make the connection refuse to run unencrypted:
+
+```shell
+DATABASE_SSL_MODE=REQUIRED
+```
+
+`REQUIRED` encrypts but does not check who answers. To also check the server's certificate, give
+the panel the certificate authority file and use `VERIFY_CA` (or `VERIFY_IDENTITY`, which also
+compares the host name):
+
+```shell
+DATABASE_SSL_MODE=VERIFY_CA
+DATABASE_SSL_CA=/certs/ca.pem
+```
+
+With Docker, mount the file into the container by adding to the `panel` service in
+`docker-compose.yml`:
+
+```yaml
+    volumes:
+      - ./certs/ca.pem:/certs/ca.pem:ro
+```
+
+The database server has to offer TLS for this (`require_secure_transport` or `REQUIRE SSL` on the
+panel's database user enforce it on that side as well). A misspelt mode stops the panel at start
+instead of running unencrypted. The same two settings work for the bot.
 
 ## Run it with Docker
 
@@ -80,7 +111,8 @@ Register `http://localhost:8000/callback` as redirect for this.
 - The list is asked from Discord again every five minutes. Rights withdrawn in Discord therefore
   end in the panel within five minutes. If Discord cannot be asked, the last list is used for at
   most 30 minutes, then the user is signed out.
-- The session is a signed cookie holding the user's id and name, their Discord token (scopes
-  `identify guilds`) and the ids of their servers. Nothing about visitors is stored in the
-  database.
+- The session is a cookie holding the user's id and name, their Discord token (scopes
+  `identify guilds`) and the ids of their servers. It is encrypted and signed with keys derived
+  from `SECRET_KEY`: without that key nobody can read or change it, the visitor included. Nothing
+  about visitors is stored in the database.
 - A module switched in the panel takes effect in the bot within a minute.

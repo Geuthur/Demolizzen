@@ -54,7 +54,7 @@ as a Docker container whose port the host's nginx forwards.
   endpoint is rate limited). A rejected token signs the user out.
 - **Server page:** name and the state of every module, read-only in this step. A server the user
   may not manage answers 404, like one that does not exist.
-- **Session:** a signed cookie holding the user's id and name, their Discord token and the ids of
+- **Session:** an encrypted and signed cookie holding the user's id and name, their Discord token and the ids of
   their manageable servers. No table, no account. Valid for 7 days, `Secure`, `HttpOnly`,
   `SameSite=Lax`.
 - **Sign-out:** a POST with CSRF protection.
