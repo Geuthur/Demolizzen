@@ -89,19 +89,18 @@ async def get_states(guild_id: int) -> dict[str, bool]:
     """The state of every toggleable cog in the guild, in registry order."""
     disabled, enabled = await _lists(guild_id)
     return {
-        info.key: _active(info.key, disabled, enabled)
-        for info in registry.toggleable()
+        info.key: _active(info.key, disabled, enabled) for info in registry.toggleable()
     }
 
 
 async def enabled_guild_ids(key: str, guild_ids: Iterable[int]) -> set[int]:
     """The guilds out of ``guild_ids`` in which the cog is active."""
-    return {
-        guild_id for guild_id in guild_ids if await is_enabled(guild_id, key)
-    }
+    return {guild_id for guild_id in guild_ids if await is_enabled(guild_id, key)}
 
 
-def _set_enabled_sync(guild_id: int, key: str, enabled: bool, cascade: bool) -> list[str]:
+def _set_enabled_sync(
+    guild_id: int, key: str, enabled: bool, cascade: bool
+) -> list[str]:
     if not registry.get(key).toggleable:
         raise CogNotToggleable(key)
 

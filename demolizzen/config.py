@@ -48,6 +48,7 @@ PRELOAD_EXTENSIONS = [
     "owner",  # Owner Module
     "admin",  # Administration Module
     "guild",  # Guild Management Module
+    "panel",  # Server Panel - per guild module switch
     "general",  # General Module
     "commands",  # Standard Commands
     "levelsystem",  # Level System Module

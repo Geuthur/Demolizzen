@@ -28,10 +28,19 @@ class CogInfo:
 
 _COGS = (
     # Always active
-    CogInfo("core", "Core", "Bot basics such as uptime and changelog.", toggleable=False),
-    CogInfo("owner", "Owner", "Maintenance commands for the bot owner.", toggleable=False),
+    CogInfo(
+        "core", "Core", "Bot basics such as uptime and changelog.", toggleable=False
+    ),
+    CogInfo(
+        "owner", "Owner", "Maintenance commands for the bot owner.", toggleable=False
+    ),
     CogInfo("guild", "Guild", "Keeps servers and members in sync.", toggleable=False),
-    CogInfo("panel", "Panel", "Lets admins manage the modules of a server.", toggleable=False),
+    CogInfo(
+        "panel",
+        "Panel",
+        "Lets admins manage the modules of a server.",
+        toggleable=False,
+    ),
     # Offered to guilds
     CogInfo("admin", "Admin", "Administration and moderation commands."),
     CogInfo("general", "General", "General purpose features."),
@@ -40,7 +49,9 @@ _COGS = (
     CogInfo("banksystem", "Banksystem", "Wallets, bank accounts and interest."),
     CogInfo("economy", "Economy", "Missions and rewards.", requires=("banksystem",)),
     CogInfo("shop", "Shop", "Buy items and ships.", requires=("banksystem",)),
-    CogInfo("games", "Games", "Mini games to win or lose money.", requires=("banksystem",)),
+    CogInfo(
+        "games", "Games", "Mini games to win or lose money.", requires=("banksystem",)
+    ),
     CogInfo("eveonline", "EVEOnline", "EVE Online information and prices."),
     CogInfo("killmail", "zKillboard", "Posts killmails from zKillboard."),
     CogInfo("ticket", "Ticket System", "Private help tickets for members."),

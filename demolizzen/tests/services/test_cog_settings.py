@@ -153,7 +153,9 @@ class CacheTest(CogSettingsTestCase):
             self.assertTrue(await cog_settings.is_enabled(1, "games"))
 
         with patch.object(
-            cog_settings, "_clock", return_value=1000.0 + cog_settings.CACHE_TTL_SECONDS + 1
+            cog_settings,
+            "_clock",
+            return_value=1000.0 + cog_settings.CACHE_TTL_SECONDS + 1,
         ):
             self.assertFalse(await cog_settings.is_enabled(1, "games"))
 

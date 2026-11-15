@@ -35,6 +35,7 @@ def make_guild(
     guild.name = name
     guild.members = members if members is not None else []
     guild.owner = guild.members[0] if guild.members else make_member(1, "owner")
+    guild.owner_id = guild.owner.id
     for member in guild.members:
         member.guild = guild
     return guild
