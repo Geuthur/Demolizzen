@@ -42,6 +42,7 @@ class Demolizzen(commands.Bot):
         self.logger = logger.init_logger(debug_flag="info")
         self.launch_time = timezone.now()
         self._connected_once = False
+        self._modules_loaded = False
         # Created in start(), once the event loop is running.
         self.session: aiohttp.ClientSession | None = None
         self.esi_data: OpenAPI | None = None
@@ -56,6 +57,7 @@ class Demolizzen(commands.Bot):
         dict[str, Exception | None]
             The extension name mapped to the error it raised, or ``None`` on success.
         """
+        self._modules_loaded = True
         results: dict[str, Exception | None] = {}
         print(Green("-------- Loading Modules ---------"))
         for ext in self.preload_ext:
@@ -72,6 +74,21 @@ class Demolizzen(commands.Bot):
         print(Green("-------- Finished Loading --------\n"))
         return results
 
+    def _ensure_modules(self) -> None:
+        """Load the modules unless that has been done.
+
+        Every way of starting the bot ends up here, so it can never connect
+        without its modules: a bot without modules has no commands, and
+        syncing "no commands" would delete all of them at Discord.
+        """
+        if not self._modules_loaded:
+            self.load_preload_extensions()
+
+    def run(self, *args, **kwargs) -> None:
+        """Load the modules if the caller has not, then connect and block."""
+        self._ensure_modules()
+        super().run(*args, **kwargs)
+
     async def start(self, token: str | None = None, *, reconnect: bool = True) -> None:
         """Create the HTTP session and ESI client, then log in and connect.
 
@@ -83,6 +100,7 @@ class Demolizzen(commands.Bot):
             self.logger.critical("Token must be set in order to login.")
             raise RuntimeError("Token must be set in order to login.")
 
+        self._ensure_modules()
         self.session = aiohttp.ClientSession()
         self.esi_data = OpenAPI(self.session)
         await super().start(token, reconnect=reconnect)
@@ -153,7 +171,15 @@ class Demolizzen(commands.Bot):
         guild_count = len(self.guilds)
         users = len(list(self.get_all_members()))
 
-        await self.sync_commands()
+        if self.pending_application_commands:
+            await self.sync_commands()
+        else:
+            # Syncing an empty list would delete every command at Discord.
+            self.logger.error(
+                "No commands are loaded; the commands registered with Discord "
+                "are left untouched."
+            )
+            print(Red("No modules are loaded: slash commands were NOT synced."))
 
         updated_guilds = 0
         for guild in self.guilds:

@@ -58,6 +58,7 @@ class BotStartTest(SimpleTestCase):
 
     async def test_start_creates_resources_then_connects(self):
         bot = Demolizzen()
+        bot.preload_ext = []
         with (
             patch(f"{MODULE}.aiohttp.ClientSession", return_value=_fake_session()),
             patch(f"{MODULE}.OpenAPI", return_value=_fake_openapi()),
@@ -74,6 +75,7 @@ class BotStartTest(SimpleTestCase):
 
     async def test_start_falls_back_to_configured_token(self):
         bot = Demolizzen()
+        bot.preload_ext = []
         bot.token = "configured"
         with (
             patch(f"{MODULE}.aiohttp.ClientSession", return_value=_fake_session()),
@@ -89,6 +91,7 @@ class BotStartTest(SimpleTestCase):
 
     async def test_close_is_idempotent(self):
         bot = Demolizzen()
+        bot.preload_ext = []
         session = _fake_session()
         with (
             patch(f"{MODULE}.aiohttp.ClientSession", return_value=session),
@@ -105,6 +108,7 @@ class BotStartTest(SimpleTestCase):
 
     async def test_close_stops_the_esi_worker_threads(self):
         bot = Demolizzen()
+        bot.preload_ext = []
         openapi = _fake_openapi()
         with (
             patch(f"{MODULE}.aiohttp.ClientSession", return_value=_fake_session()),
@@ -163,3 +167,94 @@ class BotConnectTest(SimpleTestCase):
 
         self.assertTrue(any("Demolizzen - The Discord Bot" in line for line in first))
         self.assertEqual(second, ["Reconnected."])
+
+
+class ModulesAreAlwaysLoadedTest(SimpleTestCase):
+    """However the bot is started, it must not run without its modules.
+
+    A bot without modules has no commands, and syncing "no commands" deletes
+    every slash command registered with Discord.
+    """
+
+    def test_run_loads_the_modules_when_the_caller_did_not(self):
+        bot = Demolizzen()
+        bot.preload_ext = ["core", "games", "banksystem"]
+
+        with (
+            patch("discord.ext.tasks.Loop.start"),
+            patch("discord.ext.commands.Bot.run") as parent_run,
+        ):
+            bot.run()
+
+        parent_run.assert_called_once_with()
+        self.assertIsNotNone(bot.get_cog("Core"))
+        self.assertIsNotNone(bot.get_cog("Games"))
+        self.assertTrue(bot.pending_application_commands)
+
+    def test_run_does_not_load_the_modules_twice(self):
+        bot = Demolizzen()
+        bot.preload_ext = ["core"]
+        with patch("discord.ext.tasks.Loop.start"):
+            bot.load_preload_extensions()
+
+        with (
+            patch("discord.ext.commands.Bot.run"),
+            patch.object(
+                Demolizzen, "load_extension", side_effect=AssertionError("again")
+            ),
+        ):
+            bot.run()
+
+        self.assertIsNotNone(bot.get_cog("Core"))
+
+    async def test_start_loads_the_modules_when_the_caller_did_not(self):
+        bot = Demolizzen()
+        bot.preload_ext = ["core"]
+
+        with (
+            patch("discord.ext.tasks.Loop.start"),
+            patch(f"{MODULE}.aiohttp.ClientSession", return_value=_fake_session()),
+            patch(f"{MODULE}.OpenAPI", return_value=_fake_openapi()),
+            patch("discord.ext.commands.Bot.start", new_callable=AsyncMock),
+        ):
+            await bot.start("tok")
+            await bot.close()
+
+        self.assertIsNotNone(bot.get_cog("Core"))
+
+
+class CommandSyncTest(TestCase):
+    async def ready(self, bot):
+        with (
+            patch.object(
+                Demolizzen, "guilds", new_callable=PropertyMock, return_value=[]
+            ),
+            patch.object(Demolizzen, "get_all_members", return_value=iter(())),
+            patch.object(Demolizzen, "change_presence", new_callable=AsyncMock),
+            patch.object(Demolizzen, "sync_commands", new_callable=AsyncMock) as sync,
+            patch("builtins.print") as printed,
+        ):
+            await bot.on_ready()
+        return sync, " ".join(
+            str(call.args[0]) for call in printed.call_args_list if call.args
+        )
+
+    async def test_commands_are_synced_when_modules_are_loaded(self):
+        bot = Demolizzen()
+        bot.preload_ext = ["core"]
+        with patch("discord.ext.tasks.Loop.start"):
+            bot.load_preload_extensions()
+
+        sync, _ = await self.ready(bot)
+
+        sync.assert_awaited_once()
+
+    async def test_an_empty_command_list_is_never_synced(self):
+        bot = Demolizzen()
+
+        with self.assertLogs(level="ERROR") as logs:
+            sync, printed = await self.ready(bot)
+
+        sync.assert_not_awaited()
+        self.assertIn("NOT synced", printed)
+        self.assertIn("left untouched", " ".join(logs.output))
