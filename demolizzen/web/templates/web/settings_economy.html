@@ -1,0 +1,15 @@
+{% extends "web/settings_base.html" %}
+{% block fields %}
+  <label class="check">
+    <input type="checkbox" name="active"{% if values.active %} checked{% endif %}>
+    <span>Event is running</span>
+  </label>
+  <p class="help">While it runs, work and mission payouts are multiplied by the payout factor and a lost ship costs nothing.</p>
+  <label class="field">
+    <span class="label">Payout factor</span>
+    <select name="factor">
+      {% for factor in values.factors %}<option value="{{ factor.value }}"{% if factor.selected %} selected{% endif %}>x{{ factor.value }}</option>
+      {% endfor %}
+    </select>
+  </label>
+{% endblock %}

@@ -1,39 +1,68 @@
 # Standard Library
+import asyncio
 import logging
+import re
 
 # Discord
 import discord
-from discord import Embed, SlashCommandGroup
-from discord.ext import commands
+from discord import SlashCommandGroup
+from discord.ext import commands, tasks
 
 # Demolizzen
-from demolizzen.cogs.ticket._ticketview import TicketControlView
+from demolizzen.cogs.ticket._actions import CATEGORY_LIMIT, TicketActions
+from demolizzen.cogs.ticket._renamer import ChannelRenamer
+from demolizzen.cogs.ticket._views import (
+    OpenTicketView,
+    TicketControlView,
+    build_status_embed,
+)
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models.guild import (
-    GuildTicket,
-    GuildTicketSettings,
-)
-from demolizzen.utils.functions import get_command_mention
-
-THREAD_EMBED = Embed(
-    title="Private Channel Guide",
-    description=(
-        "This Channel is private between you and the staff team.\n"
-        "Use the buttons below to manage your ticket.\n"
-        "Please be patient while waiting for a response from the staff."
-    ),
-)
+from demolizzen.core.cog import BaseCog
+from demolizzen.services import cog_settings, tickets
+from demolizzen.services.tickets import Action
 
 logger = logging.getLogger(__name__)
 
+# Button ids of tickets created before the rebuild: "<action>:<guild>:<number>".
+LEGACY_BUTTON_ID = re.compile(r"^(claim|close|reopen|delete):\d+:\d+$")
 
-class TicketSystem(commands.Cog):
-    """Help Ticket Cog Things"""
+
+class TicketSystem(BaseCog):
+    """Private help tickets between members and the staff team."""
+
+    key = "ticket"
 
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Ticket System"
         self.alias = "ticket"
+        self.renamer = ChannelRenamer()
+        self.actions = TicketActions(bot, self.renamer, self.is_enabled)
+        self._views_registered = False
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # loaded before the bot runs; on_ready registers the views
+        else:
+            self._register_views()
+        self.maintenance.start()
+
+    def _register_views(self) -> None:
+        """Register the button handlers once.
+
+        The buttons carry fixed ids, so these two views serve every ticket
+        message; nothing has to be loaded from the database at startup.
+        py-cord views can only be created while the event loop is running.
+        """
+        if self._views_registered:
+            return
+        self.bot.add_view(TicketControlView(handler=self.actions.handle))
+        self.bot.add_view(OpenTicketView(handler=self.actions.start_open))
+        self._views_registered = True
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        self._register_views()
 
     ticket = SlashCommandGroup(
         name="ticket",
@@ -41,115 +70,106 @@ class TicketSystem(commands.Cog):
         contexts=[discord.InteractionContextType.guild],
     )
 
-    async def cog_before_invoke(self, ctx: discord.ApplicationContext):
-        guild_settings, created = await GuildTicketSettings.objects.aget_or_create(
-            guild_id=ctx.guild.id,
-        )
-        ctx.guild_settings = guild_settings
-        logger.debug(f"GuildSettings loaded for {ctx.guild}.")
-        if created:
-            logger.info(f"Created new GuildSettings for {ctx.guild}.")
+    def cog_unload(self):
+        self.maintenance.cancel()
+        self.renamer.cancel_all()
 
-    @ticket.command(name="open", help="Open a help ticket")
+    @ticket.command(name="open", description="Open a help ticket")
     @commands.guild_only()
-    async def open_ticket(
-        self,
-        ctx: discord.ApplicationContext,
-    ):
-        """Ticket system to contact Server staff."""
+    async def open_ticket(self, ctx: discord.ApplicationContext):
+        """Open a private ticket to contact the server staff."""
+        await self.actions.start_open(ctx.interaction)
 
-        async def send_ephemeral(message: str):
-            if ctx.interaction and ctx.interaction.response.is_done():
-                return await ctx.followup.send(content=message, ephemeral=True)
-            return await ctx.respond(content=message, ephemeral=True)
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Serve the buttons of tickets created before the rebuild."""
+        if interaction.type is not discord.InteractionType.component:
+            return
+        custom_id = (interaction.data or {}).get("custom_id") or ""
+        match = LEGACY_BUTTON_ID.match(custom_id)
+        if match is None:
+            return
+        # Handling the click replaces the message's buttons with the current ones.
+        await self.actions.handle(interaction, Action(match.group(1)))
 
-        if ctx.interaction and not ctx.interaction.response.is_done():
-            await ctx.defer(ephemeral=True)
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        """Forget the ticket of a channel that was deleted by hand."""
+        if await tickets.remove_by_channel(channel.id):
+            logger.info("Removed ticket of deleted channel %s", channel.id)
 
-        if not ctx.guild_settings.category_id:
-            return await send_ephemeral(
-                f"No help category is set for this server. Please inform the admins to set a help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command."
-            )
-
-        ticket_number = ctx.guild_settings.ticket_count
-        category_channel = discord.utils.get(
-            ctx.guild.categories, id=ctx.guild_settings.category_id
-        )
-
-        if not category_channel:
-            return await send_ephemeral(
-                f"The configured help category does not exist anymore. Please inform the admins to set a new help category using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='set')} command."
-            )
-
-        # Channel-Name generieren
-        channel_name_ticket = f"ticket{ticket_number}-unclaimed-{ctx.user.name}"
-        # Channel erstellen mit Sichtbarkeit nur für User und ggf. Staff
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        }
-
-        # Set Permnissions for Channel
-        # Staff Members
-        staff_role_ids = getattr(ctx.guild_settings, "roles", None)
-        if staff_role_ids:
-            for staff_role_id in staff_role_ids:
-                role = ctx.guild.get_role(staff_role_id)
-                if role:
-                    overwrites[role] = discord.PermissionOverwrite(
-                        view_channel=True, send_messages=True, read_message_history=True
-                    )
-            # Staff-Rollen erwähnen
-            staff_mentions = ""
-            staff_roles = [
-                ctx.guild.get_role(rid)
-                for rid in staff_role_ids
-                if ctx.guild.get_role(rid)
-            ]
-            staff_mentions = " ".join(role.mention for role in staff_roles)
-        else:
-            return await send_ephemeral(
-                f"No staff roles are set for this server. Please inform the admins to set at least one staff role using {get_command_mention(bot=self.bot, cog='TicketSystemConfig', slash_command='ticket_config', slash_command_group='staff')} command."
-            )
-        # Bot
-        overwrites[ctx.guild.me] = discord.PermissionOverwrite(
-            view_channel=True, send_messages=True, read_message_history=True
-        )
-        # Ticket-Ersteller
-        overwrites[ctx.user] = discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-            mention_everyone=False,  # block @everyone, @here
-        )
-
-        # Create Channel
+    @tasks.loop(hours=1)
+    async def maintenance(self):
+        """Hourly: archive old closed tickets and repair channel names."""
         try:
-            ticket_channel = await ctx.guild.create_text_channel(
-                name=channel_name_ticket,
-                topic=f"Type: 📩 **OPEN TICKET** - Created by: {ctx.user.mention}",
-                category=category_channel,
-                overwrites=overwrites,
-            )
-            ctx.guild_settings.ticket_count += 1
-            await ctx.guild_settings.asave()
-        except discord.Forbidden:
-            return await send_ephemeral(
-                "I do not have permission to create ticket channels. Please inform the admins."
+            await self.run_maintenance()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Ticket maintenance failed")
+
+    @maintenance.before_loop
+    async def before_maintenance(self):
+        await self.bot.wait_until_ready()
+
+    async def run_maintenance(self) -> None:
+        """Archive due tickets, drop tickets without a channel, sync channel names."""
+        guild_ids = await cog_settings.enabled_guild_ids(
+            self.key, [guild.id for guild in self.bot.guilds]
+        )
+        for ticket in await tickets.due_for_archive():
+            if ticket.guild_id in guild_ids:
+                await self._archive(ticket)
+
+        for ticket in await tickets.active_tickets(guild_ids):
+            guild = self.bot.get_guild(ticket.guild_id)
+            if guild is None:
+                continue
+            channel = guild.get_channel(ticket.channel_id)
+            if channel is None:
+                await tickets.remove_by_channel(ticket.channel_id)
+                logger.info(
+                    "Removed ticket #%s of guild %s without a channel",
+                    ticket.ticket_number,
+                    ticket.guild_id,
+                )
+                continue
+            owner = guild.get_member(ticket.user_id)
+            self.renamer.request(
+                channel,
+                tickets.channel_name(
+                    ticket.ticket_number,
+                    self.actions._owner_name(channel, owner),
+                    ticket.is_closed,
+                ),
             )
 
-        ticket_view = TicketControlView(ticket_channel, ctx.user, ticket_number)
-        await ticket_channel.send(
-            content=staff_mentions if staff_mentions else None,
-            embed=THREAD_EMBED,
-            view=ticket_view,
-        )
-        # Create GuildTicket entry
-        await GuildTicket.objects.acreate(
-            guild_id=ctx.guild.id,
-            ticket_number=ticket_number,
-            channel_id=ticket_channel.id,
-            user_id=ctx.user.id,
-        )
-        return await send_ephemeral(
-            f"Check the ticket channel created! {ticket_channel.mention}!"
-        )
+    async def _archive(self, ticket) -> None:
+        """Move a closed ticket to the archive category if there is room."""
+        guild = self.bot.get_guild(ticket.guild_id)
+        channel = guild.get_channel(ticket.channel_id) if guild else None
+        if channel is None:
+            return
+        settings = await tickets.get_settings(ticket.guild_id)
+        archive = guild.get_channel(settings.archive_category_id)
+        if (
+            not isinstance(archive, discord.CategoryChannel)
+            or len(archive.channels) >= CATEGORY_LIMIT
+        ):
+            return
+        try:
+            await channel.edit(category=archive, reason="Ticket archived")
+        except discord.HTTPException:
+            logger.exception("Could not archive ticket channel %s", channel.id)
+            return
+        await tickets.mark_archived(ticket.pk)
+        ticket.is_archived = True
+        if ticket.control_message_id:
+            try:
+                await channel.get_partial_message(ticket.control_message_id).edit(
+                    embed=build_status_embed(ticket), view=TicketControlView(ticket)
+                )
+            except discord.HTTPException:
+                logger.warning(
+                    "Could not update status message of ticket #%s of guild %s",
+                    ticket.ticket_number,
+                    ticket.guild_id,
+                )

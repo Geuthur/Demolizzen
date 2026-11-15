@@ -14,17 +14,20 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
-from demolizzen.models import UserBankAccount
-from demolizzen.utils.functions import application_cooldown, get_command_mention
+from demolizzen.core.cog import BaseCog
+from demolizzen.services import bank, guilds
+from demolizzen.services.errors import BankError, InsufficientFunds
 
 
-class Games(commands.Cog):
+class Games(BaseCog):
     """
     Play games, but be careful not to gamble away everything.
     """
 
+    key = "games"
+
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Games"
         self.alias = "games"
         self.max_amount = 240
@@ -33,11 +36,36 @@ class Games(commands.Cog):
         "games", "Gamesystem", contexts=[discord.InteractionContextType.guild]
     )
 
+    @staticmethod
+    async def _refuse(ctx: discord.ApplicationContext, reason: str) -> None:
+        await ctx.respond(
+            embed=discord.Embed(
+                title="",
+                color=discord.Color.red(),
+                description=f"{ctx.author.mention}, {reason}",
+            )
+        )
+
+    async def _settle(
+        self, ctx: discord.ApplicationContext, amount: int, won: bool
+    ) -> bool:
+        """Book the bet. Tells the player and returns False if it cannot be placed."""
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        try:
+            await bank.wager(
+                ctx.guild.id, ctx.author.id, ctx.author.display_name, amount, won
+            )
+        except InsufficientFunds:
+            await self._refuse(ctx, "You not have enough :coin:")
+            return False
+        except BankError as error:
+            await self._refuse(ctx, error.message)
+            return False
+        return True
+
     @games.command()
     @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(5, 600, commands.BucketType.user)  # 5 per 10 minutes per member
     @option(
         "choose", description="Choose between", choices=["Rock", "Paper", "Scissors"]
     )
@@ -63,15 +91,9 @@ class Games(commands.Cog):
 
         await ctx.respond(message)
 
-    @rps.error
-    async def command_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
-
     @games.command()
     @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(5, 600, commands.BucketType.user)  # 5 per 10 minutes per member
     @option(
         "amount", description="Specify the amount of Coins to bet in the slot machine."
     )
@@ -79,194 +101,70 @@ class Games(commands.Cog):
         """
         Play a game of Slots with your bet of coins
         """
-        # Get Server-ID for further process
-        server_id = ctx.guild.id
-
-        try:
-            bank_account = await UserBankAccount.get(
-                session=self.bot.sessionmaker(),
-                user_id=ctx.author.id,
-                guild_id=server_id,
-            )
-
-            if bank_account is None:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You don't have a bank account. Create one with {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')}",
-                )
-                await ctx.respond(embed=em)
-                return
-
-            if amount > bank_account.wallet:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You not have enough :coin:",
-                )
-                await ctx.respond(embed=em)
-                return
-            if amount < 0:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, The number must be positive",
-                )
-                await ctx.respond(embed=em)
-                return
-            if amount > self.max_amount:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, The limit is {self.max_amount} :coin:",
-                )
-                await ctx.respond(embed=em)
-                return
-
-            final = []
-            for _ in range(3):
-                a = random.choice([":red_circle:", ":yellow_circle:", ":blue_circle:"])
-
-                final.append(a)
-
-            await ctx.respond(str(final))
-
-            if final[0] == final[0] and final[0] == final[1] and final[0] == final[2]:
-                bank_account.wallet += 2 * amount
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You won! {3 * amount} :coin:",
-                )
-            else:
-                bank_account.wallet -= amount
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You lose!",
-                )
-
-            # Update the bank account
-            await bank_account.save(self.bot.sessionmaker())
-
-            # Send Message
-            await ctx.respond(embed=em)
-        # pylint: disable=broad-except
-        except Exception as e:
-            self.bot.logger.error(f"[Slots Command] • {e}", exc_info=True)
-            await ctx.respond(
-                "Something went wrong, please try again later", ephemeral=True
-            )
+        if amount > self.max_amount:
+            await self._refuse(ctx, f"The limit is {self.max_amount} :coin:")
             return
 
-    @slots.error
-    async def slots_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
+        final = [
+            random.choice([":red_circle:", ":yellow_circle:", ":blue_circle:"])
+            for _ in range(3)
+        ]
+        won = final[0] == final[1] == final[2]
+        if not await self._settle(ctx, amount, won):
+            return
+
+        await ctx.respond(str(final))
+        if won:
+            description = f"{ctx.author.mention}, You won! {2 * amount} :coin:"
+        else:
+            description = f"{ctx.author.mention}, You lose!"
+        await ctx.respond(
+            embed=discord.Embed(
+                title="", color=discord.Color.red(), description=description
+            )
+        )
 
     @games.command()
     @commands.guild_only()
-    @commands.cooldown(
-        5, 600, commands.BucketType.user
-    )  # 5 Mal alle 10 Minuten pro Benutzer
+    @commands.cooldown(5, 600, commands.BucketType.user)  # 5 per 10 minutes per member
     @option("amount", description="Specify the amount of Coins to dice.")
     async def dice(self, ctx: discord.ApplicationContext, amount: int):
         """
         Play a game of Dice with your bet of coins
         """
-        # Get Server-ID for further process
-        server_id = ctx.guild.id
-
-        try:
-            bank_account = await UserBankAccount.get(
-                session=self.bot.sessionmaker(),
-                user_id=ctx.author.id,
-                guild_id=server_id,
-            )
-
-            if bank_account is None:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You don't have a bank account. Create one with /bank create",
-                )
-                await ctx.respond(embed=em)
-                return
-
-            if amount > bank_account.wallet:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You not have enough :coin:",
-                )
-                await ctx.respond(embed=em)
-                return
-            if amount < 0:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, The number must be positive",
-                )
-                await ctx.respond(embed=em)
-                return
-            if amount > self.max_amount:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, The limit is {self.max_amount} :coin:",
-                )
-                await ctx.respond(embed=em)
-                return
-
-            em = discord.Embed(
-                title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, gamble {amount} :coin: and throw the dice",
-            )
-            dice1 = random.randrange(1, 6)
-            dice2 = random.randrange(1, 6)
-            em.add_field(
-                name="",
-                value=f":game_die: {ctx.author.name}, You get {dice1} and {dice2}...",
-                inline=False,
-            )
-            dice3 = random.randrange(1, 6)
-            dice4 = random.randrange(1, 6)
-            em.add_field(
-                name="",
-                value=f":game_die: {ctx.author.name}, He gets {dice3} and {dice4}...",
-                inline=False,
-            )
-            if dice1 > dice3 and dice2 > dice4:
-                bank_account.wallet += 2 * amount
-                em.add_field(
-                    name="",
-                    value=f":game_die: {ctx.author.name}, You won {amount} :coin:",
-                    inline=False,
-                )
-            else:
-                bank_account.wallet -= amount
-                em.add_field(
-                    name="",
-                    value=f":game_die: {ctx.author.name}, You lose {amount} :coin:",
-                    inline=False,
-                )
-
-            # Update the bank account
-            await bank_account.save(self.bot.sessionmaker())
-
-            # Send Message
-            await ctx.respond(embed=em)
-        # pylint: disable=broad-except
-        except Exception as e:
-            self.bot.logger.error(f"[Dice Command] • {e}", exc_info=True)
-            await ctx.respond(
-                "Something went wrong, please try again later.", ephemeral=True
-            )
+        if amount > self.max_amount:
+            await self._refuse(ctx, f"The limit is {self.max_amount} :coin:")
             return
 
-    @dice.error
-    async def dice_cooldown(self, ctx: discord.ApplicationContext, error):
-        await application_cooldown(ctx, error)
+        dice1, dice2 = random.randint(1, 6), random.randint(1, 6)
+        dice3, dice4 = random.randint(1, 6), random.randint(1, 6)
+        won = dice1 > dice3 and dice2 > dice4
+        if not await self._settle(ctx, amount, won):
+            return
+
+        em = discord.Embed(
+            title="",
+            color=discord.Color.red(),
+            description=f"{ctx.author.mention}, gamble {amount} :coin: and throw the dice",
+        )
+        em.add_field(
+            name="",
+            value=f":game_die: {ctx.author.name}, You get {dice1} and {dice2}...",
+            inline=False,
+        )
+        em.add_field(
+            name="",
+            value=f":game_die: {ctx.author.name}, He gets {dice3} and {dice4}...",
+            inline=False,
+        )
+        if won:
+            result = f"You won {2 * amount} :coin:"
+        else:
+            result = f"You lose {amount} :coin:"
+        em.add_field(
+            name="", value=f":game_die: {ctx.author.name}, {result}", inline=False
+        )
+        await ctx.respond(embed=em)
 
     @games.command()
     @commands.guild_only()
@@ -298,14 +196,14 @@ class Games(commands.Cog):
     )
     @option(
         "spin_duration",
-        description="Dauer der Animation in Sekunden (z.B. 5)",
+        description="Length of the animation in seconds (e.g. 5)",
         type=float,
         required=False,
         default=5.0,
     )
     @option(
         "end_hold",
-        description="Dauer wie lange das Endbild steht in Sekunden (z.B. 2)",
+        description="How long the final picture stays, in seconds (e.g. 2)",
         type=float,
         required=False,
         default=3.0,
@@ -344,7 +242,7 @@ class Games(commands.Cog):
                     if member:
                         resolved_members.append(member)
                         continue
-                # Sonst nach Namen suchen
+                # Otherwise search by name
                 member = discord.utils.find(
                     lambda m, n=name: n in (m.display_name, m.name), guild_members
                 )
@@ -354,7 +252,7 @@ class Games(commands.Cog):
                 await ctx.respond("No valid members found.")
                 return
 
-            # Sortiere Namen für konstante Farbreihenfolge
+            # Sort the names so the colours stay in the same order
             names = [m.display_name for m in resolved_members]
             names_sorted = sorted(names)
             base_colors = [

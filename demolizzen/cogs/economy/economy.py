@@ -2,33 +2,29 @@
 import logging
 import random
 
-# Third Party
-from asgiref.sync import sync_to_async
-
 # Discord
 import discord
 from discord import option
 from discord.commands import SlashCommandGroup
 from discord.ext import commands
 
-# Django
-from django.db import transaction
-from django.utils import timezone
-
 # Demolizzen
-from demolizzen import models
 from demolizzen.core.bot import Demolizzen
-from demolizzen.utils.functions import get_command_mention
+from demolizzen.core.cog import BaseCog
+from demolizzen.services import bank, guilds, missions
+from demolizzen.services.errors import InsufficientFunds, OnCooldown
 
 logger = logging.getLogger(__name__)
 
 
 # pylint: disable=too-many-public-methods
-class Economy(commands.Cog):
+class Economy(BaseCog):
     """All about economy"""
 
+    key = "economy"
+
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.alias = "economy"
         self.title = "Economy"
 
@@ -39,32 +35,10 @@ class Economy(commands.Cog):
         "mission", contexts=[discord.InteractionContextType.guild]
     )
 
-    def set_event(self, guild_id, active, event_factor):
-        self.events[guild_id] = (active, int(event_factor))
-
-    def get_event(self, guild_id):
-        return self.events.get(
-            guild_id, (False, 0)
-        )  # Standardwerte, falls das Event nicht vorhanden ist
-
     async def cog_before_invoke(self, ctx: discord.ApplicationContext):
-        try:
-            user = await models.UserProfile.objects.select_related(
-                "bank_account", "bags", "raid_mission", "mining_mission"
-            ).aget(user_id=ctx.author.id, guild_id=ctx.guild.id)
-            ctx.user_profile = user
-            logger.debug(f"UserProfile loaded for {ctx.author}.")
-        except models.UserProfile.DoesNotExist as exc:
-            raise commands.CheckFailure(
-                f"UserProfile does not exist. Please register first. {get_command_mention(bot=self.bot, cog='Commands', slash_command='auth', slash_command_group='register')} "
-            ) from exc
-
-        try:
-            assert user.bank_account
-        except models.UserBankAccount.DoesNotExist as exc:
-            raise commands.CheckFailure(
-                f"Bank account does not exist. Please create one first. {get_command_mention(bot=self.bot, cog='BankAccount', slash_command='bank', slash_command_group='create')} "
-            ) from exc
+        # Members need no registration: profile and bank account are created on demand.
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        await bank.ensure_account(ctx.guild.id, ctx.author.id, ctx.author.display_name)
 
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     async def daily(self, ctx: discord.ApplicationContext):
@@ -72,55 +46,27 @@ class Economy(commands.Cog):
         Collect your Daily Reward
         """
         try:
-            daily_account, __ = await models.UserDailyReward.objects.select_related(
-                "user"
-            ).aget_or_create(user=ctx.user_profile)
-
-            # Timer Manager
-            remaining_time = await daily_account.user.get_cooldown(
-                ctx=ctx,
-                ship_cooldown=timezone.timedelta(days=1),
-                last_cooldown=daily_account.last_claim,
+            claim = await missions.claim_daily(
+                ctx.guild.id,
+                ctx.author.id,
+                ctx.author.display_name,
+                random.randrange(30),
             )
-
-            delta = remaining_time.delta
-            cooldown = remaining_time.cooldown
-
-            if delta < remaining_time.timer:
-                em = discord.Embed(
-                    title="",
-                    color=discord.Color.red(),
-                    description=f"{ctx.author.mention}, You have already collected your daily reward, wait a bit more `{cooldown}`",
-                )
-                await ctx.respond(embed=em)
-                return
-
-            # Set Daily Reward
-            # Streak: +1 wenn mehr als 24h vergangen, sonst 1
-            streak = daily_account.streak + 1 if delta > remaining_time.timer else 1
-            daily_account.streak = streak
-            daily_account.last_claim = timezone.now()
-            daily_reward = random.randrange(30) + (daily_account.streak * 5)
-            # Update Bank Account
-            bank_account: models.UserBankAccount = ctx.user_profile.bank_account
-            bank_account.wallet += daily_reward
-            await daily_account.asave()
-            await bank_account.asave()
-
-            # Send Response
+        except OnCooldown as cooldown:
             em = discord.Embed(
                 title="",
-                color=discord.Color.teal(),
-                description=f"{ctx.author.mention}, **{streak}** At once. Here is your daily reward of {daily_reward}:coin:",
+                color=discord.Color.red(),
+                description=f"{ctx.author.mention}, You have already collected your daily reward, wait a bit more `{missions.format_remaining(cooldown.remaining)}`",
             )
-
             await ctx.respond(embed=em)
-        except Exception as e:
-            logger.exception(f"Error in daily command: {e}")
-            await ctx.respond(
-                "An error occurred while processing your command. Please try again later."
-            )
-        return
+            return
+
+        em = discord.Embed(
+            title="",
+            color=discord.Color.teal(),
+            description=f"{ctx.author.mention}, **{claim.streak}** At once. Here is your daily reward of {claim.reward}:coin:",
+        )
+        await ctx.respond(embed=em)
 
     @commands.slash_command(contexts=[discord.InteractionContextType.guild])
     @commands.cooldown(1, 300, commands.BucketType.user)
@@ -141,20 +87,10 @@ class Economy(commands.Cog):
         str
             A message indicating the outcome of the attempted theft.
         """
-        # Get Information for further process
-        server_id = ctx.guild.id
         author = ctx.author.name.capitalize()
 
-        try:
-            gank_account = await models.UserProfile.objects.select_related(
-                "bank_account"
-            ).aget(user_id=user.id, guild_id=server_id)
-            assert gank_account.bank_account  # Ensure bank_account is loaded
-        except (models.UserProfile.DoesNotExist, models.UserBankAccount.DoesNotExist):
-            gank_account = None
-
-        if gank_account is None:
-            await ctx.respond("He hasn't a Bank Account...", ephemeral=True)
+        if user.bot or user.id == ctx.author.id:
+            await ctx.respond("You can't gank this target.", ephemeral=True)
             return
 
         # Embed create
@@ -186,12 +122,14 @@ class Economy(commands.Cog):
             f"notices {user_name} is AFK mining. As they get closer, {user_name} quickly lights a Cyno.",
         ]
 
-        bank_account: models.UserBankAccount = ctx.user_profile.bank_account
+        attacker = (ctx.author.id, ctx.author.display_name)
+        victim = (user.id, user.display_name)
 
-        # Erfolgreicher Raid
+        # Erfolgreicher Raid: the loot goes from the victim to the attacker
         if random_chance <= 25:
-            # Überprüfen, ob der Benutzer genug Geld hat
-            if gank_account.bank_account.wallet < amount:
+            try:
+                await bank.transfer(ctx.guild.id, *victim, *attacker, amount)
+            except InsufficientFunds:
                 em.add_field(
                     name="",
                     value=f":rocket: {author} " + random.choice(ganktext) + "",
@@ -205,16 +143,6 @@ class Economy(commands.Cog):
                 await ctx.respond(embed=em)
                 return
 
-            # Attempt to update both balances
-            def gank_transaction():
-                with transaction.atomic():
-                    gank_account.bank_account.wallet -= amount
-                    bank_account.wallet += amount
-                    gank_account.bank_account.save()
-                    bank_account.save()
-
-            sync_to_async(gank_transaction)()
-
             em.add_field(
                 name="",
                 value=f":rocket: {author} " + random.choice(ganktext) + "",
@@ -227,25 +155,17 @@ class Economy(commands.Cog):
             )
             return await ctx.respond(embed=em)
 
-        # Mißlungerner Raid
+        # Failed raid: the attacker pays the victim
         if random_chance <= 70:
-            # Überprüfen, ob der Benutzer genug Geld hat
-            if bank_account.wallet < amount:
+            try:
+                await bank.transfer(ctx.guild.id, *attacker, *victim, amount)
+            except InsufficientFunds:
                 em.add_field(
                     name="",
                     value=f":rocket: {author} you are broke... go back to work...",
                     inline=False,
                 )
                 return await ctx.respond(embed=em)
-
-            def gank_fail_transaction():
-                with transaction.atomic():
-                    bank_account.wallet -= amount
-                    gank_account.bank_account.wallet += amount
-                    bank_account.save()
-                    gank_account.bank_account.save()
-
-            await sync_to_async(gank_fail_transaction)()
 
             em.add_field(
                 name="",

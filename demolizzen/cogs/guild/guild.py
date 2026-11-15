@@ -8,22 +8,24 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 
 # Demolizzen
-from demolizzen import models
-from demolizzen.config import DEFAULT_BACKGROUND, DEFAULT_BORDER, DEFAULT_XP_COLOUR
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
+from demolizzen.services import guilds
 from demolizzen.utils.constants import PERMS_MAP
 
 logger = logging.getLogger(__name__)
 
 
-class Guild(commands.Cog):
+class Guild(BaseCog):
     """
     Manage your Guild with automated Tools
     """
 
+    key = "guild"
+
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "Guild"
         self.alias = "guild"
         self.command_ids = {}
@@ -51,54 +53,30 @@ class Guild(commands.Cog):
         self.check_guild.cancel()
 
     async def check(self):
+        """Bring the database in line with the guilds and members the bot can see."""
         self.bot.logger.debug("Starting periodic check for guilds and members...")
-        database_guilds = [
-            obj.guild_id async for obj in models.GuildProfile.objects.all()
-        ]
-        bot_guild_ids = [guild.id for guild in self.bot.guilds]
-        missing_guilds = set(database_guilds) - set(bot_guild_ids)
-
         for guild in self.bot.guilds:
-            try:
-                guild_profile = await models.GuildProfile.objects.aget(
-                    guild_id=guild.id
-                )
-            except models.GuildProfile.DoesNotExist:
-                # Create GuildProfile
-                guild_profile = await models.GuildProfile.objects.acreate(
-                    guild_id=guild.id, guild_name=guild.name
-                )
+            _, created = await guilds.ensure_guild(guild.id, guild.name)
+            if created:
                 self.bot.logger.info(f"Added Guild {guild.name} to Database.")
-            for member in guild.members:
-                if not member.bot:
-                    try:
-                        user_profile = await models.UserProfile.objects.aget(
-                            user_id=member.id, guild=guild_profile
-                        )
-                    except models.UserProfile.DoesNotExist:
-                        user_profile = await models.UserProfile.objects.acreate(
-                            user_id=member.id,
-                            guild=guild_profile,
-                            user_name=member.display_name,
-                        )
-                        await models.UserSettings.objects.acreate(
-                            user=user_profile,
-                            background=DEFAULT_BACKGROUND,
-                            border=DEFAULT_BORDER,
-                            xp_colour=DEFAULT_XP_COLOUR,
-                            blur=5,
-                        )
-                        self.bot.logger.info(f"Added Member {member.name} to Database.")
-
-        for guild_id in missing_guilds:
-            try:
-                guild_profile = await models.GuildProfile.objects.aget(
-                    guild_id=guild_id
+            added = await guilds.ensure_members(
+                guild.id,
+                [
+                    (member.id, member.display_name)
+                    for member in guild.members
+                    if not member.bot
+                ],
+            )
+            if added:
+                self.bot.logger.info(
+                    f"Added {added} member(s) of {guild.name} to Database."
                 )
-                await guild_profile.adelete()
-                self.bot.logger.info(f"Removed Guild ID {guild_id} from Database.")
-            except models.GuildProfile.DoesNotExist:
-                continue
+
+        removed = await guilds.remove_missing_guilds(
+            [guild.id for guild in self.bot.guilds]
+        )
+        for guild_id in removed:
+            self.bot.logger.info(f"Removed Guild ID {guild_id} from Database.")
 
     @guild.command(
         name="sync",
@@ -118,6 +96,8 @@ class Guild(commands.Cog):
         :param scope: The scope of the sync. Can be `global` or `guild`.
         """
 
+        # Registering takes longer than Discord waits for an answer.
+        await context.defer(ephemeral=True)
         if scope == "global":
             await context.bot.sync_commands()
             embed = discord.Embed(
@@ -126,11 +106,15 @@ class Guild(commands.Cog):
             )
             await context.respond(embed=embed)
             return
-        await context.bot.sync_commands(guild_ids=[context.guild.id])
-        embed = discord.Embed(
-            description="Slash commands have been synchronized in this guild.",
-            color=0xBEBEFE,
-        )
+        # Only this server: its modules decide which commands it gets.
+        if await context.bot.command_scope.sync_guild(context.guild.id):
+            description = "Slash commands have been synchronized in this guild."
+        else:
+            description = (
+                "Slash commands could not be synchronized in this guild. "
+                "The log says why."
+            )
+        embed = discord.Embed(description=description, color=0xBEBEFE)
         await context.respond(embed=embed, ephemeral=True)
         return
 
@@ -141,9 +125,8 @@ class Guild(commands.Cog):
         self, ctx: discord.ApplicationContext, channel: discord.TextChannel
     ):
         """Set Main Channel for Bots Interactions This not include Application Commands."""
-        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
-        guild_profile.main_channel_id = channel.id
-        await guild_profile.asave()
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        await guilds.set_main_channel(ctx.guild.id, channel.id)
         embed = discord.Embed(
             description=f"🟢 **SUCCESS**: `📢 Main Channel set to: {channel.name}`"
         )
@@ -154,18 +137,14 @@ class Guild(commands.Cog):
     @checks.is_guild_manager()
     async def unset_channel(self, ctx: discord.ApplicationContext):
         """Remove Main Channel for Bots Interactions."""
-        guild_profile = await models.GuildProfile.objects.aget(guild_id=ctx.guild.id)
-
-        if guild_profile.main_channel_id is None:
+        await guilds.ensure_guild(ctx.guild.id, ctx.guild.name)
+        if not await guilds.set_main_channel(ctx.guild.id, None):
             embed = discord.Embed(
                 description="🟡 **INFO**: `📢 Bot already react to all Channels`"
             )
             await ctx.respond(embed=embed)
             return
 
-        # Remove all channels from the levelling server base
-        guild_profile.main_channel_id = None
-        await guild_profile.asave()
         embed = discord.Embed(
             description="🟢 **SUCCESS**: `📢 Bot react to all Channels`"
         )
@@ -210,115 +189,37 @@ class Guild(commands.Cog):
         except discord.errors.Forbidden:
             await ctx.respond(embed=embed)
 
-    # on guild join
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
-        # Check if Guild Profile already exists
-        try:
-            guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
-            if guild_profile:
-                logger.debug(
-                    f"Levelling Serverbase for {guild.name} already exists, skipping creation."
-                )
-                return
-        except models.GuildProfile.DoesNotExist:
-            # Create GuildProfile
-            guild_profile = await models.GuildProfile.objects.acreate(
-                guild_id=guild.id, guild_name=guild.name
-            )
+        """Register the guild and its human members."""
+        guild_profile, _ = await guilds.ensure_guild(guild.id, guild.name)
+        added = await guilds.ensure_members(
+            guild.id,
+            [(member.id, member.name) for member in guild.members if not member.bot],
+        )
+        logger.info(f"{guild_profile} has joined and created with {added} members.")
 
-            # Create levelling records for all members
-            member_ids = [member.id for member in guild.members if not member.bot]
-            existing_ids = [
-                existing.user_id
-                async for existing in models.UserProfile.objects.filter(
-                    user_id__in=member_ids, guild_id=guild.id
-                )
-            ]
-
-            new_members = [
-                member
-                for member in guild.members
-                if member.id not in existing_ids and not member.bot
-            ]
-            new_user_profiles = []
-            for member in new_members:
-                new_user_profiles.append(
-                    models.UserProfile(
-                        user_id=member.id, guild_id=guild.id, user_name=member.name
-                    )
-                )
-            if new_user_profiles:
-                await models.UserProfile.objects.abulk_create(new_user_profiles)
-                # Get the UserProfile objects from the DB to use them for UserSettings
-                created_profiles = [
-                    up
-                    async for up in models.UserProfile.objects.filter(
-                        user_id__in=[member.id for member in new_members],
-                        guild_id=guild.id,
-                    )
-                ]
-                new_settings = []
-                for user_profile in created_profiles:
-                    new_settings.append(
-                        models.UserSettings(
-                            user=user_profile,
-                            background=DEFAULT_BACKGROUND,
-                            border=DEFAULT_BORDER,
-                            xp_colour=DEFAULT_XP_COLOUR,
-                            blur=5,
-                        )
-                    )
-                if new_settings:
-                    await models.UserSettings.objects.abulk_create(new_settings)
-            logger.info(
-                f"{guild_profile} has joined and created with {len(new_user_profiles)} members successfully."
-            )
-
-    # on guild leave
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
-        # Delete GuildProfile and related data
-        try:
-            guild_profile = await models.GuildProfile.objects.aget(guild_id=guild.id)
-            if guild_profile is not None:
-                logger.info(f"Guild {guild_profile} has left and deleted successfully.")
-                await guild_profile.adelete()  # Will also delete related UserProfiles and UserSettings due to cascade delete
-        except models.GuildProfile.DoesNotExist:
+        """Delete the guild and everything that belongs to it."""
+        if await guilds.remove_guild(guild.id):
+            logger.info(f"Guild {guild.name} ({guild.id}) has left and was deleted.")
+        else:
             logger.debug(f"Guild {guild.name} ({guild.id}) does not exist.")
-            return
 
-    # on guild update
     @commands.Cog.listener()
     async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
-        # Update GuildProfile with new guild information
-        try:
-            guild_profile = await models.GuildProfile.objects.aget(guild_id=before.id)
-            if guild_profile is not None:
-                if guild_profile.guild_name != after.name:
-                    guild_profile.guild_name = after.name
-                    await guild_profile.asave()
-                    logger.info(
-                        f"Guild {before.name} ({guild_profile.guild_id}) changed to {after.name} has been updated successfully."
-                    )
-        except models.GuildProfile.DoesNotExist:
-            logger.debug(f"Guild {after.name} ({after.id}) does not exist.")
-            return
+        """Keep the stored guild name current."""
+        if await guilds.rename_guild(after.id, after.name):
+            logger.info(f"Guild {before.name} ({after.id}) changed to {after.name}.")
 
-    # on member update
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        # Update UserProfile with new member information
-        try:
-            user_profile = await models.UserProfile.objects.aget(
-                user_id=before.id, guild_id=before.guild.id
-            )
-            if user_profile is not None and before.name is not after.name:
-                user_profile.user_name = after.name
-                await user_profile.asave()
-                logger.info(
-                    f"User {before.name} ({user_profile.user_id}) changed to {after.name} in guild {before.guild.name} ({before.guild.id}) has been updated successfully."
-                )
-        except models.UserProfile.DoesNotExist:
-            logger.debug(f"User {after.name} ({after.id}) does not exist.")
+        """Keep the stored member name current."""
+        if before.name == after.name:
             return
+        if await guilds.rename_member(after.guild.id, after.id, after.name):
+            logger.info(
+                f"User {before.name} ({after.id}) changed to {after.name} "
+                f"in guild {after.guild.name} ({after.guild.id})."
+            )

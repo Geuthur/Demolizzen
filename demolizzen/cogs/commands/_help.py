@@ -4,6 +4,8 @@ from discord.ext import commands
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
+from demolizzen.utils.functions import command_link
 
 
 class CommandsHelp:
@@ -31,7 +33,7 @@ class CommandsHelp:
             "Select a category from the dropdown below to see its commands."
         )
 
-        # Dynamisch Optionen für die Kategorien generieren
+        # Build the options for the categories
         options = []
         for plugin_name, cog in sorted(self.bot.cogs.items()):
             if hasattr(cog, "hidden") and cog.hidden:
@@ -42,11 +44,16 @@ class CommandsHelp:
                 continue
             if access != "None" and str(access) != str(server_id):
                 continue
+            # Modules the server switched off are not offered
+            if isinstance(cog, BaseCog) and not await cog.is_enabled(server_id):
+                continue
 
             # Check if the user has permission to view any command in the cog
             show_cog = True
             for command in cog.get_commands():
-                if isinstance(command, discord.SlashCommandGroup):
+                if isinstance(
+                    command, (discord.SlashCommandGroup, discord.SlashCommand)
+                ):
                     perms = getattr(command, "default_member_permissions", None)
                     if perms is not None and isinstance(perms, discord.Permissions):
                         if (
@@ -95,11 +102,15 @@ class CategorySelect(discord.ui.Select):
         commands_info = []
         for command in cog.get_commands():
             options_info = []
+            # The id this server knows the command by; it differs per server.
+            command_id = self.bot.command_scope.command_id(
+                command, interaction.guild_id
+            )
             if isinstance(command, discord.commands.SlashCommandGroup):
                 for subcommand in command.walk_commands():
                     if not subcommand.description == "No description provided":
                         commands_info.append(
-                            f"</{subcommand}:{command.id}> \n {subcommand.description}\n"
+                            f"{command_link(str(subcommand), command_id)} \n {subcommand.description}\n"
                         )
             else:
                 for opt in command.options:
@@ -108,7 +119,7 @@ class CategorySelect(discord.ui.Select):
                     )
                 options_info_str = " ".join(options_info)
                 commands_info.append(
-                    f"</{command.name}:{command.id}> {options_info_str} \n {command.description}\n"
+                    f"{command_link(command.name, command_id)} {options_info_str} \n {command.description}\n"
                 )
         info.add_field(
             name=f"**{plugin_name} Plugin**",

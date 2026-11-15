@@ -3,18 +3,22 @@ from asgiref.sync import sync_to_async
 
 # Discord
 import discord
-from discord.ext import commands, tasks
+from discord.ext import tasks
 
 # Django
-from django.db import DatabaseError, connection
+from django.db import Error as DatabaseError
+from django.db import connection
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
 
 
-class General(commands.Cog):
+class General(BaseCog):
+    key = "general"
+
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.status_checker.start()
         self.is_okay = True
 
@@ -36,27 +40,22 @@ class General(commands.Cog):
 
     @tasks.loop(hours=1)
     async def status_checker(self):
-        guilds = len(self.bot.guilds)
-        if not await self.db_health_check():
-            await self.bot.change_presence(
-                activity=discord.Activity(
-                    type=discord.ActivityType.listening,
-                    name=f"{guilds} Servers",
-                    state="Status: 🔴 Database Issues",
-                ),
-                status=discord.Status.dnd,
-            )
-            self.is_okay = False
+        """Show whether the bot is healthy. Decided anew on every run, so the
+        display recovers as soon as the problem is gone."""
+        self.is_okay = await self.db_health_check()
         # TODO Add more checks
         if self.is_okay:
-            await self.bot.change_presence(
-                activity=discord.Activity(
-                    type=discord.ActivityType.listening,
-                    name=f"{guilds} Servers",
-                    state="Status: 🟢 No Issues",
-                ),
-                status=discord.Status.online,
-            )
+            state, status = "Status: 🟢 No Issues", discord.Status.online
+        else:
+            state, status = "Status: 🔴 Database Issues", discord.Status.dnd
+        await self.bot.change_presence(
+            activity=discord.Activity(
+                type=discord.ActivityType.listening,
+                name=f"{len(self.bot.guilds)} Servers",
+                state=state,
+            ),
+            status=status,
+        )
 
     @status_checker.before_loop
     async def before_status_checker(self):

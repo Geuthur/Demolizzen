@@ -1,0 +1,22 @@
+{% extends "web/base.html" %}
+{% block content %}
+<h1>Your servers</h1>
+{% if servers %}
+<p class="lead">Choose a server to manage its modules.</p>
+<ul class="rows">
+  {% for server in servers %}
+  <li>
+    <span class="glyph on">{% icon "hdd-rack" %}</span>
+    <div class="grow">
+      <a class="name" href="{% url 'guild' server.id %}">{{ server.name }}</a>
+      <div class="about">{{ server.on }} of {{ server.total }} modules on</div>
+    </div>
+    <a class="button quiet go" href="{% url 'guild' server.id %}">{% icon "sliders" %} Manage</a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="lead">No servers to manage yet.</p>
+<p class="small">A server appears here when Demolizzen has joined it and you are its owner or have the Manage Server permission there. Changes in Discord show up within five minutes.</p>
+{% endif %}
+{% endblock %}

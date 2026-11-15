@@ -11,38 +11,129 @@ Section Order:
 ### Removed
 -->
 
-## Added
+## [3.0.0] - 2026-11-15
 
+Every server now chooses its modules, in Discord with `/panel` or in the new web panel, and the
+bot was rebuilt on a tested service layer. Read
+[Upgrading from 2.x](README.md#upgrading-from-2x) before updating a running bot.
+
+### Added
+
+- A README: what the bot does, installation, first steps, updating and upgrading from 2.x
+- Web panel: alliances and corporations on the zKillboard page show their logo from EVE's image server
+- Web panel: the zKillboard page shows what a followed id is (alliance, corporation, character, region, system) and its name, asked from EVE's public API
+- Web panel: zKillboard settings list a server's killmail subscriptions and change, remove or add them; the bot re-reads subscriptions once a minute
+- Slash commands of a module that is switched off on a server are no longer shown there: commands of switchable modules are registered per server, a switch in the web panel reaches Discord within a minute, one in `/panel` at once
+- `python -m demolizzen.web.check` tells whether the web panel is set up: settings, database access, encryption and missing migrations; `docs/web-panel.md` describes database access from the container and going live with backup and way back
+- Web panel: Ticket System settings (categories, log channel, staff roles, limits) and the channel for level-ups; channels and roles are read from Discord with the bot token
+- Web panel: settings pages for Banksystem (interest, deposits, withdrawals), Levelsystem (announcements) and the Economy event
+- Web panel: switch modules of a server on and off, with the same dependency confirmation as `/panel`
+- The web panel encrypts its session cookie; `DATABASE_SSL_MODE` and `DATABASE_SSL_CA` encrypt the database connection of bot and panel
+- Web panel (`demolizzen/web/`): sign in with Discord and see the servers you may manage with their modules; shipped as a Docker image with a compose file, see `docs/web-panel.md`
+- Level system settings page in `/panel` (level-up posts on/off, channel)
+- Bank settings page in `/panel` (interest per week, deposits and withdrawals on/off); `allow_deposits` and `allow_withdrawals` are now enforced
+- Ticket subject and description form, `Open ticket` button message, transcript of deleted tickets in a log channel, ticket settings page in `/panel`
+- `/panel`: guild admins enable and disable modules for their server, with a confirmation when dependent modules are switched along
+- `BaseCog` as common base of all cogs: commands and guild events of a cog are skipped in guilds that disabled it
+- Cog registry (`demolizzen/core/registry.py`) and per-guild cog settings service with dependency handling (Economy, Shop and Games require the Banksystem)
 - Open API Log [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - On Member Update Listener [PR](https://github.com/Geuthur/Demolizzen/pull/50)
 - Guild Join Event for Bank Cog [da1006a](https://github.com/Geuthur/Demolizzen/commit/da1006a3875be34bce98866184de7db1209afea5)
 - Guild Join Event for Bank Cog [c020a25](https://github.com/Geuthur/Demolizzen/commit/c020a25e6edb9686c46803ff482b0f836efc0ada)
 - Implement UniverseName dataclass for ESI data representation [PR](https://github.com/Geuthur/Demolizzen/pull/44)
 
-## Fixed
+### Fixed
 
+- Web panel: after an update browsers styled the new pages with the old stylesheet for up to an hour; its address now changes with its content
+- A click on a command entry Discord no longer has (the global one from before commands went per server, or one of a module just switched off) ended in "The application did not respond"; the command now runs or the member is told it is gone
+- `/owner load`, `unload`, `reload` and `/guild sync` answer Discord before registering, which now takes longer than Discord waits
+- Command links in `/help` and in hints showed `None` or a wrong id; they carry the id of the server they are shown in, the invite link asks for the `applications.commands` scope
+- `/guild sync guild` turned every command into a command of that one server; it now registers only that server's own commands again
+- The Voices of War module loads again: its ticket button is registered once the bot is running and opens tickets through the rebuilt ticket module
+- A bot started the old way (`Demolizzen().run()` without `load_preload_extensions()`) ran without modules and deleted every slash command at Discord; `run()` and `start()` now load the modules themselves, and an empty command list is never synced
+- `/owner load`, `unload` and `reload` did not register added, changed or removed commands with Discord
+- Economy event paid 0 coins when switched on without a factor, could take money with a negative factor and was lost on restart; it is stored per server with a factor from 1 to 10 (default 2, migration `0014`)
+- `/help`, `/bag`, `/richest`, `/use` and `/spenden` demanded a registration; profile and account are created on demand
+- `/bag` showed an empty message for an empty bag and failed with more than 25 items; `/richest` changed the spelling of names and loaded every account into memory
+- `/moderation clear` never answered when reading the messages failed and described an empty result the wrong way round; it accepts 1 to 100 and always answers
+- `/owner force-deposits-update` called a function that no longer exists, `/owner status` failed in direct messages and `/owner migrate` blocked the whole bot while it ran
+- Status display stayed on `Database Issues` until the next restart after a single database error; it is decided anew every hour
+- Cooldowns of `/rank`, `/bot uptime`, `/games rps`, `/games slots`, `/games dice` and `/token help` were answered twice; only the private standard message of the bot is sent
+- `/eve price` never used its price cache and failed for a second trade hub of the same item; prices are cached for 30 minutes per item and trade hub (migration `0013` recreates the cache table)
+- `/eve price` showed `0 ISK` or a generic error when the price service failed or did not know the item, and could time out; it defers, waits at most 10 seconds and answers with a clear message
+- Item suggestions of `/eve price` lost names starting with the search text when more than 50 items contained it
+- `/eve status` answered a cooldown twice and showed `Server Online 🔴` during an outage; it now says `Server Offline 🔴` and gives up after 10 seconds
+- ESI requests blocked the whole bot while they ran; they now run in worker threads
+- Name resolution relied on a task table and an endless loop that could die silently; names are resolved directly with one batched request and a 15 second limit, unresolved names show as `Unknown`
+- Killmail feed requested the same killmail five times per second when processing it failed, ignored `Retry-After` and lost killmails after errors; it always moves on, waits 1 to 300 seconds on server and connection errors and continues at the same killmail afterwards
+- A killmail was looked up once per subscribed channel and names could wait up to 90 seconds; a killmail is checked against all subscriptions once, looked up once with a single name request, and nothing is looked up for killmails nobody subscribed to
+- Without send permission every killmail was posted into the first other writable channel together with an error line; the subscription now pauses, the server is told once in its main channel (otherwise the system channel) and posting resumes once the permission is back
+- Killmail subscriptions were deleted when their server was temporarily unavailable during the daily check; only subscriptions of deleted channels are removed
+- `/rank` for a member without a profile ended in a generic error
+- Experience could be lost when a member wrote messages in quick succession; experience is added with a single database update
+- Level-up and rank cards blocked the whole bot while images were downloaded and drawn; downloads are asynchronous with a 10 second and 8 MB limit, static images are cached and drawing runs in a worker thread
+- `/use` never showed the drink texts because shop drinks are filed as `drinks`
+- `/daily` and `/work` could pay twice when sent at the same time; cooldown check and payout are one transaction
+- Mission reports could tell a different outcome than the one that was booked; the outcome is decided once and the insurance line names what was actually paid
+- A mission could be paid out several times: once per open report message, and again when the buttons timed out after a click. A mission is now settled exactly once
+- Economy, shop and mission commands asked members to create a bank account with a command that no longer exists; profile and account are created on demand
+- Mission insurance could push the wallet below zero
+- `/games dice` rolled 1–5 instead of 1–6 and announced the single stake while paying the double; stakes of 0 are refused
+- A successful `/gank` never moved the loot; ganking yourself or a bot is refused
+- `/shop buy` accepted negative quantities and credited money for them; quantities must be between 1 and 1000 and paying and receiving the item are one transaction
+- `/bank_admin` commands no longer fail for members without a profile; sending money to a member without an account creates it
+- Bank bookings could lose or duplicate money when two commands ran at the same time; every booking now runs on locked rows in the database
+- Bank interest rate was stored as a percentage but applied as a factor (a rate of 5 paid 500%); rates are now fractions and stored values of 1 or more are converted (migration `0011`)
+- `/games slots` win message names the doubled bet that is actually paid out
+- `/help` hides admin-only commands such as `/panel` from members; start banner is printed on first connect
+- `/games slots` and `/games dice` failed on every call because of a removed database helper
+- Killmail subscriptions are removed when the bot leaves a server (listened to a non-existent event and never cleared the in-memory entries)
+- Killmails are no longer posted and bank interest is no longer paid in servers that disabled the module
+- Remove non-existent `test` extension from `PRELOAD_EXTENSIONS`
 - Update add_sub method to ensure only 1 km tracker per `group_id` [PR](https://github.com/Geuthur/Demolizzen/pull/53)
 - Multiple Objects Returned [t7fa7fe8t](https://github.com/Geuthur/Demolizzen/commit/7fa7fe879105d2f34b4e3aa1f95b3906fd39fca9)
 - Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
 - Refine subscription handling and type hinting for better clarity and maintenance [2778692](https://github.com/Geuthur/Demolizzen/commit/277869204bd8f3ce8dd45957bacfaead4526a32c)
-- Enhance response handling in TicketSystem and Demolizzen bot for improved user interaction and error management [002b77d](https://github.com/Geuthur/Demolizzen/commit/002b77d9d3f674f51311d706e7e0222fa6ec0dad)
 
-## Changed
+### Changed
 
+- Web panel: a more futuristic look with Bootstrap Icons (shipped with the panel, MIT): every module has an icon in a lit socket, the state is a badge with icon and word, buttons and notices carry icons
+- Web panel layout for wide screens: server navigation at the side, modules as a rack with a tally, dependency hints on modules, own typeface for headings
+- English is the language of all texts: `/spenden` is now `/donate`, and the remaining German texts of `/use`, `/bag`, `/leaderboard` and `/games wheelofnames` are translated
+- The economy event is switched and its payout factor chosen in `/panel`
+- `/killmail add` needs the Embed Links permission in the channel and allows each ID once per channel, whoever added it
+- Level rules moved to `demolizzen/services/levels.py`; messages that earn no experience no longer query the database
+- Daily, work and mission rules moved to `demolizzen/services/missions.py`; `demolizzen/models` no longer imports `discord`; test account cooldown overrides moved to `config.COOLDOWN_OVERRIDES`
+- Games, shop, economy and missions book all money through the bank service; shop purchases and item use moved to `demolizzen/services/shop.py`
+- Bank logic moved to `demolizzen/services/bank.py`; weekly interest is paid by a single database update and checked every six hours
+- Ticket channels are named `ticket-0042-name` while open and `closed-0042-name` when closed; members are limited to one open ticket by default
+- Ticket system rebuilt on the service layer: permissions are enforced by one rights table (claim: staff, close/reopen: staff or the creator if allowed, delete: admins), buttons and channel name follow the stored ticket state, ticket numbers are allocated atomically
+- Drop Python 3.10; Python 3.11 or newer is required
+- `/help` no longer lists modules that are disabled on the server
+- Guild and member bookkeeping moved into `demolizzen/services/guilds.py`; the periodic guild check now uses one query per guild instead of one per member
+- Bot construction no longer loads extensions or opens network connections; `launch.py` loads extensions and `start()` creates the HTTP session and ESI client
+- Tests run on in-memory SQLite by default; `USE_MYSQL=1` selects MySQL (set by tox and CI)
 - Enhance logging configuration by adding custom handler for httpx and improving time formatting [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Update ticket handling to skip missing ticket owners and ensure proper view assignment [PR](https://github.com/Geuthur/Demolizzen/commit/8a37063068848fd695b9303e1844a3bf0563c827)
 - Refactor Killmail handling
 - Refactor ESI System and Use OpenAPI from `django-esi` [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Add django-esi dependency to pyproject.toml and requirements.txt [PR](https://github.com/Geuthur/Demolizzen/pull/58)
-- Enhance error handling for ZKB R2Z2 sequence fetching with specific exceptions [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Enable debug mode for coverage tests in tox configuration [PR](https://github.com/Geuthur/Demolizzen/pull/58)
 - Moving to R2Z2 Endpoint, as RedisQ will be discontinued on May 31, 2026 [R2Z2](<https://github.com/zKillboard/zKillboard/wiki/API-(R2Z2)>).
 - update classifiers to include Python 3.14 [9c0efb9](https://github.com/Geuthur/Demolizzen/commit/9c0efb9f1c38701015b8baa7a5d3b09db317d5dd)
 - pre-commit configuration: enhance hooks, update versions, and adjust exclusions [](https://github.com/Geuthur/Demolizzen/commit/7c623e3bcdad0dca970dc190bb5d24301cd98c85)
 
-## Removed
+### Removed
 
+- `/eve price` no longer offers Rens and Hek: the price service does not know these markets and answered with an error
+- `/admin economy mode`, `/admin economy set`, `/auth register` and `/owner force-ship-update`
+- Unused price list window of the EVE Online module and `utils/pricehandler.py`
+- ESI name task queue (`EveEntityTask`, migration `0012`) and the 6-hour killmail memory cleanup
+- `/levelsystem_config set-mention` and the empty `/levelsystem` command group; level-up posts and their channel are set in `/panel`
+- `/bank create` (accounts are created automatically) and the `/bank_config` commands; bank settings are changed in `/panel`
+- Ticket task queue (`guild_ticket_tasks` table, migration `0010`) and the loading of all tickets at startup
+- `/ticket_config` commands; ticket settings are changed in `/panel`
 - Removed Cache Logic in Killmail Cog
 - Removed [FireTail](https://github.com/scragly/Firetail) Code Base @ Credits for inspiration
 - [Unused Package](https://github.com/Geuthur/Demolizzen/commit/498e3292cbb85144d7b5a30a3b0762b5e5cc13b8)

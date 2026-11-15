@@ -47,10 +47,10 @@ class Command(BaseCommand):
         for line in values_lines:
             reader = csv.reader([line], delimiter=",", quotechar="'", escapechar="\\")
             values = next(reader)
-            # Werte ggf. nach None umwandeln:
+            # Turn empty values into None:
             values = [None if v == "NULL" else v for v in values]
             if len(values) != 15:
-                # Optional: print(line) für Debug
+                # Optional: print(line) for debugging
                 self.stdout.write(
                     f"Skipped line with {len(values)} fields (expected 15)."
                 )

@@ -1,20 +1,14 @@
 # Standard Library
-import math
 import random
-
-# Third Party
-from asgiref.sync import sync_to_async
 
 # Discord
 import discord
 
-# Django
-from django.db import transaction
-from django.utils import timezone
-
 # Demolizzen
 from demolizzen import models
-from demolizzen.config import EVENTS_SERVER
+from demolizzen.services import missions
+from demolizzen.services.errors import AlreadySettled
+from demolizzen.services.missions import Event, Kind
 
 
 class MissionComponent:
@@ -31,6 +25,8 @@ class MissionEvent(discord.ui.View):
         ctx: discord.ApplicationContext,
         components,
         mission_account: models.UserMiningMission | models.UserRaidMission,
+        kind: Kind,
+        event: Event | None = None,
     ):
         super().__init__(timeout=20, disable_on_timeout=True)
         if components is None:
@@ -39,6 +35,10 @@ class MissionEvent(discord.ui.View):
         self.ctx = ctx
         self.components = self.format_components(components)
         self.mission_account = mission_account
+        self.kind = kind
+        # Identifies the mission this message reports. It is settled only once,
+        # however many messages show it.
+        self.started_at = mission_account.cooldown
         self.create_views()
 
         # Userdata
@@ -61,19 +61,11 @@ class MissionEvent(discord.ui.View):
         # Discord Data
         self.username = self.ctx.author.name.capitalize()
 
-        # Event Data
-        if self.ctx.guild.id in EVENTS_SERVER:
-            self.events, self.event_factor = EVENTS_SERVER[self.ctx.guild.id]
-        else:
-            EVENTS_SERVER[self.ctx.guild.id] = (False, 0)
-            self.events, self.event_factor = EVENTS_SERVER[self.ctx.guild.id]
-        self.difference_payout = None
-
-    @property
-    def is_on_mission(self):
-        return self.mission_account.active
+        # The guild's event as it was when the mission was shown.
+        self.event = event or Event(False, missions.DEFAULT_EVENT_FACTOR)
 
     async def on_timeout(self):
+        # Nobody clicked: the mission is settled without a decision.
         if not self.finish:
             await self.mission_trigger(self.ctx)
 
@@ -90,90 +82,73 @@ class MissionEvent(discord.ui.View):
                 f"{component.label}", f"label-{component.id}", component.style, False, 1
             )
 
-    # Calculate Event Amount
-    async def calc_event(self, last_coin):
-        self.difference_payout = last_coin
-        self.payout = math.ceil(last_coin * self.event_factor)
-        self.difference_payout = self.payout - self.difference_payout
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.ctx.author.id
 
     async def mission_trigger(self, interaction: discord.ApplicationContext):
-        # Check if user has an active mission
-        if self.is_on_mission:
-            # Create Embed
-            em = discord.Embed(title="", color=discord.Color.teal(), description="")
-            if self.modus == "mining":
-                em.set_thumbnail(
-                    url="https://hell-rider.de/static/images/discord/evewin.gif"
-                )
-            elif self.modus == "raiding":
-                em.set_thumbnail(
-                    url="https://hell-rider.de/static/images/discord/raidwin.gif"
-                )
+        """Settle the mission and report how it went.
 
-            # Bonus und Eventberechnung
-            if random.randint(1, 100) <= self.chance:
-                if self.bonus and self.chance <= 25:
-                    reportbonus = random.randrange(50, 100)
-                    self.payout += reportbonus
-                if self.events:
-                    await self.calc_event(self.payout)
-                multiply = (
-                    1.0 if not self.bonus else (1.0 if self.chance <= 25 else 0.8)
-                )
-                mission_payout = round(self.payout * multiply)
-            else:
-                # Lost Ship, pay Insurance if no Event
-                mission_payout = 0 if self.events else -self.insurance
+        ``interaction`` is the button click, or the command context when the
+        buttons timed out. Returns True once the mission is dealt with.
+        """
+        clicked = isinstance(interaction, discord.Interaction)
+        ship = self.mission_account.ship
 
-            # Felder generieren und zum Embed hinzufügen
-            for name, value in await self.generate_embed_fields(mission_payout):
-                em.add_field(name=name, value=value, inline=False)
-
-            # Prepare Payout for previous Mission
-            if self.payout is not None:
-                self.mission_account.user.bank_account.wallet += mission_payout
-
-            # Calculate Payout
-            earning = random.randrange(10, 30)
-            payout_bonus = self.mission_account.ship.payout_bonus
-            payout = earning + payout_bonus
-            # Calculate Success Chance
-            random_chance = random.randint(1, 30)
-            ship_success_bonus = self.mission_account.ship.success_bonus
-            success_chance = random_chance + ship_success_bonus
-            # Update Mission Account
-            self.mission_account.salary = payout
-            self.mission_account.chance = success_chance
-            self.mission_account.cooldown = timezone.now()
-            self.mission_account.active = True
-
-            def save_transaction():
-                with transaction.atomic():
-                    self.mission_account.save()
-                    self.mission_account.user.bank_account.save()
-
-            await sync_to_async(save_transaction)()
-        else:
-            em = discord.Embed(
-                title=":x: Mission Canceled",
-                color=discord.Color.red(),
-                description=f"{self.ctx.author.mention}, You don't have an active mission.",
-            )
+        # The outcome is decided once; booking and report both follow it.
+        outcome = missions.resolve(
+            roll=random.randint(1, 100),
+            chance=self.chance,
+            payout=self.payout,
+            insurance=self.insurance,
+            attack=self.bonus,
+            bonus_amount=random.randrange(50, 100),
+            event=self.event.active,
+            event_factor=self.event.factor,
+        )
+        # The next mission starts right away
+        next_salary = random.randrange(10, 30) + ship.payout_bonus
+        next_chance = random.randint(1, 30) + ship.success_bonus
 
         try:
-            if isinstance(interaction, discord.Interaction):
+            applied = await missions.settle(
+                self.ctx.guild.id,
+                self.ctx.author.id,
+                self.ctx.author.display_name,
+                self.kind,
+                self.started_at,
+                payout=outcome.payout,
+                next_salary=next_salary,
+                next_chance=next_chance,
+            )
+        except AlreadySettled as error:
+            self.finish = True
+            if clicked:
+                await interaction.response.send_message(error.message, ephemeral=True)
+            return True
+        self.finish = True
+
+        em = discord.Embed(title="", color=discord.Color.teal(), description="")
+        if self.modus == "mining":
+            em.set_thumbnail(
+                url="https://hell-rider.de/static/images/discord/evewin.gif"
+            )
+        elif self.modus == "raiding":
+            em.set_thumbnail(
+                url="https://hell-rider.de/static/images/discord/raidwin.gif"
+            )
+        for name, value in await self.generate_embed_fields(outcome, applied):
+            em.add_field(name=name, value=value, inline=False)
+
+        try:
+            if clicked:
                 await interaction.response.send_message(embed=em)
             else:
                 await interaction.send(embed=em)
         # pylint: disable=broad-except
         except Exception as e:
-            self.bot.logger.error(
-                f"Fehler bei Mission Trigger Interaction {e}", exc_info=True
+            self.ctx.bot.logger.error(
+                f"Error in mission trigger interaction {e}", exc_info=True
             )
-            return False
         return True
 
     def add_button(self, label, custom_id, style, disabled, row):
@@ -200,7 +175,6 @@ class MissionEvent(discord.ui.View):
                 if await self.mission_trigger(interaction):
                     self.disable_all_items()
                     await interaction.message.edit(view=self)
-                    self.finish = True
                 return
 
             try:
@@ -209,6 +183,8 @@ class MissionEvent(discord.ui.View):
                         ctx=self.ctx,
                         components=self.components,
                         mission_account=self.mission_account,
+                        kind=self.kind,
+                        event=self.event,
                     )
                 )
             # pylint: disable=broad-exception-caught
@@ -218,9 +194,11 @@ class MissionEvent(discord.ui.View):
         button.callback = button_callback
         self.add_item(button)
 
-    async def generate_embed_fields(self, mission_payout):
+    async def generate_embed_fields(self, outcome: missions.Outcome, applied: int):
+        """Tell the story of the mission. ``applied`` is what was actually booked."""
         fields = []
-        if random.randint(1, 100) <= self.chance:
+        mission_payout = outcome.payout
+        if outcome.success:
             if self.bonus and self.chance <= 25:
                 fields.append(
                     (
@@ -228,11 +206,11 @@ class MissionEvent(discord.ui.View):
                         f":rocket: {self.username}, 🌟**BONUS**🌟\n{self.mission_account.get_attack_story()}",
                     )
                 )
-            if self.events:
+            if self.event.active:
                 fields.append(
                     (
                         "",
-                        f"🎉**EVENT DAY**🎉\n You get an additional **`{self.difference_payout}`**:coin:",
+                        f"🎉**EVENT DAY**🎉\n You get an additional **`{outcome.event_extra}`**:coin:",
                     )
                 )
             if self.cyno:
@@ -279,7 +257,7 @@ class MissionEvent(discord.ui.View):
                         f":rocket: {self.username}, \n{self.mission_account.get_attack_story(failure=True)}",
                     )
                 )
-            if self.events:
+            if self.event.active:
                 fields.append(
                     (
                         "",
@@ -290,7 +268,7 @@ class MissionEvent(discord.ui.View):
                 fields.append(
                     (
                         "",
-                        f":rocket: {self.username}, \nYou wake up in {system} and fit a new ship, having paid {abs(mission_payout)} :coin: for insurance!",
+                        f":rocket: {self.username}, \nYou wake up in {system} and fit a new ship, having paid {abs(applied)} :coin: for insurance!",
                     )
                 )
         return fields

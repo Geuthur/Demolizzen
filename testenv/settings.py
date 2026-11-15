@@ -10,16 +10,21 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SECRET_KEY = config.SECRET_KEY
 DEBUG = True
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["testserver"]
 
 INSTALLED_APPS = [
     "esi",
     "demolizzen",
 ]
 
-# Use the USE_MYSQL environment variable to select the database backend (MySQL or Memcached).
-# NOTE: On Windows, set this variable in the system/user environment variables.
-if os.environ.get("USE_MYSQL", True) is True:
+
+def use_mysql(value: str | None) -> bool:
+    """Return True when the USE_MYSQL environment value asks for MySQL."""
+    return (value or "").strip().lower() in ("1", "true", "yes")
+
+
+# Tests run on in-memory SQLite by default. Set USE_MYSQL=1 (tox and CI do) to run against MySQL.
+if use_mysql(os.environ.get("USE_MYSQL")):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
@@ -46,3 +51,12 @@ USE_TZ = True
 # Custom User Model
 AUTH_USER_MODEL = "demolizzen.UserProfile"
 ESI_USER_CONTACT_EMAIL = config.ESI_USER_CONTACT_EMAIL
+
+# Demolizzen
+# The web panel shares these settings; its tests run with the rest of the suite.
+from demolizzen.web.base_settings import *  # noqa: E402, F403  pylint: disable=wildcard-import,unused-wildcard-import,wrong-import-position
+
+SECRET_KEY = SECRET_KEY or "only-for-tests"
+DISCORD_CLIENT_ID = "123"
+DISCORD_CLIENT_SECRET = "secret"
+WEB_BASE_URL = "https://panel.example"

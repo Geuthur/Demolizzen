@@ -1,6 +1,5 @@
 # Django
 from django.db import models
-from django.utils import timezone
 
 
 class GuildProfile(models.Model):
@@ -55,7 +54,10 @@ class GuildBankSettings(models.Model):
     )
     allow_deposits = models.BooleanField(default=True, help_text="Allow deposits")
     allow_withdrawals = models.BooleanField(default=True, help_text="Allow withdrawals")
-    interest_rate = models.FloatField(default=0.001, help_text="Daily interest rate")
+    interest_rate = models.FloatField(
+        default=0.001,
+        help_text="Interest per week as a fraction of the bank balance (0.001 = 0.1%)",
+    )
     last_interest_update = models.DateTimeField(
         null=True, help_text="Timestamp of the last interest update"
     )
@@ -66,6 +68,25 @@ class GuildBankSettings(models.Model):
 
     def __str__(self):
         return f"Bank Settings for {self.guild}"
+
+
+class GuildEconomySettings(models.Model):
+    guild = models.OneToOneField(
+        GuildProfile, on_delete=models.CASCADE, related_name="economy_settings"
+    )
+    event_active = models.BooleanField(
+        default=False, help_text="Whether the payout event is running"
+    )
+    event_factor = models.PositiveSmallIntegerField(
+        default=2, help_text="Payouts are multiplied by this during the event"
+    )
+
+    class Meta:
+        db_table = "guild_economy_settings"
+        default_permissions = ()
+
+    def __str__(self):
+        return f"Economy Settings for {self.guild}"
 
 
 class GuildTicket(models.Model):
@@ -81,6 +102,12 @@ class GuildTicket(models.Model):
     is_closed = models.BooleanField(default=False)
     is_archived = models.BooleanField(default=False)
     claimed_by = models.BigIntegerField(null=True, blank=True)
+    subject = models.CharField(
+        max_length=100, blank=True, default="", help_text="What the ticket is about"
+    )
+    control_message_id = models.BigIntegerField(
+        null=True, blank=True, help_text="ID of the message that shows the status"
+    )
 
     class Meta:
         db_table = "guild_tickets"
@@ -119,6 +146,13 @@ class GuildTicketSettings(models.Model):
     allow_user_reopen = models.BooleanField(
         default=True, help_text="Whether users can reopen their closed tickets"
     )
+    log_channel_id = models.PositiveBigIntegerField(
+        null=True,
+        help_text="ID of the channel that receives transcripts of deleted tickets",
+    )
+    max_open_tickets = models.PositiveSmallIntegerField(
+        default=1, help_text="Number of tickets a member may have open at once"
+    )
 
     class Meta:
         db_table = "guild_ticket_settings"
@@ -126,40 +160,3 @@ class GuildTicketSettings(models.Model):
 
     def __str__(self):
         return f"Ticket Settings for {self.guild}"
-
-
-class GuildTicketTask(models.Model):
-    task_id = models.AutoField(primary_key=True)
-    ticket = models.OneToOneField(
-        GuildTicket, on_delete=models.CASCADE, related_name="tasks"
-    )
-    channel_name = models.CharField(
-        max_length=255, null=True, help_text="Name of the channel for the ticket"
-    )
-    topic = models.TextField(null=True, help_text="Topic of the ticket")
-    is_queued = models.BooleanField(
-        default=False, help_text="Whether the task is queued for processing"
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True, help_text="Timestamp when the task was created"
-    )
-    completed_at = models.DateTimeField(
-        null=True, blank=True, help_text="Timestamp when the task was completed"
-    )
-    has_error = models.BooleanField(
-        default=False,
-        help_text="Whether the task encountered an error during processing",
-    )
-
-    class Meta:
-        db_table = "guild_ticket_tasks"
-        default_permissions = ()
-
-    @property
-    def is_outdated(self):
-        if self.completed_at:
-            return False
-        return timezone.now() > self.created_at + timezone.timedelta(minutes=10)
-
-    def __str__(self):
-        return f"Task {self.task_id} for {self.ticket}"

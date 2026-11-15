@@ -1,0 +1,88 @@
+{% extends "web/settings_base.html" %}
+{% block form %}
+<h2>Subscriptions</h2>
+<p class="small">Each one sends the killmails of one alliance, corporation, character, region or system to a channel. A change reaches the bot within a minute.</p>
+{% if values.subscriptions %}
+<div class="feeds">
+  {% for sub in values.subscriptions %}
+  <form class="settings feed" method="post" action="{% url 'module_settings' guild.id page.key %}">
+    {% csrf_token %}
+    <input type="hidden" name="subscription" value="{{ sub.id }}">
+    <div class="follows{% if sub.logo %} with-logo{% endif %}">
+      {% if sub.logo %}<img class="logo" src="{{ sub.logo }}" alt="" width="56" height="56" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+      <p>
+        <span class="label">{{ sub.kind|default:"Follows" }}</span>
+        <span class="target">{{ sub.name|default:sub.follows }}</span>
+        {% if sub.name %}<span class="label">Id {{ sub.follows }}</span>{% endif %}
+      </p>
+    </div>
+    {% if not sub.matched %}<p class="help caution">Killmails never match this kind of id. Follow an alliance, corporation, character, region or system instead.</p>{% endif %}
+    {% if sub.channels %}
+    <label class="field">
+      <span class="label">Channel</span>
+      <select name="channel">
+        {% for option in sub.channels %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% else %}
+    <p class="field"><span class="label">Channel</span> <span>Channel {{ sub.channel_id }}</span></p>
+    {% endif %}
+    <label class="field">
+      <span class="label">ISK threshold</span>
+      <input type="text" name="threshold" value="{{ sub.threshold }}" inputmode="numeric" pattern="[0-9]*" maxlength="16" autocomplete="off">
+      <span class="help">Killmails worth less are not posted.</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="losses"{% if sub.losses %} checked{% endif %}>
+      <span>Post losses too</span>
+    </label>
+    <div class="choice">
+      <button type="submit" name="action" value="update">{% icon "check2" %} Save</button>
+      <details class="remove">
+        <summary>{% icon "trash3" %} Remove</summary>
+        <button type="submit" name="action" value="remove" class="danger">{% icon "trash3" %} Remove this subscription</button>
+      </details>
+    </div>
+  </form>
+  {% endfor %}
+</div>
+{% else %}
+<p class="notice">{% icon "info-circle" %} <span>No channel receives killmails yet.</span></p>
+{% endif %}
+
+<h2>Add a subscription</h2>
+{% if values.has_directory %}
+<form class="settings" method="post" action="{% url 'module_settings' guild.id page.key %}">
+  {% csrf_token %}
+  <label class="field">
+    <span class="label">Id to follow</span>
+    <input type="text" name="group" inputmode="numeric" pattern="[0-9]+" maxlength="12" required autocomplete="off">
+    <span class="help">The number from the zKillboard address of an alliance, corporation, character, region or system.</span>
+  </label>
+  <label class="field">
+    <span class="label">Channel</span>
+    <select name="channel" required>
+      <option value="">Choose a channel</option>
+      {% for channel in values.channels %}<option value="{{ channel.id }}">{{ channel.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="label">ISK threshold</span>
+    <input type="text" name="threshold" inputmode="numeric" pattern="[0-9]*" maxlength="16" autocomplete="off">
+    <span class="help">Killmails worth less are not posted. Leave empty to post every one.</span>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="losses">
+    <span>Post losses too</span>
+  </label>
+  <div class="choice">
+    <button type="submit" name="action" value="add">{% icon "plus-lg" %} Add subscription</button>
+  </div>
+</form>
+{% else %}
+<p class="small">Nothing can be added while the channels of this server cannot be loaded.</p>
+{% endif %}
+<p class="crumb back"><a href="{% url 'guild' guild.id %}">{% icon "arrow-left" %} Back to the modules</a></p>
+{% endblock %}

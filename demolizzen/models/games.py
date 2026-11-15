@@ -51,8 +51,8 @@ class UserWorkMission(models.Model):
         self, escalation_chance=0.2
     ) -> tuple[str, str | None, str]:
         """
-        Gibt ein passendes Triple (work_text, escalation_text, work_ending_text) zurück.
-        escalation_text ist entweder None oder ein passender Text, je nach Zufall.
+        Return a matching triple (work_text, escalation_text, work_ending_text).
+        escalation_text is either None or a matching text, decided by chance.
         """
         pairs = [
             (

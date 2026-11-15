@@ -20,13 +20,20 @@ DATABASE_PORT = os.getenv("DATABASE_PORT")
 DATABASE_USER = os.getenv("DATABASE_USER")
 DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD")
 DATABASE_NAME = os.getenv("DATABASE_NAME")
+# Encryption of the database connection: REQUIRED, VERIFY_CA or VERIFY_IDENTITY,
+# and the certificate authority file the server's certificate is checked against.
+DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE")
+DATABASE_SSL_CA = os.getenv("DATABASE_SSL_CA")
 
-DATABASE_HOST_WEBSITE = os.getenv("DATABASE_HOST_WEBSITE")
-DATABASE_USER_WEBSITE = os.getenv("DATABASE_USER_WEBSITE")
-DATABASE_PASSWORD_WEBSITE = os.getenv("DATABASE_PASSWORD_WEBSITE")
-DATABASE_NAME_WEBSITE = os.getenv("DATABASE_NAME_WEBSITE")
 
 ESI_USER_CONTACT_EMAIL = os.getenv("ESI_USER_CONTACT_EMAIL")
+
+# Web panel: the Discord application members sign in with, and where the panel is reached.
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+WEB_BASE_URL = os.getenv("WEB_BASE_URL")
+WEB_ALLOWED_HOSTS = os.getenv("WEB_ALLOWED_HOSTS")
+WEB_DEBUG = os.getenv("WEB_DEBUG")
 
 SETTINGS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SETTINGS_DIR)
@@ -40,7 +47,12 @@ MODERATOR_ROLE_NAME = "Moderator"
 # https://discordapi.com/permissions.html
 BOT_PERMISSIONS = 405807557744
 
-EVENTS_SERVER = {}
+# Shorter cooldowns for test accounts: guild id -> member id -> seconds.
+_TEST_ACCOUNTS = (784546720935182357, 240850566002114561)
+COOLDOWN_OVERRIDES = {
+    518052275076464640: dict.fromkeys(_TEST_ACCOUNTS, 10),
+    337275567487320064: dict.fromkeys(_TEST_ACCOUNTS, 10),
+}
 
 # load extensions on start/restart
 PRELOAD_EXTENSIONS = [
@@ -48,6 +60,7 @@ PRELOAD_EXTENSIONS = [
     "owner",  # Owner Module
     "admin",  # Administration Module
     "guild",  # Guild Management Module
+    "panel",  # Server Panel - per guild module switch
     "general",  # General Module
     "commands",  # Standard Commands
     "levelsystem",  # Level System Module
@@ -62,7 +75,6 @@ PRELOAD_EXTENSIONS = [
     # "automod",                                 # Automod Module
     # "token",                                   # Must be activated if Modules are enabled in this section
     # "vow"                                      # Voices of War Module
-    "test",  # Testing Module
 ]
 
 # ESI API - Here you need to setup your Application

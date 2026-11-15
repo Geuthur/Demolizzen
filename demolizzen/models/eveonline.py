@@ -1,6 +1,5 @@
 # Django
 from django.db import models
-from django.utils.translation import gettext_lazy as _
 
 # Demolizzen
 from demolizzen.models.guild import GuildProfile
@@ -52,37 +51,24 @@ class EveEntityCache(models.Model):
         default_permissions = ()
 
 
-class EveEntityTask(models.Model):
-    task_id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=255, null=True)
-    entity_id = models.IntegerField()
-    category = models.CharField(max_length=64)
-    retry_count = models.IntegerField(default=0)
-    last_attempt = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "eve_entity_tasks"
-        default_permissions = ()
-
-
 class EvePricecache(models.Model):
-    class TradehubChoices(models.TextChoices):
-        JITA = "Jita IV - Moon 4 - Caldari Navy Assembly Plant", _("Jita")
-        AMARR = "Amarr VIII (Oris) - Emperor Family Academy", _("Amarr")
-        RENS = "Rens VI - Moon 8 - Brutor Tribe Treasury", _("Rens")
-        DODIXIE = "Dodixie IX - Moon 20 - Federation Navy Assembly Plant", _("Dodixie")
-        HEK = "Hek VIII - Moon 12 - Boundless Creation Factory", _("Hek")
-        ALLIANCE = "Alliance Tournament", _("Alliance Tournament")
+    """A market price of an item in one trade hub, kept until ``expiration``."""
 
-    item_name = models.CharField(max_length=255, primary_key=True)
+    item_name = models.CharField(max_length=255)
+    # Key of the trade hub as the price service knows it, e.g. "jita".
+    tradehub = models.CharField(max_length=32)
     price = models.BigIntegerField()
     buy = models.BigIntegerField()
-    tradehub = models.CharField(max_length=255, choices=TradehubChoices.choices)
     expiration = models.DateTimeField()
 
     class Meta:
         db_table = "eve_price_cache"
         default_permissions = ()
+        constraints = [
+            models.UniqueConstraint(
+                fields=["item_name", "tradehub"], name="eve_price_cache_item_hub"
+            )
+        ]
 
 
 class InvTypes(models.Model):

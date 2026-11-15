@@ -1,0 +1,67 @@
+{% extends "web/settings_base.html" %}
+{% block fields %}
+  {% if not values.ready %}<p class="help">Members can open tickets once a ticket category and at least one staff role are set.</p>{% endif %}
+  {% if values.has_directory %}
+  <label class="field">
+    <span class="label">Ticket category</span>
+    <select name="category">
+      {% for option in values.categories %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <span class="help">New tickets are created as channels in this category.</span>
+  </label>
+  <label class="field">
+    <span class="label">Archive category</span>
+    <select name="archive_category">
+      {% for option in values.archive_categories %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <span class="help">Closed tickets move here after the archive time. Without one they stay where they are.</span>
+  </label>
+  <label class="field">
+    <span class="label">Log channel</span>
+    <select name="log_channel">
+      {% for option in values.log_channels %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <span class="help">Receives the transcript when a ticket is deleted.</span>
+  </label>
+  <fieldset class="field">
+    <legend class="label">Staff roles</legend>
+    <span class="help">Members with one of these roles see and handle all tickets.</span>
+    <div class="checks">
+      {% for role in values.roles %}
+      <label class="check plain">
+        <input type="checkbox" name="roles" value="{{ role.value }}"{% if role.checked %} checked{% endif %}>
+        <span>{{ role.label }}</span>
+      </label>
+      {% empty %}
+      <span class="help">This server has no roles yet.</span>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endif %}
+  <label class="check">
+    <input type="checkbox" name="allow_user_close"{% if values.allow_user_close %} checked{% endif %}>
+    <span>Members may close their own tickets</span>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="allow_user_reopen"{% if values.allow_user_reopen %} checked{% endif %}>
+    <span>Members may reopen their closed tickets</span>
+  </label>
+  <label class="field">
+    <span class="label">Archive closed tickets after</span>
+    <select name="auto_archive_days">
+      {% for option in values.archive_days %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.value }} day{{ option.value|pluralize }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="label">Open tickets per member</span>
+    <select name="max_open_tickets">
+      {% for option in values.open_tickets %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.value }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <p class="help">The button members open tickets with is posted from Discord with /panel.</p>
+{% endblock %}

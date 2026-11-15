@@ -4,27 +4,21 @@ from discord.ext import commands
 from discord.ext.pages import Paginator
 
 # Demolizzen
-from demolizzen import models
 from demolizzen.core.bot import Demolizzen
+from demolizzen.services import bank, shop
 from demolizzen.utils.functions import get_command_mention
+
+MAX_BAG_FIELDS = 25
 
 
 class CommandsBase:
     def __init__(self, bot: Demolizzen):
         self.bot = bot
 
-    async def get_richest_data(self, ctx: discord.ApplicationContext):
-        return [
-            account
-            async for account in models.UserBankAccount.objects.filter(
-                user__guild_id=ctx.guild.id
-            ).select_related("user")
-        ]
-
     @commands.slash_command(
-        name="spenden", contexts=[discord.InteractionContextType.guild]
+        name="donate", contexts=[discord.InteractionContextType.guild]
     )
-    async def spenden(self, ctx):
+    async def donate(self, ctx):
         """
         Support the Bot Programmer with a small donation
         """
@@ -36,26 +30,14 @@ class CommandsBase:
         """
         Show you items in the bag
         """
-        # Erstelle eine Embed-Nachricht, um die Items anzuzeigen
-        embed = discord.Embed(
-            title=f"{ctx.author.display_name}'s Bag", color=discord.Color.teal()
-        )
-        try:
-            bags: models.UserBag = ctx.user_profile.bags
-            user_bag = [item async for item in bags.items.all()]
-            for user_item in user_bag:
-                item_name = user_item.item_name
-                item_quantity = user_item.quantity
-
-                embed.add_field(
-                    name=item_name, value=f"Anzahl: {item_quantity}", inline=False
-                )
-        except (models.UserBagItems.DoesNotExist, models.UserBag.DoesNotExist):
+        items = await shop.get_bag(ctx.guild.id, ctx.author.id)
+        if not items:
             app_command = get_command_mention(
                 bot=self.bot,
                 cog="Shop",
                 slash_command="shop",
                 slash_command_group="buy",
+                guild_id=ctx.guild.id,
             )
             em = discord.Embed(
                 description=f"{ctx.author.mention}, Your Bag is empty... Buy something with {app_command}",
@@ -64,6 +46,16 @@ class CommandsBase:
             await ctx.respond(embed=em)
             return
 
+        embed = discord.Embed(
+            title=f"{ctx.author.display_name}'s Bag", color=discord.Color.teal()
+        )
+        # An embed holds 25 fields at most.
+        for item in items[:MAX_BAG_FIELDS]:
+            embed.add_field(
+                name=item.name, value=f"Quantity: {item.quantity}", inline=False
+            )
+        if len(items) > MAX_BAG_FIELDS:
+            embed.set_footer(text=f"… and {len(items) - MAX_BAG_FIELDS} more")
         await ctx.respond(embed=embed)
 
     class LeaderboardPaginator(Paginator):
@@ -81,10 +73,8 @@ class CommandsBase:
         """
         Get Information about the Richest Players
         """
-        # Fetch User Data
-        users = await self.get_richest_data(ctx)
-
-        if not users:
+        richest = await bank.richest(ctx.guild.id)
+        if not richest.top:
             await ctx.respond(
                 "No users found in the database. Please try again later.",
                 ephemeral=True,
@@ -92,30 +82,12 @@ class CommandsBase:
             )
             return
 
-        total = sum(user.wallet for user in users if hasattr(user, "wallet"))
         pages = []
-        description = ""
-
-        description += f":bank: Server Total :coin: {total}\n\n"
-
-        # Nur die Top 10 Spieler anzeigen
-        top_users = sorted(users, key=lambda x: x.wallet, reverse=True)[:10]
-
-        for number, user in enumerate(top_users, start=1):
-            name = user.user.user_name
-            wallet = user.wallet if hasattr(user, "wallet") else 0
-
-            if number == 1:
-                place_emoji = ":first_place:"
-                description += f"{place_emoji} {name.capitalize()} :coin: {wallet}\n"
-            elif number == 2:
-                place_emoji = ":second_place:"
-                description += f"{place_emoji} {name.capitalize()} :coin: {wallet}\n"
-            elif number == 3:
-                place_emoji = ":third_place:"
-                description += f"{place_emoji} {name.capitalize()} :coin: {wallet}\n"
-            else:
-                description += f"#{number} {name.capitalize()} :coin: {wallet}\n"
+        description = f":bank: Server Total :coin: {richest.total}\n\n"
+        medals = {1: ":first_place:", 2: ":second_place:", 3: ":third_place:"}
+        for number, (name, wallet) in enumerate(richest.top, start=1):
+            place = medals.get(number, f"#{number}")
+            description += f"{place} {name} :coin: {wallet}\n"
 
         embed = discord.Embed(
             title=f"{ctx.guild.name} Richest Players",

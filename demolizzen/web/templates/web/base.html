@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Demolizzen panel{% endblock %}</title>
+<link rel="stylesheet" href="{% url 'stylesheet' %}?v={{ stylesheet_version }}">
+</head>
+<body>
+<div class="shell{% if not user %} guest{% endif %}">
+  <header class="rail">
+    <a class="brand" href="{% url 'home' %}">{% icon "hexagon-half" %} Demolizzen <span>panel</span></a>
+    {% if servers %}
+    <nav aria-label="Servers">
+      <p class="rail-title">{% icon "hdd-rack" %} Servers</p>
+      <ul>
+        {% for server in servers %}
+        <li><a href="{% url 'guild' server.id %}"{% if server.current %} aria-current="page"{% endif %}>{{ server.name }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+    {% endif %}
+    {% if user %}
+    <form class="who" method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <span>{{ user.name }}</span>
+      <button class="quiet" type="submit">{% icon "box-arrow-right" %} Sign out</button>
+    </form>
+    {% endif %}
+  </header>
+  <main>
+{% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

@@ -1,16 +1,12 @@
+"""zKillboard feed: posts new killmails into the channels that subscribed to them."""
+
 # Standard Library
 import asyncio
-import json
 import logging
-from http import HTTPStatus
+import time
 
 # Third Party
-from aiohttp import (
-    ClientResponse,
-    ClientTimeout,
-    ServerConnectionError,
-    ServerTimeoutError,
-)
+from aiohttp import ClientTimeout
 
 # Discord
 import discord
@@ -19,49 +15,100 @@ from discord.commands import SlashCommandGroup
 from discord.ext import commands, tasks
 from discord.ui import View
 
-# Django
-from django.core.cache import cache
-
 # Demolizzen
-from demolizzen import USER_AGENT_TEXT, __title__, models
-from demolizzen.constants import (
-    PAGE_SIZE,
-    RETRY_DELAY,
-    ZKILLBOARD_R2Z2_SEQUENCE_URL,
-    ZKILLBOARD_R2Z2_URL,
-)
+from demolizzen import USER_AGENT_TEXT
+from demolizzen.constants import PAGE_SIZE
 from demolizzen.core import checks
 from demolizzen.core.bot import Demolizzen
+from demolizzen.core.cog import BaseCog
+from demolizzen.services import guilds, killmails
+from demolizzen.services.errors import GuildNotRegistered, KillmailError
+from demolizzen.services.killmails import SubscriptionRule
 
-from .killmailmanager import KillmailManager, Subscription
+from ._feed import KillmailFeed
+from .killmailmanager import KillmailManager
 
 REQUESTS_TIMEOUT = ClientTimeout(connect=5, total=30)
-USER_AGENT = {"User-Agent": f"{USER_AGENT_TEXT})"}
-MAIL_LOCK = asyncio.Lock()
+USER_AGENT = {"User-Agent": USER_AGENT_TEXT}
+PAUSED_NOTICE = (
+    "Killmail feed for <#{channel_id}> is paused: I cannot send messages there."
+)
 
 logger = logging.getLogger(__name__)
 
+# How often subscriptions changed outside the bot (the web panel) are read.
+WATCH_SECONDS = 60
 
-class MailProcessingError(Exception):
-    pass
+
+class _Pages(View):
+    """Back and Next buttons for a long subscription list."""
+
+    def __init__(self, pages: list[list[str]]):
+        super().__init__(timeout=60)
+        self.pages = pages
+        self.current = 0
+
+    def embed(self) -> discord.Embed:
+        title = "Killmail-Subscriptions"
+        if len(self.pages) > 1:
+            title += f" (Site {self.current + 1}/{len(self.pages)})"
+        return discord.Embed(
+            title=title,
+            description="\n".join(self.pages[self.current]),
+            color=discord.Color.green(),
+        )
+
+    async def _show(self, interaction: discord.Interaction, page: int):
+        if 0 <= page < len(self.pages):
+            self.current = page
+            await interaction.response.edit_message(embed=self.embed(), view=self)
+
+    @discord.ui.button(label="Back", style=discord.ButtonStyle.secondary)
+    async def back(self, __, interaction: discord.Interaction):
+        await self._show(interaction, self.current - 1)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
+    async def next(self, __, interaction: discord.Interaction):
+        await self._show(interaction, self.current + 1)
 
 
-class Killmail(commands.Cog):
+class Killmail(BaseCog):
     """
     Killboard Fetcher - Send new Killmails from zKill
     """
 
+    key = "killmail"
+
+    # Killmails that are looked up and posted at the same time. When all slots
+    # are taken the feed waits, so nothing piles up while ESI or Discord is slow.
+    MAX_DELIVERIES = 5
+    DELIVERY_TIMEOUT = 120
+    # A channel that refused a message although the permissions look right is
+    # not tried again for this many seconds.
+    RETRY_REFUSED_AFTER = 300
+    # Killmail ids remembered to recognise one the feed delivers twice.
+    REMEMBERED_KILLMAILS = 5000
+
     def __init__(self, bot: Demolizzen):
-        self.bot = bot
+        super().__init__(bot)
         self.title = "zKillboard"
         self.alias = "killmail"
-        # ZKB R2Z2 Tracking
-        self.subs: dict[int, Subscription] = {}
-        self.km_counter = 0
-        self.sequence_id = None
+        self.rules: dict[int, SubscriptionRule] = {}
+        self.feed = KillmailFeed(
+            lambda: getattr(self.bot, "session", None),
+            self.handle_killmail,
+            headers=USER_AGENT,
+            timeout=REQUESTS_TIMEOUT,
+        )
+        self._deliveries: set[asyncio.Task] = set()
+        self._slots = asyncio.Semaphore(self.MAX_DELIVERIES)
+        self._seen: dict[int, None] = {}
+        # Channels whose members were told that the feed is paused.
+        self._paused: set[int] = set()
+        self._retry_at: dict[int, float] = {}
         # Loops
-        self.cleanup_killmail_storage.start()
-        self.clean_subscriptions.start()
+        self.check_subscriptions.start()
+        self.watch_subscriptions.start()
         self.zkillboard_watcher.start()
 
     killmail = SlashCommandGroup(
@@ -72,296 +119,266 @@ class Killmail(commands.Cog):
     )
 
     def cog_unload(self):
-        self.cleanup_killmail_storage.cancel()
-        self.clean_subscriptions.cancel()
+        self.check_subscriptions.cancel()
+        self.watch_subscriptions.cancel()
         self.zkillboard_watcher.cancel()
+        for delivery in list(self._deliveries):
+            delivery.cancel()
 
+    # ------------------------------------------------------------------ upkeep
+
+    async def load_rules(self) -> None:
+        """Read all subscriptions from the database."""
+        self.rules = {rule.id: rule for rule in await killmails.load_rules()}
+
+    async def _forget_channel(self, channel_id: int) -> None:
+        """Remove the subscriptions of a channel that no longer exists."""
+        removed = await killmails.remove_for_channel(channel_id)
+        for subscription_id in removed:
+            self.rules.pop(subscription_id, None)
+        self._paused.discard(channel_id)
+        self._retry_at.pop(channel_id, None)
+        logger.info(
+            "Removed %s killmail subscriptions of deleted channel %s.",
+            len(removed),
+            channel_id,
+        )
+
+    def _channel_is_gone(self, rule: SubscriptionRule) -> bool:
+        """Whether the channel was deleted. A guild that is unreachable right
+        now says nothing about its channels."""
+        guild = self.bot.get_guild(rule.guild_id)
+        if guild is None or guild.unavailable:
+            return False
+        return self.bot.get_channel(rule.channel_id) is None
+
+    # Cleanup must run whether or not the guild had the module enabled.
     @commands.Cog.listener()
-    async def on_guild_leave(self, guild: discord.Guild):
+    async def on_guild_remove(self, guild: discord.Guild):
         """Remove all subscriptions for a guild when the bot leaves it."""
-        try:
-            subscriptions = [
-                s
-                async for s in models.ZKillboard.objects.filter(
-                    guild__guild_id=guild.id
-                )
-            ]
-            for sub in subscriptions:
-                await sub.adelete()
-                if sub.id in self.subs:
-                    del self.subs[sub.id]
-            logger.info(
-                f"Removed {len(subscriptions)} killmail subscriptions for guild {guild.name} ({guild.id}) on leave."
-            )
-        except Exception as e:
-            logger.error(
-                f"Error while removing killmail subscriptions for guild {guild.name} ({guild.id}) on leave: {e}"
-            )
-
-    @tasks.loop(minutes=360)
-    async def cleanup_killmail_storage(self):
-        """Clear the in-memory cache of sent killmails every 6 hours to prevent memory bloat."""
-        try:
-            Subscription.killmail_sent_per_channel.clear()
-        # pylint: disable=broad-except
-        except Exception as e:
-            logger.error(f"[Loop] Killmail Cleaner • {e}")
+        removed = await killmails.remove_for_guild(guild.id)
+        for subscription_id in removed:
+            self.rules.pop(subscription_id, None)
+        logger.info(
+            "Removed %s killmail subscriptions for guild %s on leave.",
+            len(removed),
+            guild.id,
+        )
 
     @tasks.loop(hours=23)
-    async def clean_subscriptions(self):
-        """Check if the channels for the subscriptions still exists."""
-        cached_ids = [sub.channel.id for sub in self.subs.values()]
-        killmail_subs = [
-            s
-            async for s in models.ZKillboard.objects.select_related(
-                "guild", "owner"
-            ).all()
-        ]
-        existing_ids = [sub.channel_id for sub in killmail_subs]
-
-        # Remove subscriptions from memory that no longer exist in the database
-        for cid in cached_ids:
-            if cid not in existing_ids:
-                rm_ids = [
-                    sub_id for sub_id, sub in self.subs.items() if sub.channel.id == cid
-                ]
-                for rm_id in rm_ids:
-                    logger.info(f"Removing stale subscription {rm_id} from memory.")
-                    del self.subs[rm_id]
-
-        if killmail_subs:
-            for subscription in killmail_subs:
-                channel = self.bot.get_channel(subscription.channel_id)
-                if not channel:
-                    await self.remove_bad_channel(subscription)
-                    continue
-
-    @clean_subscriptions.before_loop
-    async def before_clean_subscriptions(self):
-        await self.bot.wait_until_ready()
-        logger.info("Killmail Subs Checker Ready")
-
-    @cleanup_killmail_storage.before_loop
-    async def before_cleanup_killmail_storage(self):
-        await self.bot.wait_until_ready()
-        logger.info("Killmail Memory Cleaner Ready")
-
-    @tasks.loop(seconds=30, reconnect=True, overlap=False)
-    async def zkillboard_watcher(self):
-        """Watches the zKillboard R2Z2 endpoint for new killmails and processes them."""
+    async def check_subscriptions(self):
+        """Reload the subscriptions and drop those of deleted channels."""
         try:
-            await self.listen_for_mails()
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.exception(f"Error in zkillboard_watcher loop: {e}")
+            await self.load_rules()
+            gone = {
+                rule.channel_id
+                for rule in self.rules.values()
+                if self._channel_is_gone(rule)
+            }
+            for channel_id in gone:
+                await self._forget_channel(channel_id)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Killmail subscription check failed")
+
+    @check_subscriptions.before_loop
+    async def before_check_subscriptions(self):
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(seconds=WATCH_SECONDS)
+    async def watch_subscriptions(self):
+        """Follow subscriptions changed outside the bot.
+
+        The web panel runs in another process and only writes to the database.
+        """
+        try:
+            await self.load_rules()
+        except Exception:  # pylint: disable=broad-exception-caught
+            # The subscriptions known so far stay in use.
+            logger.exception("Reading the killmail subscriptions failed")
+
+    @watch_subscriptions.before_loop
+    async def before_watch_subscriptions(self):
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(seconds=KillmailFeed.SUCCESS_DELAY)
+    async def zkillboard_watcher(self):
+        """Fetch the next killmail and wait as long as the feed asks for."""
+        await asyncio.sleep(await self.feed.step())
 
     @zkillboard_watcher.before_loop
     async def before_zkillboard_watcher(self):
         await self.bot.wait_until_ready()
-
-        killmail_subs = [s async for s in models.ZKillboard.objects.all()]
-        for subscription in killmail_subs:
-            channel = self.bot.get_channel(subscription.channel_id)
-            if not channel:
-                await self.remove_bad_channel(subscription)
-                continue
-
-            sub = Subscription(
-                subscription.pk,
-                channel,
-                subscription.threshold,
-                subscription.losses,
-                subscription.group_id,
-            )
-            self.subs[sub.id] = sub
+        try:
+            await self.load_rules()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Killmail subscriptions could not be loaded")
         logger.info("ZKillboard Watcher Ready")
 
-    @zkillboard_watcher.error
-    async def zkillboard_watcher_error(self, error):
-        logger.error(f"Error in zkillboard_watcher loop: {error}")
-        self.sequence_id = (
-            None  # Reset sequence ID to fetch a new one on next loop iteration
-        )
+    # ---------------------------------------------------------------- delivery
 
-    @staticmethod
-    async def _wait_for_free_slot():
-        """Waits for a free slot in the killmail processing to respect rate limits before making a new request."""
-        retry_after = cache.get(f"{__title__.upper()}_RETRY_AT")
-        if retry_after is not None:
-            logger.debug(
-                f"Waiting for {retry_after:.2f} seconds before retrying killmail fetch due to previous rate limit."
-            )
-            await asyncio.sleep(retry_after)
-        await asyncio.sleep(0)  # No wait needed, return immediately
-
-    @staticmethod
-    def _too_many_requests_delay(response: ClientResponse) -> bool:
-        """
-        Handles HTTP 429 Too Many Requests responses from ZKB.
-        If the response includes a 'Retry-After' header, sets a delay in the cache and returns True to indicate the operation should be retried later.
-        If the header is missing, uses a default delay value.
-        Returns False if the response status is not 429, indicating the operation can continue.
-        """
-        if response.status == HTTPStatus.TOO_MANY_REQUESTS:
-            try:
-                wait_time = int(response.headers.get("Retry-After", RETRY_DELAY))
-                logger.debug(
-                    "Received 429 Too Many Requests. Retrying after %s seconds.",
-                    wait_time,
-                )
-            except (TypeError, ValueError):
-                logger.debug(
-                    "Received 429 Too Many Requests without Retry-After header. Waiting default %s seconds.",
-                    RETRY_DELAY,
-                )
-                wait_time = RETRY_DELAY
-            # Set the retry after time in cache
-            cache.set(
-                key=f"{__title__.upper()}_RETRY_AT",
-                value=wait_time,
-                timeout=wait_time + 60,
-            )
-            return True
-        return False
-
-    async def listen_for_mails(self):
-        """Continuously listens for new killmails from the ZKB R2Z2 endpoint and processes them."""
-        logger.debug("Listening for killmails.")
-        await self._wait_for_free_slot()  # Ensure we respect any existing rate limit before starting
-        self.sequence_id = await self.get_sequence_from_r2z2()
-
-        if not self.sequence_id:
-            logger.debug("No Sequence ID received from zKB R2Z2.")
-            return
-
-        while True:
-            try:
-                await asyncio.sleep(0.2)  # Small delay to avoid rate limiting
-                result = await self.create_zkb_from_sequence(
-                    sequence_id=self.sequence_id
-                )
-                if result == 0:
-                    logger.debug("No new killmails. Pausing for 10 seconds.")
-                    logger.debug(f"Killmails Processed: {self.km_counter:,}")
-                    self.km_counter = 0
-                    await asyncio.sleep(10)
-            except (json.JSONDecodeError, KeyError):
-                logger.exception("Killmail data was badly formed.")
-            except MailProcessingError as e:
-                logger.exception(f"Killmail Error: {e}")
-
-    def process_mail(self, killmail_data):
-        killmail = KillmailManager._create_from_zkb(
-            zkb_package=killmail_data, bot=self.bot
-        )
-        if killmail and killmail.zkb.is_npc:
-            return
-        if killmail:
-            asyncio.gather(*[sub.mail(killmail) for sub in self.subs.values()])
-
-    async def get_sequence_from_r2z2(self) -> int | None:
-        """Fetches and returns a sequence ID from ZKB R2Z2 endpoint.
-
-        Returns None if no sequence is received.
-        """
-        await asyncio.sleep(delay=0.5)
-        logger.debug("Trying to fetch sequence from ZKB R2Z2...")
-        try:
-            async with self.bot.session.get(
-                ZKILLBOARD_R2Z2_SEQUENCE_URL,
-                headers=USER_AGENT,
-                timeout=REQUESTS_TIMEOUT,
-            ) as response:
-                data = await response.json()
-
-                if self._too_many_requests_delay(response=response):
-                    return None
-
-                if data and "sequence" in data:
-                    sequence_id = data["sequence"]
-                    logger.debug("Received sequence from ZKB R2Z2: %s", sequence_id)
-                    return sequence_id
-        except ServerTimeoutError:
-            logger.warning("Timeout while fetching sequence from ZKB R2Z2.")
-        except ServerConnectionError:
-            logger.error("Connection error while fetching sequence from ZKB R2Z2.")
-        except Exception as exc:
-            logger.error(f"Error while fetching sequence from ZKB R2Z2: {exc}")
-            return None
-        logger.debug("No sequence received from ZKB R2Z2.")
-        return None
-
-    async def create_zkb_from_sequence(self, sequence_id: int):
-        if MAIL_LOCK.locked():
-            logger.debug("Killmail: Lock is active, skipping get_new_mail call.")
-            return None
-
-        async def request_with_lock():
-            async with MAIL_LOCK:
-                try:
-                    async with self.bot.session.get(
-                        ZKILLBOARD_R2Z2_URL + str(sequence_id) + ".json",
-                        timeout=REQUESTS_TIMEOUT,
-                        headers=USER_AGENT,
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            if data and "killmail_id" in data:
-                                self.process_mail(data)
-                                self.km_counter += 1
-                                self.sequence_id += 1
-                            return 200
-
-                        if response.status == HTTPStatus.NOT_FOUND:
-                            logger.debug(
-                                f"No new Killmail with sequence ID {sequence_id} found."
-                            )
-                            return 0
-
-                        if response.status in [
-                            HTTPStatus.GATEWAY_TIMEOUT,
-                            HTTPStatus.SERVICE_UNAVAILABLE,
-                            HTTPStatus.BAD_GATEWAY,
-                            HTTPStatus.INTERNAL_SERVER_ERROR,
-                        ]:  # Server errors
-                            logger.info(
-                                f"Server error with status code {response.status} when fetching killmail with sequence ID {sequence_id}. Retrying after delay."
-                            )
-                            return 0
-
-                        if self._too_many_requests_delay(response=response):
-                            return 0
-
-                        logger.info(f"Unknown HTTP-Statuscode: {response.status}")
-                        return 0
-                except ServerTimeoutError:
-                    logger.warning("Timeout while fetching killmail from ZKB R2Z2.")
-                except ServerConnectionError:
-                    logger.error(
-                        "Connection error while fetching killmail from ZKB R2Z2."
-                    )
-                except Exception as exc:
-                    raise MailProcessingError from exc
-            return None
-
-        try:
-            return await asyncio.wait_for(request_with_lock(), timeout=30)
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Killmail: Anfrage hat den Lock-Timeout (30s) überschritten und wurde abgebrochen."
-            )
-            return None
-
-    async def remove_bad_channel(self, subscription: models.ZKillboard):
-        try:
-            zk_channel = await models.ZKillboard.objects.select_related(
-                "guild", "owner"
-            ).aget(id=subscription.id)
-        except models.ZKillboard.DoesNotExist:
-            logger.error(f"Failed to remove bad channel {subscription}")
+    def _is_new(self, killmail_id: int) -> bool:
+        if killmail_id in self._seen:
             return False
-        await zk_channel.adelete()
-        logger.info(f"Killmail - Bad Channel {zk_channel} removed successfully")
+        self._seen[killmail_id] = None
+        if len(self._seen) > self.REMEMBERED_KILLMAILS:
+            del self._seen[next(iter(self._seen))]
         return True
+
+    async def handle_killmail(self, data: dict) -> None:
+        """Check a killmail from the feed against all subscriptions and post it.
+
+        Nothing is looked up for a killmail that no channel asked for.
+        """
+        killmail = KillmailManager._create_from_zkb(zkb_package=data, bot=self.bot)
+        if killmail is None or killmail.zkb.is_npc or not self.rules:
+            return
+        if not self._is_new(killmail.id):
+            return
+        targets = await self._targets(killmail)
+        if not targets:
+            return
+
+        await self._slots.acquire()
+        delivery = asyncio.create_task(self._deliver(killmail, targets))
+        self._deliveries.add(delivery)
+        delivery.add_done_callback(self._deliveries.discard)
+
+    async def _targets(self, killmail: KillmailManager) -> dict[int, bool]:
+        """The channels that get the killmail, and whether it is a loss there."""
+        region_id = await self.bot.esi_data.get_region_id(killmail.solar_system_id)
+        facts = killmail.facts(region_id)
+        targets: dict[int, bool] = {}
+        enabled: dict[int, bool] = {}
+        for rule in list(self.rules.values()):
+            if not killmails.matches(rule, facts):
+                continue
+            if rule.guild_id not in enabled:
+                enabled[rule.guild_id] = await self.is_enabled(rule.guild_id)
+            if not enabled[rule.guild_id]:
+                continue
+            targets[rule.channel_id] = targets.get(
+                rule.channel_id, False
+            ) or killmails.is_loss(rule, facts)
+        return targets
+
+    async def _deliver(self, killmail: KillmailManager, targets: dict[int, bool]):
+        try:
+            await asyncio.wait_for(
+                self._post(killmail, targets), timeout=self.DELIVERY_TIMEOUT
+            )
+        except TimeoutError:
+            logger.warning(
+                "Killmail %s was not delivered within %s seconds.",
+                killmail.id,
+                self.DELIVERY_TIMEOUT,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Killmail %s could not be delivered.", killmail.id)
+        finally:
+            self._slots.release()
+
+    async def _post(self, killmail: KillmailManager, targets: dict[int, bool]):
+        channels = []
+        for channel_id, is_loss in targets.items():
+            channel = self.bot.get_channel(channel_id)
+            if channel is None:
+                # Deleted or not reachable right now; the daily check decides.
+                continue
+            if not self._can_send(channel):
+                await self._pause(channel)
+                continue
+            if time.monotonic() < self._retry_at.get(channel_id, 0):
+                continue
+            channels.append((channel, is_loss))
+        if not channels:
+            return
+
+        await killmail.enrich()
+        for channel, is_loss in channels:
+            await self._send(killmail, channel, is_loss)
+
+    async def _send(self, killmail: KillmailManager, channel, is_loss: bool):
+        try:
+            await channel.send(embed=killmail.build_embed(is_loss))
+        except discord.Forbidden:
+            self._retry_at[channel.id] = time.monotonic() + self.RETRY_REFUSED_AFTER
+            await self._pause(channel)
+        except discord.NotFound:
+            await self._forget_channel(channel.id)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Killmail %s could not be sent to channel %s.",
+                killmail.id,
+                channel.id,
+            )
+        else:
+            self._paused.discard(channel.id)
+            self._retry_at.pop(channel.id, None)
+
+    @staticmethod
+    def _can_send(channel, embeds: bool = True) -> bool:
+        me = channel.guild.me
+        if me is None:
+            return True
+        permissions = channel.permissions_for(me)
+        return bool(
+            permissions.view_channel
+            and permissions.send_messages
+            and (permissions.embed_links or not embeds)
+        )
+
+    async def _pause(self, channel) -> None:
+        """Stop posting into a channel the bot may not write to.
+
+        The subscription stays; the guild is told once. Posting resumes by
+        itself as soon as a message gets through again.
+        """
+        if channel.id in self._paused:
+            return
+        self._paused.add(channel.id)
+        logger.info(
+            "Killmail feed for channel %s in guild %s is paused: no permission.",
+            channel.id,
+            channel.guild.id,
+        )
+        try:
+            await self._notify_paused(channel)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Could not announce the paused killmail feed of channel %s.",
+                channel.id,
+            )
+
+    async def _notify_paused(self, channel) -> None:
+        guild = channel.guild
+        main_channel_id = await guilds.get_main_channel(guild.id)
+        candidates = (
+            self.bot.get_channel(main_channel_id) if main_channel_id else None,
+            guild.system_channel,
+        )
+        for candidate in candidates:
+            if candidate is None or candidate.id == channel.id:
+                continue
+            if not self._can_send(candidate, embeds=False):
+                continue
+            try:
+                await candidate.send(PAUSED_NOTICE.format(channel_id=channel.id))
+            except discord.HTTPException:
+                continue
+            return
+
+    # ---------------------------------------------------------------- commands
+
+    def _describe(self, rule: SubscriptionRule) -> str:
+        channel = self.bot.get_channel(rule.channel_id)
+        line = f"`{rule.id}`: {channel.mention if channel else 'None'} | Kills"
+        if rule.losses:
+            line += " and Losses"
+        if rule.threshold:
+            line += f" over `{rule.threshold:,}` ISK"
+        if rule.group_id:
+            line += f" | matching ID `{rule.group_id}`"
+        return line
 
     @killmail.command(name="subscription")
     @option(
@@ -370,152 +387,24 @@ class Killmail(commands.Cog):
         required=False,
     )
     async def subscription_killmail(
-        self, ctx: discord.ApplicationContext, channel: discord.TextChannel
+        self, ctx: discord.ApplicationContext, channel: discord.TextChannel = None
     ):
         """Show all killmail subscriptions of the guild, optional channel."""
-        try:
-            if channel is None:
-                subscription_obj = [
-                    s
-                    async for s in models.ZKillboard.objects.select_related(
-                        "guild"
-                    ).filter(guild__guild_id=ctx.guild.id)
-                ]
-            else:
-                subscription_obj = [
-                    s
-                    async for s in models.ZKillboard.objects.filter(
-                        channel_id=channel.id
-                    )
-                ]
-
-            if not subscription_obj:
-                await ctx.respond("No subscriptions found.", ephemeral=True)
-                return
-
-            # Prepare the subscriptions as text blocks
-            entries = []
-            for sub in subscription_obj:
-                # Channel-Name oder None
-                ch = self.bot.get_channel(sub.channel_id)
-                ch_name = ch.mention if ch else "None"
-                line = f"`{sub.pk}`: {ch_name} | Kills"
-                if sub.losses:
-                    line += " and Losses"
-                if sub.threshold:
-                    line += f" over `{sub.threshold:,}` ISK"
-                if sub.group_id and sub.group_id != 6:
-                    line += f" | matching ID `{sub.group_id}`"
-                entries.append(line)
-
-            pages = [
-                entries[i : i + PAGE_SIZE] for i in range(0, len(entries), PAGE_SIZE)
-            ]
-
-            if len(pages) == 1:
-                embed = discord.Embed(
-                    title="Killmail-Subscriptions",
-                    description="\n".join(pages[0]),
-                    color=discord.Color.green(),
-                )
-                await ctx.respond(embed=embed)
-            else:
-
-                class PaginatorView(View):
-                    def __init__(self, pages):
-                        super().__init__(timeout=60)
-                        self.pages = pages
-                        self.current = 0
-                        self.message = None
-
-                    async def update(self, interaction):
-                        embed = discord.Embed(
-                            title=f"Killmail-Subscriptions (Site {self.current + 1}/{len(self.pages)})",
-                            description="\n".join(self.pages[self.current]),
-                            color=discord.Color.green(),
-                        )
-                        await interaction.response.edit_message(embed=embed, view=self)
-
-                    @discord.ui.button(
-                        label="Back", style=discord.ButtonStyle.secondary
-                    )
-                    async def back(self, __, interaction):
-                        if self.current > 0:
-                            self.current -= 1
-                            await self.update(interaction)
-
-                    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
-                    async def next(self, __, interaction):
-                        if self.current < len(self.pages) - 1:
-                            self.current += 1
-                            await self.update(interaction)
-
-                view = PaginatorView(pages)
-                embed = discord.Embed(
-                    title=f"Killmail-Subscriptions (Site 1/{len(pages)})",
-                    description="\n".join(pages[0]),
-                    color=discord.Color.green(),
-                )
-                await ctx.respond(embed=embed, view=view)
-        except Exception as e:
-            logger.error(f"Error in subscription_killmail: {e}")
-            em = discord.Embed(
-                color=discord.Color.red(),
-                description="An error occurred while fetching subscriptions. Please try again later.",
-            )
-            await ctx.respond(embed=em, ephemeral=True)
+        rules = await killmails.rules_for_guild(ctx.guild.id)
+        if channel is not None:
+            rules = [rule for rule in rules if rule.channel_id == channel.id]
+        if not rules:
+            await ctx.respond("No subscriptions found.", ephemeral=True)
             return
 
-    async def add_sub(
-        self,
-        channel_id: int,
-        user_profile: models.UserProfile,
-        group_id: int = 6,
-        losses: bool = True,
-        threshold: int = None,
-    ) -> tuple[bool, bool]:
-        """Add a new killmail subscription to the database and memory."""
-        if threshold is None:
-            threshold = 1  # Default threshold if not provided
-
-        try:
-            guild_profile = await models.GuildProfile.objects.aget(
-                pk=user_profile.guild_id
-            )
-
-        except models.GuildProfile.DoesNotExist:
-            logger.error(f"GuildProfile not found for user {user_profile}")
-            return False, False
-
-        sub_obj, created = await models.ZKillboard.objects.aget_or_create(
-            channel_id=channel_id,
-            group_id=group_id,
-            owner=user_profile,
-            guild=guild_profile,
-            defaults={"losses": losses, "threshold": threshold},
+        entries = [self._describe(rule) for rule in rules]
+        view = _Pages(
+            [entries[i : i + PAGE_SIZE] for i in range(0, len(entries), PAGE_SIZE)]
         )
-
-        if sub_obj is None:
-            logger.debug(
-                f"Failed to add subscription for channel {channel_id} with group {group_id} and threshold {threshold}"
-            )
-            return False, created
-
-        if not created:
-            logger.debug(
-                f"Subscription already exists for channel {channel_id} with group {group_id} and threshold {threshold}"
-            )
-            return True, created
-
-        sub = Subscription(
-            sub_obj.pk,
-            self.bot.get_channel(channel_id),
-            threshold,
-            losses,
-            group_id,
-        )
-        self.subs[sub.id] = sub
-        return True, created
+        if len(view.pages) == 1:
+            await ctx.respond(embed=view.embed())
+        else:
+            await ctx.respond(embed=view.embed(), view=view)
 
     @killmail.command(name="add")
     @checks.is_guild_manager()
@@ -527,50 +416,42 @@ class Killmail(commands.Cog):
         description="Alliance ID, Corp ID, Region ID or System ID",
         required=True,
     )
-    @option("threshold", description="ISK threshold", required=False)
+    @option("threshold", description="ISK threshold", required=False, min_value=0)
     @option("include_losses", description="Bool: True or False", required=False)
     async def add_killmail(
         self,
         ctx: discord.ApplicationContext,
         channel: discord.TextChannel,
         match_id: int,
-        threshold: int,
+        threshold: int = None,
         include_losses: bool = False,
     ):
         """Add a new killmail subscription to a channel."""
-        losses = bool(include_losses)
-        try:
-            user_profile = await models.UserProfile.objects.aget(
-                user_id=ctx.author.id,
-                guild_id=ctx.guild.id,
-            )
-        except models.UserProfile.DoesNotExist:
-            return await ctx.respond(
-                "Failed to add killmail subscription.",
-                ephemeral=True,
-            )
-
-        # Check if I have permissions to send messages in the channel
-        bot_member = await ctx.guild.fetch_member(self.bot.user.id)
-        if not channel.permissions_for(bot_member).send_messages:
-            return await ctx.respond(
+        if not self._can_send(channel):
+            await ctx.respond(
                 f"Killmail subscriptions cannot be added to {channel.mention}, as I lack permission to send messages there.",
                 ephemeral=True,
             )
+            return
 
-        added, created = await self.add_sub(
-            channel_id=channel.id,
-            user_profile=user_profile,
-            group_id=match_id,
-            losses=losses,
-            threshold=threshold,
-        )
-
-        if not added:
+        try:
+            rule, created = await killmails.add_subscription(
+                ctx.guild.id,
+                ctx.author.id,
+                ctx.author.name,
+                channel.id,
+                match_id,
+                threshold=threshold,
+                losses=bool(include_losses),
+            )
+        except GuildNotRegistered:
             await ctx.respond(
                 "Failed to add killmail subscription, please try again later.",
                 ephemeral=True,
             )
+            return
+        except KillmailError as error:
+            await ctx.respond(error.message, ephemeral=True)
             return
 
         if not created:
@@ -579,6 +460,7 @@ class Killmail(commands.Cog):
                 ephemeral=True,
             )
             return
+        self.rules[rule.id] = rule
         await ctx.respond("Killmail subscription added!", ephemeral=True)
 
     @killmail.command(name="remove")
@@ -592,70 +474,32 @@ class Killmail(commands.Cog):
     async def remove_killmail(
         self,
         ctx: discord.ApplicationContext,
-        channel: discord.TextChannel,
+        channel: discord.TextChannel = None,
         sub_id: int = None,
     ):
         """Remove all killmail subscriptions for the channel or individually remove with subscription IDs."""
-        try:
-            if sub_id:
-                try:
-                    subscription = await models.ZKillboard.objects.select_related(
-                        "guild"
-                    ).aget(pk=sub_id)
-                except models.ZKillboard.DoesNotExist:
-                    await ctx.respond(
-                        f"ID {sub_id} does not match any of your killmail subscriptions.",
-                        ephemeral=True,
-                    )
-                    return
-
-                if subscription.guild.guild_id != ctx.guild.id:
-                    await ctx.respond(
-                        f"ID {sub_id} does not match any of your killmail subscriptions.",
-                        ephemeral=True,
-                    )
-                    return
-
-                await subscription.adelete()
-                del self.subs[sub_id]
+        if sub_id:
+            if not await killmails.remove_subscription(sub_id, ctx.guild.id):
                 await ctx.respond(
-                    f"Killmail `{sub_id}` has been removed.",
+                    f"ID {sub_id} does not match any of your killmail subscriptions.",
                     ephemeral=True,
                 )
-                return True
-
-            # If no Channel is provided, use the current channel
-            channel = channel or ctx.channel
-
-            # Remove all subscriptions for the channel
-            deleted = [
-                s async for s in models.ZKillboard.objects.filter(channel_id=channel.id)
-            ]
-            if not deleted:
-                await ctx.respond(
-                    f"No killmail subs for <#{channel.id}>.",
-                    ephemeral=True,
-                )
-                return False
-
-            for sub in deleted:
-                await sub.adelete()
-
-            rm_ids = [
-                sub.id for sub in self.subs.values() if sub.channel.id == channel.id
-            ]
-            for rm_id in rm_ids:
-                del self.subs[rm_id]
-
-            await ctx.respond(
-                f"All killmail subs removed for <#{channel.id}>.\nYou may encounter additional killmails in the message queue that have already been submitted and partially processed.",
-                ephemeral=True,
-            )
-        # pylint: disable=broad-except
-        except Exception as e:
-            logger.error(f"Error in remove_killmail: {e}")
-            await ctx.respond(
-                "An error occurred, please try again later.",
-                ephemeral=True,
-            )
+                return
+            self.rules.pop(sub_id, None)
+            await ctx.respond(f"Killmail `{sub_id}` has been removed.", ephemeral=True)
             return
+
+        # If no Channel is provided, use the current channel
+        channel = channel or ctx.channel
+        removed = await killmails.remove_for_channel(channel.id)
+        if not removed:
+            await ctx.respond(f"No killmail subs for <#{channel.id}>.", ephemeral=True)
+            return
+        for subscription_id in removed:
+            self.rules.pop(subscription_id, None)
+        self._paused.discard(channel.id)
+        self._retry_at.pop(channel.id, None)
+        await ctx.respond(
+            f"All killmail subs removed for <#{channel.id}>.\nYou may encounter additional killmails in the message queue that have already been submitted and partially processed.",
+            ephemeral=True,
+        )

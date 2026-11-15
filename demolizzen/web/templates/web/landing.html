@@ -1,0 +1,10 @@
+{% extends "web/base.html" %}
+{% block content %}
+<div class="welcome">
+  <h1>Manage Demolizzen on your servers</h1>
+  <p class="lead">Switch modules on and off and change their settings, for every server where you have the Manage Server permission.</p>
+  {% if notice %}<p class="notice">{% icon "exclamation-triangle-fill" %} <span>{{ notice }}</span></p>{% endif %}
+  <p><a class="button" href="{% url 'login' %}">{% icon "discord" %} Sign in with Discord</a></p>
+  <p class="small">Signing in tells the panel your Discord name and which servers you are on. Nothing else is read, and nothing is posted.</p>
+</div>
+{% endblock %}

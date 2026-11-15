@@ -1,4 +1,5 @@
 *.log
+*.log.*
 *.old
 __pycache__/
 

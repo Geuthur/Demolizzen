@@ -1,0 +1,665 @@
+/* Demolizzen panel.
+
+   The picture behind it is the fitting screen of a ship: a hull under a faint
+   survey grid, plating for panels, seams between them, and a rack of module
+   slots. Each slot has a socket with the module's icon, lit while the module
+   is on. Two kinds of light: the lamp (green) says "on", the beam (cyan) is
+   what you can press or have just focused.
+
+   One shape runs through everything that can be touched or read as a unit:
+   two opposite corners are cut wide, the other two stay sharp. */
+
+@font-face {
+  font-family: "Exo 2";
+  src: url("/exo2.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --deep: #0d121a;
+  --hull: #131a25;
+  --plating: #1b2432;
+  --raised: #243044;
+  --seam: #2e3c53;
+  --text: #e8eef7;
+  --muted: #94a4bb;
+  --beam: #5ad1ff;
+  --link: #7fdcff;
+  --lamp-on: #5fe3ae;
+  --lamp-off: #56617a;
+  --caution: #f0b651;
+  --alarm: #ff8f80;
+  --ink: #06131c;
+  --cut: 0.125rem 0.875rem;
+  --cut-small: 0.125rem 0.5rem;
+  --display: "Exo 2", system-ui, "Segoe UI", Roboto, sans-serif;
+  --body: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--hull);
+  /* The survey grid, and light falling in from the upper right. */
+  background-image:
+    radial-gradient(70rem 40rem at 88% -12%, rgb(90 209 255 / 0.11), transparent 62%),
+    linear-gradient(rgb(130 170 230 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(130 170 230 / 0.04) 1px, transparent 1px);
+  background-size: auto, 2.5rem 2.5rem, 2.5rem 2.5rem;
+  background-attachment: fixed;
+  color: var(--text);
+  font: 1rem/1.5 var(--body);
+}
+
+a { color: var(--link); }
+
+:focus-visible {
+  outline: 2px solid var(--beam);
+  outline-offset: 2px;
+}
+
+/* Icons take size and colour from the text they stand in. */
+.bi {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
+/* ---- Frame: a bar on top on small screens, a rail at the side on wide ones */
+
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--deep);
+  border-bottom: 1px solid var(--seam);
+}
+
+.rail nav { display: none; }
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  font: 700 1.125rem/1.2 var(--display);
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.brand .bi {
+  color: var(--beam);
+  font-size: 1.3rem;
+  filter: drop-shadow(0 0 0.4rem rgb(90 209 255 / 0.55));
+}
+
+.brand span { color: var(--muted); font-weight: 400; }
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+/* On a phone the bar has room for the brand and the way out, not the name. */
+@media (max-width: 30rem) {
+  .who > span { display: none; }
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 4rem;
+}
+
+@media (min-width: 60rem) {
+  .shell:not(.guest) {
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  .shell:not(.guest) .rail {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 2rem;
+    padding: 1.75rem 1.25rem 1.5rem;
+    border-bottom: 0;
+    border-right: 1px solid var(--seam);
+    /* A line of beam light runs down the rail's edge and fades out. */
+    box-shadow: inset -1px 0 0 rgb(90 209 255 / 0.12);
+  }
+
+  .shell:not(.guest) .rail nav { display: block; flex: 1; overflow-y: auto; }
+
+  .shell:not(.guest) .who {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--seam);
+  }
+
+  .shell:not(.guest) main {
+    max-width: 72rem;
+    margin: 0;
+    padding: 2.75rem 3rem 5rem;
+  }
+
+  .crumb:not(.always) { display: none; }
+}
+
+.rail-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font: 500 0.8125rem/1.3 var(--display);
+  letter-spacing: 0.06em;
+}
+
+.rail nav ul { margin: 0; padding: 0; list-style: none; }
+
+.rail nav a {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 0.5rem 0.125rem 0;
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail nav a:hover { background: var(--plating); }
+
+.rail nav a[aria-current="page"] {
+  border-left-color: var(--beam);
+  background: linear-gradient(90deg, rgb(90 209 255 / 0.16), transparent 85%);
+  font-weight: 600;
+}
+
+/* ---- Type */
+
+h1 {
+  margin: 0 0 0.5rem;
+  font: 650 1.75rem/1.15 var(--display);
+  letter-spacing: 0.02em;
+}
+
+/* A short stroke of beam light under the page's name. */
+h1::after {
+  content: "";
+  display: block;
+  width: 4rem;
+  height: 2px;
+  margin-top: 0.7rem;
+  background: linear-gradient(90deg, var(--beam), transparent);
+}
+
+h2 {
+  margin: 2.5rem 0 0.25rem;
+  font: 600 1.1875rem/1.3 var(--display);
+  letter-spacing: 0.02em;
+}
+
+/* A slanted tick leads every section, like the marks on the gauge. */
+h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.8em;
+  margin-right: 0.65rem;
+  background: var(--beam);
+  transform: skewX(-22deg);
+  vertical-align: -0.06em;
+}
+
+.lead { color: var(--muted); max-width: 38rem; }
+.small { margin-top: 0; color: var(--muted); font-size: 0.875rem; max-width: 38rem; }
+.crumb { margin: 0 0 0.75rem; font-size: 0.875rem; }
+.crumb a, .choice > a { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+/* The page's name with the module's socket in front of it. */
+.page-head { display: flex; align-items: flex-start; gap: 0.9rem; }
+.page-head .glyph { margin-top: 0.1rem; }
+
+@media (min-width: 60rem) {
+  h1 { font-size: 2.375rem; }
+  h2 { font-size: 1.3125rem; }
+  .page-head .glyph { width: 2.75rem; height: 2.75rem; font-size: 1.3rem; }
+}
+
+/* Pages for visitors who are not signed in: one calm column. */
+.welcome { padding-top: 8vh; }
+.welcome h1 { max-width: 16ch; font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.05; }
+.welcome .lead { margin: 1.25rem 0 1.75rem; font-size: 1.125rem; }
+.welcome .small { margin-top: 1.5rem; }
+
+/* ---- Notices */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  max-width: 38rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--seam);
+  border-left: 3px solid var(--caution);
+  border-radius: var(--cut-small);
+  background: var(--plating);
+}
+
+.notice > .bi { margin-top: 0.22rem; color: var(--caution); font-size: 1.05rem; }
+.notice.done { border-left-color: var(--lamp-on); }
+.notice.done > .bi { color: var(--lamp-on); }
+.notice.bad { border-left-color: var(--alarm); }
+.notice.bad > .bi { color: var(--alarm); }
+
+/* ---- Buttons: lit from within, cut at two corners */
+
+.button, button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.15rem;
+  border: 1px solid var(--beam);
+  border-radius: var(--cut);
+  background: linear-gradient(180deg, #86deff, var(--beam));
+  color: var(--ink);
+  font: 600 0.9375rem/1.3 var(--display);
+  letter-spacing: 0.035em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: box-shadow 0.15s, background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.button:hover, button:hover { box-shadow: 0 0 1.1rem rgb(90 209 255 / 0.5); }
+.button .bi, button .bi { font-size: 1.05em; }
+
+/* A second-rank action: dark until the pointer lights its edge. */
+.button.quiet, button.quiet, button.wake, button.danger {
+  padding: 0.42rem 0.85rem;
+  border-radius: var(--cut-small);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.button.quiet, button.quiet {
+  border-color: var(--seam);
+  background: rgb(36 48 68 / 0.55);
+  color: var(--text);
+}
+
+.button.quiet:hover, button.quiet:hover {
+  border-color: var(--beam);
+  color: var(--beam);
+  box-shadow: 0 0 0.8rem rgb(90 209 255 / 0.22);
+}
+
+/* Switching a module on: the lamp's colour, so the eye finds what is off. */
+button.wake {
+  border-color: var(--lamp-on);
+  background: rgb(95 227 174 / 0.1);
+  color: var(--lamp-on);
+}
+
+button.wake:hover {
+  background: var(--lamp-on);
+  color: var(--ink);
+  box-shadow: 0 0 1rem rgb(95 227 174 / 0.45);
+}
+
+button.danger {
+  border-color: var(--alarm);
+  background: rgb(255 143 128 / 0.08);
+  color: var(--alarm);
+}
+
+button.danger:hover {
+  background: var(--alarm);
+  color: var(--ink);
+  box-shadow: 0 0 1rem rgb(255 143 128 / 0.4);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+/* ---- Sockets, badges and the gauge */
+
+/* A module's icon sits in a socket; the socket is lit while the module is on. */
+.glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut-small);
+  background: var(--deep);
+  color: var(--lamp-off);
+  font-size: 1.05rem;
+}
+
+.glyph.on {
+  border-color: rgb(95 227 174 / 0.55);
+  color: var(--lamp-on);
+  box-shadow: inset 0 0 0.7rem rgb(95 227 174 / 0.16), 0 0 0.8rem rgb(95 227 174 / 0.2);
+}
+
+/* The state in a word and an icon, never in colour alone. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.55rem 0.12rem 0.45rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut-small);
+  color: var(--muted);
+  font: 600 0.75rem/1.4 var(--display);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.badge.on {
+  border-color: rgb(95 227 174 / 0.5);
+  background: rgb(95 227 174 / 0.12);
+  color: var(--lamp-on);
+  box-shadow: 0 0 0.7rem rgb(95 227 174 / 0.18);
+}
+
+.tally { margin: 0; color: var(--muted); }
+
+/* One slanted segment per switchable module, in the order of the rack below. */
+.gauge {
+  display: flex;
+  gap: 0.3rem;
+  max-width: 26rem;
+  margin: 0.75rem 0 1.5rem;
+  padding-left: 0.15rem;
+}
+
+.seg {
+  flex: 1;
+  height: 0.5rem;
+  background: var(--seam);
+  transform: skewX(-24deg);
+}
+
+.seg.on {
+  background: var(--lamp-on);
+  box-shadow: 0 0 0.6rem rgb(95 227 174 / 0.5);
+}
+
+/* ---- The rack: module slots on one plate, divided by seams */
+
+.rack {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut);
+  background: var(--plating);
+  overflow: hidden;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  /* Seams on two sides; the rack clips the outermost ones. */
+  margin: 0 -1px -1px 0;
+  padding: 1.05rem 1.1rem 1rem;
+  border-right: 1px solid var(--seam);
+  border-bottom: 1px solid var(--seam);
+  /* A running module glows faintly from its top edge. */
+  background: linear-gradient(180deg, rgb(95 227 174 / 0.07), transparent 3.5rem);
+  box-shadow: inset 0 2px 0 rgb(95 227 174 / 0.55);
+}
+
+.slot-head { display: flex; align-items: center; gap: 0.7rem; }
+
+.slot .name { font: 600 1.0625rem/1.3 var(--display); letter-spacing: 0.02em; }
+.slot .badge { margin-left: auto; }
+.slot .about { flex: 1; margin: 0; color: var(--muted); font-size: 0.875rem; }
+
+/* The controls sit at the right; what the module needs gets a line of its
+   own above them, so three things never fight for one row. */
+.slot-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.slot-foot form { margin: 0; }
+.slot .needs { flex: 1 1 100%; color: var(--muted); font-size: 0.8125rem; }
+.slot .needs:empty { display: none; }
+
+/* A slot whose module is off goes dark. */
+.slot.off { background: var(--hull); box-shadow: none; }
+.slot.off .name { color: var(--muted); }
+
+/* ---- Plain lists: servers, and the modules that are always on */
+
+.rows, .fixed {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rows {
+  max-width: 44rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut);
+  background: var(--plating);
+  overflow: hidden;
+}
+
+.rows > li {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.rows > li + li { border-top: 1px solid var(--seam); }
+.rows .grow { flex: 1; min-width: 0; }
+.rows .name { font: 600 1.0625rem/1.3 var(--display); letter-spacing: 0.02em; }
+.rows a.name { color: var(--text); text-decoration: none; }
+.rows a.name:hover { color: var(--beam); }
+.rows .about, .fixed .about { color: var(--muted); font-size: 0.875rem; }
+
+.fixed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 1rem 1.5rem;
+}
+
+.fixed > li { display: flex; align-items: flex-start; gap: 0.8rem; }
+.fixed .name { font: 600 1rem/1.3 var(--display); letter-spacing: 0.02em; }
+
+/* ---- Settings forms: a plate with a bracket of beam light at two corners */
+
+.settings {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 34rem;
+  margin-top: 1.75rem;
+  padding: 1.5rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut);
+  background-color: var(--plating);
+  background-image:
+    linear-gradient(var(--beam), var(--beam)),
+    linear-gradient(var(--beam), var(--beam)),
+    linear-gradient(var(--beam), var(--beam)),
+    linear-gradient(var(--beam), var(--beam));
+  background-repeat: no-repeat;
+  background-size: 1.1rem 2px, 2px 1.1rem, 1.1rem 2px, 2px 1.1rem;
+  background-position: 0 0, 0 0, 100% 100%, 100% 100%;
+}
+
+.field { display: grid; gap: 0.4rem; }
+.field .label { font: 600 0.9375rem/1.4 var(--display); letter-spacing: 0.02em; }
+.help { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.help.caution { color: var(--caution); }
+
+select, input[type="text"] {
+  width: 100%;
+  max-width: 22rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut-small);
+  background: var(--deep);
+  color: var(--text);
+  font: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+select:hover, input[type="text"]:hover { border-color: #41557a; }
+
+select:focus-visible, input[type="text"]:focus-visible {
+  outline: none;
+  border-color: var(--beam);
+  box-shadow: 0 0 0 1px var(--beam), 0 0 0.9rem rgb(90 209 255 / 0.3);
+}
+
+.check { display: flex; align-items: center; gap: 0.7rem; font-weight: 600; cursor: pointer; }
+
+.check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  accent-color: var(--lamp-on);
+}
+
+.settings .choice { margin-top: 0.5rem; }
+
+fieldset.field { min-width: 0; margin: 0; padding: 0; border: 0; }
+fieldset.field legend { padding: 0; }
+
+/* Several boxes of one setting, such as the staff roles. */
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem 1rem;
+  max-height: 16rem;
+  margin-top: 0.4rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut-small);
+  background: var(--deep);
+  overflow-y: auto;
+}
+
+.check.plain { font-weight: 400; }
+
+/* ---- Killmail feeds: one card per subscription, side by side on wide screens */
+
+.feeds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1rem;
+  max-width: 62rem;
+  margin-top: 1rem;
+}
+
+.feeds .settings { max-width: none; margin-top: 0; align-content: start; }
+/* Save at the left, the way out at the right, on one line. */
+.feeds .choice { justify-content: space-between; gap: 0.75rem; }
+
+/* What the card is about leads it: the followed id, set like a readout. */
+.follows p { display: grid; gap: 0.1rem; margin: 0; min-width: 0; }
+.follows.with-logo { display: flex; align-items: center; gap: 0.9rem; }
+
+/* The logo sits in a socket of its own, so a missing image leaves no hole. */
+.follows .logo {
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 1px solid var(--seam);
+  border-radius: var(--cut-small);
+  background: var(--deep);
+  box-shadow: 0 0 0.9rem rgb(90 209 255 / 0.14);
+}
+
+.follows .label {
+  color: var(--muted);
+  font: 500 0.8125rem/1.4 var(--display);
+  letter-spacing: 0.05em;
+}
+
+.follows .target {
+  font: 600 1.375rem/1.25 var(--display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+
+/* Removing takes two steps without a script: open, then press. Both steps
+   wear the alarm colour; only the second one is filled. */
+.remove { position: relative; }
+
+.remove summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.42rem 0.85rem;
+  border: 1px solid rgb(255 143 128 / 0.55);
+  border-radius: var(--cut-small);
+  background: rgb(255 143 128 / 0.08);
+  color: var(--alarm);
+  font: 500 0.875rem/1.3 var(--display);
+  letter-spacing: 0.035em;
+  list-style: none;
+  cursor: pointer;
+  transition: box-shadow 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+.remove summary::-webkit-details-marker { display: none; }
+
+.remove summary:hover {
+  border-color: var(--alarm);
+  background: rgb(255 143 128 / 0.16);
+  box-shadow: 0 0 0.8rem rgb(255 143 128 / 0.25);
+}
+
+.remove[open] summary { margin-bottom: 0.6rem; }
+
+.remove[open] button.danger {
+  background: var(--alarm);
+  color: var(--ink);
+}
+
+.crumb.back { margin-top: 2rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

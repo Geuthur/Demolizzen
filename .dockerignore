@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+.env
+.superpowers
+.tox
+docs
+testenv
+**/__pycache__
+**/*.pyc
+demolizzen/logs
+demolizzen/tests

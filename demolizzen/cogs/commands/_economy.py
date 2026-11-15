@@ -7,28 +7,18 @@ from discord import option
 from discord.ext import commands
 
 # Demolizzen
-from demolizzen import models
+from demolizzen.services import shop as shop_service
+from demolizzen.services.errors import ItemNotOwned, NotEnoughItems, ShopError
 
 
-# Automatische auswahl für Tasche von jeweiligen Discord User
-async def get_bag_data(ctx: discord.AutocompleteContext):
-    # SQL-Abfrage, um das ausgewählte Item zu finden
-    try:
-        user = await models.UserProfile.objects.select_related("bags").aget(
-            user_id=ctx.interaction.user.id, guild_id=ctx.interaction.guild.id
-        )
-        items = [
-            item.item_name
-            async for item in user.bags.items.all()
-            if item.item_name.lower().startswith(ctx.value.lower())
-        ]
-    except models.UserProfile.DoesNotExist:
-        return []
-    except models.UserBag.DoesNotExist:
-        return []
-    except models.UserBagItems.DoesNotExist:
-        return []
-    return items
+async def get_bag_data(ctx: discord.AutocompleteContext) -> list[str]:
+    """Suggest the items in the member's bag that start with what was typed."""
+    typed = (ctx.value or "").lower()
+    items = await shop_service.get_bag(
+        ctx.interaction.guild.id, ctx.interaction.user.id
+    )
+    # Discord shows at most 25 suggestions.
+    return [item.name for item in items if item.name.lower().startswith(typed)][:25]
 
 
 class CommandsEconomy:
@@ -45,21 +35,21 @@ class CommandsEconomy:
         """
         # Random Drink Text
         drinktext = [
-            f"genießt **`{item_name.capitalize()}`**.",
-            f"trinkt **`{item_name.capitalize()}`**.",
-            f"öffnet und ex't **`{item_name.capitalize()}`**.",
-            f"tornadot **`{item_name.capitalize()}`**.",
-            "🍺, Prost!",
+            f"enjoys **`{item_name.capitalize()}`**.",
+            f"drinks **`{item_name.capitalize()}`**.",
+            f"opens **`{item_name.capitalize()}`** and downs it in one go.",
+            f"shotguns **`{item_name.capitalize()}`**.",
+            "🍺, Cheers!",
         ]
         # Random Drink Text
         drinktext2 = [
-            f"schießt sich **`{amount}`** x **`{item_name.capitalize()}`**, oweia ich glaub das war zuviel 🤮!",
-            f"kann nicht genug bekommen und fängt an **`{amount}`** x **`{item_name.capitalize()}`** zu saufen.",
-            f"hat einen Kasten voll/er **`{item_name.capitalize()}`** und fängt an zu trinken.",
-            "... liegt am boden regungslos. 🥴🥴",
+            f"knocks back **`{amount}`** x **`{item_name.capitalize()}`**, oh dear, that was too much 🤮!",
+            f"cannot get enough and starts boozing **`{amount}`** x **`{item_name.capitalize()}`**.",
+            f"has a crate full of **`{item_name.capitalize()}`** and starts drinking.",
+            "... lies motionless on the floor. 🥴🥴",
         ]
 
-        # Überprüfe, ob die Menge positiv ist
+        # The amount must be positive
         if amount <= 0:
             em = discord.Embed(
                 title="",
@@ -69,47 +59,30 @@ class CommandsEconomy:
             await ctx.respond(embed=em)
             return
 
-        # Get User Bag Item
+        # Take the items out of the bag
         try:
-            user_bag_items = await models.UserBagItems.objects.aget(
-                user_bag=ctx.user_profile.bags,
-                item_name=item_name,
+            used = await shop_service.use_item(
+                ctx.guild.id, ctx.author.id, ctx.author.display_name, item_name, amount
             )
-        except models.UserBag.DoesNotExist:
+        except ItemNotOwned:
+            problem = f"You don't have `{item_name.capitalize()}` in your bag"
+        except NotEnoughItems:
+            problem = f"You don't have enough `{item_name.capitalize()}` in your bag"
+        except ShopError as error:
+            problem = error.message
+        else:
+            problem = None
+        if problem is not None:
             em = discord.Embed(
                 title="",
                 color=discord.Color.red(),
-                description=f"{ctx.author.mention}, Your Bag is empty... Buy something with /buy",
-            )
-            await ctx.respond(embed=em)
-            return
-        except models.UserBagItems.DoesNotExist:
-            em = discord.Embed(
-                title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have `{item_name.capitalize()}` in your bag",
-            )
-            await ctx.respond(embed=em)
-            return
-
-        # Überprüfe, ob genug Items vorhanden sind
-        if user_bag_items.quantity < amount:
-            em = discord.Embed(
-                title="",
-                color=discord.Color.red(),
-                description=f"{ctx.author.mention}, You don't have enough `{item_name.capitalize()}` in your bag",
+                description=f"{ctx.author.mention}, {problem}",
             )
             await ctx.respond(embed=em)
             return
 
-        # Aktualisiere die Menge des Items im Bag
-        changed_quantity = user_bag_items.quantity - amount
-        user_bag_items.quantity = changed_quantity
-
-        # Update the item quantity in the database
-        await user_bag_items.asave()
-
-        if user_bag_items.item_type == "drink":
+        # The shop files drinks under "drinks"; older bags may say "drink".
+        if used.item_type in ("drink", "drinks"):
             if amount <= 1:
                 em = discord.Embed(
                     title="",
@@ -130,6 +103,6 @@ class CommandsEconomy:
             em = discord.Embed(
                 title="",
                 color=discord.Color.teal(),
-                description=f"{ctx.author.mention}, benutzt {amount} x {item_name.capitalize()}",
+                description=f"{ctx.author.mention}, uses {amount} x {item_name.capitalize()}",
             )
         await ctx.respond(embed=em)

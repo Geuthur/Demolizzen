@@ -3,7 +3,6 @@ import logging
 
 # Discord
 import discord
-from discord.ext import commands
 
 # Demolizzen
 from demolizzen.core.bot import Demolizzen
@@ -12,71 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 # Convert Time
-def convert_time(seconds: int) -> str:
-    """
-    Convert a duration in seconds into a human-readable string representation.
-
-    This function takes a duration in seconds as input and converts it into a
-    human-readable string format. It provides the duration in seconds, minutes,
-    or hours, depending on the input value.
-
-    Parameters
-    ----------
-    seconds : int
-        The duration in seconds to be converted.
-
-    Returns
-    -------
-    str
-        A string representing the duration in seconds, minutes, or hours.
-    """
-    if seconds < 60:
-        return f"{round(seconds)} Sekunden"
-    minutes = seconds / 60
-    if minutes < 60:
-        return f"{round(minutes)} Minuten"
-    hours = minutes / 60
-    return f"{round(hours)} Stunden"
-
-
-# Converter for Numbers - Example: 1000 to 1.000
-def format_number(count, currency=None):
-    """
-    Diese Funktion nimmt eine Zahl als Eingabe und formatiert sie für die Ausgabe in einem benutzerfreundlichen Format.
-
-    Parameters
-    ----------
-    count : int or float
-        Die zu formatierende Zahl.
-    currency : str, optional
-        Die Währungseinheit, die der formatierten Zahl hinzugefügt werden soll. Standardmäßig ist dies None.
-
-    Returns
-    -------
-    str
-        Eine Zeichenkette, die die formatierte Zahl darstellt. Im Format "x.xxx,xx" für Dezimalzahlen, wobei
-        das Tausender-Trennzeichen durch einen Punkt ersetzt wird. Wenn eine Währung angegeben ist, wird diese
-        am Ende der formatierten Zahl angehängt.
-
-    Examples
-    --------
-    Beispiel 1:
-    >>> format_number(1000)
-    '1.000'
-
-    Beispiel 2 (mit Währung):
-    >>> format_number(5000, 'EUR')
-    '5.000 EUR'
-    """
-    # Anzahl formatieren und Komma durch Punkt ersetzen
-    formatted_number = f"{count:,}".replace(",", ".")
-
-    # Wenn eine Währung angegeben ist, füge sie hinzu
-    if currency is not None:
-        formatted_number = f"{formatted_number} {currency}"
-    return formatted_number
-
-
 def convert_to_bool(argument):
     lowered = argument.lower()
     if lowered in ("yes", "y", "true", "t", "1", "enable", "on"):
@@ -87,17 +21,6 @@ def convert_to_bool(argument):
 
 
 # Application Cooldown Trigger
-async def application_cooldown(ctx: discord.ApplicationContext, error):
-    seconds = ctx.command.get_cooldown_retry_after(ctx)
-    final_time = convert_time(seconds)
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.respond(
-            f"The Rate limit has been reached, Please wait {final_time}",
-            delete_after=10,
-        )
-        return
-
-
 def colour(*args):
     """Returns a discord Colour object.
     Pass one as an argument to define colour:
@@ -200,29 +123,37 @@ def translate(num):
     return f"{num:f}".rstrip("0").rstrip(".") + ["", "K", "M", "B", "T"][magnitude]
 
 
+def command_link(label: str, command_id: int | None) -> str:
+    """A clickable command mention, or the plain command when it has no id."""
+    return f"</{label}:{command_id}>" if command_id is not None else f"/{label}"
+
+
 def get_command_mention(
-    bot: Demolizzen, cog: str, slash_command: str, slash_command_group: str = None
+    bot: Demolizzen,
+    cog: str,
+    slash_command: str,
+    slash_command_group: str = None,
+    guild_id: int | None = None,
 ) -> str:
-    """Get the mention string for a application command."""
+    """Get the mention string for a application command.
+
+    Pass the server the mention is shown in: Discord gives the commands of
+    switchable modules a different id in every server. Where the command is
+    not registered the plain text is returned.
+    """
+    label = (
+        f"{slash_command} {slash_command_group}"
+        if slash_command_group
+        else slash_command
+    )
+    command_id = None
     try:
-        cog = bot.get_cog(cog)
-        for command in cog.get_commands():
-            if command.name == slash_command:
-                if slash_command_group and isinstance(
-                    command, discord.SlashCommandGroup
-                ):
-                    if command.id is None:
-                        raise ValueError("Command ID is None.")
-                    return f"</{slash_command} {slash_command_group}:{command.id}>"
-                if isinstance(command, discord.SlashCommand):
-                    if command.id is None:
-                        raise ValueError("Command ID is None.")
-                    return f"</{slash_command}:{command.id}>"
-        raise ValueError("Command not found or invalid command type.")
-    except ValueError:
-        logger.debug("Command not found or invalid command type.")
-    except Exception:
+        for command in bot.get_cog(cog).get_commands():
+            if command.name == slash_command and isinstance(
+                command, (discord.SlashCommandGroup, discord.SlashCommand)
+            ):
+                command_id = bot.command_scope.command_id(command, guild_id)
+                break
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("Failed to get command mention")
-    if slash_command_group:
-        return f"/{slash_command} {slash_command_group}"
-    return f"/{slash_command}"
+    return command_link(label, command_id)
