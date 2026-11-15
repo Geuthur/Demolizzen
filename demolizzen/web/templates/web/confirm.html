@@ -1,7 +1,7 @@
 {% extends "web/base.html" %}
 {% block title %}Switch {{ word }} {{ module.title }}? – Demolizzen panel{% endblock %}
 {% block content %}
-<p class="small"><a href="{% url 'guild' guild.id %}">{{ guild.name }}</a></p>
+<p class="crumb always"><a href="{% url 'guild' guild.id %}">{{ guild.name }}</a></p>
 <h1>Switch {{ word }} {{ module.title }}?</h1>
 <p class="lead">{{ question }}</p>
 <form class="choice" method="post" action="{% url 'switch_module' guild.id module.key %}">

@@ -77,6 +77,7 @@ Section Order:
 
 ## Changed
 
+- Web panel layout for wide screens: server navigation at the side, modules as a rack with a tally, dependency hints on modules, own typeface for headings
 - English is the language of all texts: `/spenden` is now `/donate`, and the remaining German texts of `/use`, `/bag`, `/leaderboard` and `/games wheelofnames` are translated
 - The economy event is switched and its payout factor chosen in `/panel`
 - `/killmail add` needs the Embed Links permission in the channel and allows each ID once per channel, whoever added it

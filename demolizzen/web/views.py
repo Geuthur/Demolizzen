@@ -24,6 +24,7 @@ from demolizzen.web.base_settings import WEB_DIR
 from demolizzen.web.discord_api import DiscordError
 
 STYLESHEET = (WEB_DIR / "static" / "panel.css").read_bytes()
+FONT = (WEB_DIR / "static" / "exo2.woff2").read_bytes()
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,13 @@ def stylesheet(request) -> HttpResponse:  # pylint: disable=unused-argument
     return HttpResponse(STYLESHEET, content_type="text/css; charset=utf-8")
 
 
+@require_GET
+@cache_control(public=True, max_age=7 * 24 * 3600)
+def font(request) -> HttpResponse:  # pylint: disable=unused-argument
+    """The typeface of headings (Exo 2, SIL Open Font License)."""
+    return HttpResponse(FONT, content_type="font/woff2")
+
+
 def not_found(request, exception=None) -> HttpResponse:
     """The page for an address that does not exist."""
     del exception  # Django passes it; the page says the same for every cause.
@@ -66,6 +74,19 @@ def _landing(request, notice: str | None = None) -> HttpResponse:
     return render(request, "web/landing.html", {"notice": notice})
 
 
+def _tally(states: dict[str, bool]) -> dict[str, int]:
+    """How many of the switchable modules are on."""
+    return {"on": sum(states.values()), "total": len(states)}
+
+
+async def _servers(guild_ids: list[int], current: int | None = None) -> list[dict]:
+    """The user's servers for the navigation, the open one marked."""
+    return [
+        {"id": guild_id, "name": name, "current": guild_id == current}
+        for guild_id, name in await guilds.known_guilds(guild_ids)
+    ]
+
+
 async def home(request) -> HttpResponse:
     """The start page: the user's servers, or the offer to sign in."""
     user = session.current_user(request)
@@ -74,10 +95,9 @@ async def home(request) -> HttpResponse:
     guild_ids = await session.current_guild_ids(request, discord_api.get_client())
     if guild_ids is None:
         return _landing(request, "Your sign-in has ended. Please sign in again.")
-    servers = [
-        {"id": guild_id, "name": name}
-        for guild_id, name in await guilds.known_guilds(guild_ids)
-    ]
+    servers = await _servers(guild_ids)
+    for server in servers:
+        server.update(_tally(await cog_settings.get_states(server["id"])))
     return render(request, "web/servers.html", {"user": user, "servers": servers})
 
 
@@ -143,18 +163,19 @@ def logout(request) -> HttpResponse:
 async def _guild_access(request, guild_id: int):
     """Check that the signed-in user may manage the server.
 
-    Returns the user and the server's name; a redirect to the start when nobody
-    is signed in. A server the user may not manage raises 404, exactly like one
-    that does not exist.
+    Returns the user, the server's name and the user's servers for the
+    navigation; a redirect to the start when nobody is signed in. A server the
+    user may not manage raises 404, exactly like one that does not exist.
     """
     user = session.current_user(request)
     guild_ids = await session.current_guild_ids(request, discord_api.get_client())
     if user is None or guild_ids is None:
         return redirect("home")
-    known = await guilds.known_guilds([guild_id]) if guild_id in guild_ids else []
-    if not known:
+    servers = await _servers(guild_ids, current=guild_id)
+    name = next((server["name"] for server in servers if server["current"]), None)
+    if name is None:
         raise Http404
-    return user, known[0][1]
+    return user, name, servers
 
 
 async def guild(request, guild_id: int) -> HttpResponse:
@@ -162,7 +183,7 @@ async def guild(request, guild_id: int) -> HttpResponse:
     access_result = await _guild_access(request, guild_id)
     if isinstance(access_result, HttpResponse):
         return access_result
-    user, name = access_result
+    user, name, servers = access_result
 
     states = await cog_settings.get_states(guild_id)
     modules = [
@@ -172,6 +193,8 @@ async def guild(request, guild_id: int) -> HttpResponse:
             "description": info.description,
             "fixed": not info.toggleable,
             "on": states.get(info.key, True),
+            # The modules this one cannot run without.
+            "needs": _titles(list(info.requires)) if info.requires else "",
         }
         for info in registry.REGISTRY.values()
     ]
@@ -180,8 +203,10 @@ async def guild(request, guild_id: int) -> HttpResponse:
         "web/guild.html",
         {
             "user": user,
+            "servers": servers,
             "guild": {"id": guild_id, "name": name},
             "modules": modules,
+            "tally": _tally(states),
             # Shown once: what the last switch did.
             "notice": request.session.pop("notice", None),
         },
@@ -217,7 +242,7 @@ async def switch_module(request, guild_id: int, key: str) -> HttpResponse:
     access_result = await _guild_access(request, guild_id)
     if isinstance(access_result, HttpResponse):
         return access_result
-    user, name = access_result
+    user, name, servers = access_result
 
     try:
         info = registry.get(key)
@@ -248,6 +273,7 @@ async def switch_module(request, guild_id: int, key: str) -> HttpResponse:
             "web/confirm.html",
             {
                 "user": user,
+                "servers": servers,
                 "guild": {"id": guild_id, "name": name},
                 "module": info,
                 "enabled": enabled,

@@ -19,6 +19,7 @@ urlpatterns = [
     ),
     path("healthz", views.healthz, name="healthz"),
     path("panel.css", views.stylesheet, name="stylesheet"),
+    path("exo2.woff2", views.font, name="font"),
 ]
 
 handler404 = views.not_found

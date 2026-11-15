@@ -1,7 +1,9 @@
 {% extends "web/base.html" %}
 {% block title %}{{ title }} – Demolizzen panel{% endblock %}
 {% block content %}
-<h1>{{ title }}</h1>
-<p class="lead">{{ text }}</p>
-<p><a class="button" href="{% url 'home' %}">Back to the start</a></p>
+<div class="welcome">
+  <h1>{{ title }}</h1>
+  <p class="lead">{{ text }}</p>
+  <p><a class="button" href="{% url 'home' %}">Back to the start</a></p>
+</div>
 {% endblock %}

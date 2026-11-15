@@ -2,12 +2,15 @@
 {% block content %}
 <h1>Your servers</h1>
 {% if servers %}
-<p class="lead">Choose a server to see its modules.</p>
+<p class="lead">Choose a server to manage its modules.</p>
 <ul class="rows">
   {% for server in servers %}
   <li>
-    <div class="grow"><a class="name" href="{% url 'guild' server.id %}">{{ server.name }}</a></div>
-    <a href="{% url 'guild' server.id %}">Manage</a>
+    <div class="grow">
+      <a class="name" href="{% url 'guild' server.id %}">{{ server.name }}</a>
+      <div class="about">{{ server.on }} of {{ server.total }} modules on</div>
+    </div>
+    <a class="go" href="{% url 'guild' server.id %}">Manage</a>
   </li>
   {% endfor %}
 </ul>

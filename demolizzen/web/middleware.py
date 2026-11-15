@@ -1,8 +1,9 @@
 """Middleware of the web panel."""
 
-# Pages load nothing but the panel's own stylesheet and post forms only to the panel.
+# Pages load nothing but the panel's own stylesheet and typeface and post forms
+# only to the panel.
 CONTENT_SECURITY_POLICY = (
-    "default-src 'none'; style-src 'self'; form-action 'self'; "
+    "default-src 'none'; style-src 'self'; font-src 'self'; form-action 'self'; "
     "base-uri 'none'; frame-ancestors 'none'"
 )
 

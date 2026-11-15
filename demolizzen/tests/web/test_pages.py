@@ -8,7 +8,7 @@ from django.test import SimpleTestCase, override_settings
 from demolizzen.web import base_settings
 
 CSP = (
-    "default-src 'none'; style-src 'self'; form-action 'self'; "
+    "default-src 'none'; style-src 'self'; font-src 'self'; form-action 'self'; "
     "base-uri 'none'; frame-ancestors 'none'"
 )
 
