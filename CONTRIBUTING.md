@@ -154,10 +154,11 @@ Slash commands are registered with Discord when the bot starts. The normal updat
 ```shell
 git pull
 pip install -e .
-python manage.py migrate
 ```
 
-followed by a restart of the bot. Most logic lives in `demolizzen/services/` and
+followed by a restart of the bot. Before it connects, the bot applies pending database migrations
+(`demolizzen/core/schema.py`); a migration that fails stops the start. `AUTO_MIGRATE=0` in `.env`
+switches that off for operators who run `python manage.py migrate` themselves. Most logic lives in `demolizzen/services/` and
 `demolizzen/core/`, which only a restart reloads.
 
 The owner commands are for small changes without a restart:

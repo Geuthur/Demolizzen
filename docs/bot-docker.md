@@ -69,7 +69,7 @@ docker compose -f docker-compose.bot.yml up -d
 
 `init_database` is for a new database only: it adds the shop items, the mission ships and the
 trade systems and downloads EVE's item and solar system lists. Skip that line and the one before
-it when the database is already in use; the container applies pending migrations at every start.
+it when the database is already in use; the bot applies pending migrations at every start.
 
 ## Day to day
 
@@ -96,8 +96,8 @@ git pull
 docker compose -f docker-compose.bot.yml up -d --build
 ```
 
-The new container applies pending database migrations and then starts the bot, which registers the
-slash commands. Back up the database before an update that brings migrations.
+The bot in the new container applies pending database migrations before it connects and then
+registers the slash commands. Back up the database before an update that brings migrations.
 
 ## Modules of single servers
 

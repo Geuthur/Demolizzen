@@ -31,6 +31,7 @@ COPY --chown=bot:bot manage.py ./
 USER bot
 ENV DJANGO_SETTINGS_MODULE=demolizzen.settings \
     PYTHONUNBUFFERED=1
-# Bring the tables up to date, then become the bot: "docker stop" then reaches
-# the bot itself, which closes its connections before it ends.
-CMD ["sh", "-c", "python manage.py migrate --noinput && exec python -m demolizzen.launch"]
+# The bot applies pending database migrations itself before it connects.
+# Started without a shell, so "docker stop" reaches the bot, which closes its
+# connections before it ends.
+CMD ["python", "-m", "demolizzen.launch"]
