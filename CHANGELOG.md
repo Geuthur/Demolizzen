@@ -11,6 +11,11 @@ Section Order:
 ### Removed
 -->
 
+### Fixed
+
+- Mission buttons failed with "Missing Access" in channels the bot cannot see: they stayed clickable and every further click said "already reported"; the click is now answered through the interaction itself
+- `/mission start`: a mission was settled by itself when the pilot had not chosen within 20 seconds; nothing is decided for the pilot any more, there are two minutes to choose, and a message that timed out says to use `/mission start` again
+
 ## [3.0.0] - 2026-11-15
 
 Every server now chooses its modules, in Discord with `/panel` or in the new web panel, and the

@@ -10,6 +10,13 @@ from demolizzen.services import missions
 from demolizzen.services.errors import AlreadySettled
 from demolizzen.services.missions import Event, Kind
 
+# How long the pilot has to read the story and decide.
+DECISION_SECONDS = 120
+UNDECIDED = (
+    "No decision was made in time. Use `/mission start` again to decide how "
+    "the mission ends."
+)
+
 
 class MissionComponent:
     def __init__(self, label, style=discord.ButtonStyle.gray):
@@ -28,7 +35,7 @@ class MissionEvent(discord.ui.View):
         kind: Kind,
         event: Event | None = None,
     ):
-        super().__init__(timeout=20, disable_on_timeout=True)
+        super().__init__(timeout=DECISION_SECONDS)
         if components is None:
             components = []
 
@@ -65,11 +72,22 @@ class MissionEvent(discord.ui.View):
         self.event = event or Event(False, missions.DEFAULT_EVENT_FACTOR)
 
     async def on_timeout(self):
-        # Nobody clicked: the mission is settled without a decision.
-        if not self.finish:
-            await self.mission_trigger(self.ctx)
+        """Nobody decided in time: the mission keeps waiting.
 
-        return await super().on_timeout()
+        The pilot decides how a mission ends; nothing is settled for them. The
+        buttons go dark and the message says how to continue. Both go through
+        the command's own interaction, which needs no access to the channel.
+        """
+        if self.finish:
+            return
+        self.disable_all_items()
+        try:
+            await self.ctx.interaction.edit_original_response(
+                content=UNDECIDED, view=self
+            )
+        except discord.HTTPException:
+            # The message is gone or too old to edit; nothing is lost.
+            pass
 
     def format_components(self, components):
         for i, component in enumerate(components):
@@ -85,13 +103,29 @@ class MissionEvent(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.ctx.author.id
 
-    async def mission_trigger(self, interaction: discord.ApplicationContext):
-        """Settle the mission and report how it went.
+    async def _answer(self, interaction: discord.Interaction, *args, **kwargs):
+        """Answer a click: darken the buttons, then send the message.
 
-        ``interaction`` is the button click, or the command context when the
-        buttons timed out. Returns True once the mission is dealt with.
+        Everything goes through the click itself. Editing the message or
+        posting into the channel directly fails wherever the bot has no access
+        to the channel, although slash commands work there.
         """
-        clicked = isinstance(interaction, discord.Interaction)
+        self.disable_all_items()
+        self.stop()
+        try:
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(*args, **kwargs)
+        # pylint: disable=broad-except
+        except Exception as e:
+            self.ctx.bot.logger.error(
+                f"Error in mission trigger interaction {e}", exc_info=True
+            )
+
+    async def mission_trigger(self, interaction: discord.Interaction):
+        """Settle the mission the way the pilot decided and report how it went.
+
+        Returns True once the mission is dealt with.
+        """
         ship = self.mission_account.ship
 
         # The outcome is decided once; booking and report both follow it.
@@ -122,8 +156,7 @@ class MissionEvent(discord.ui.View):
             )
         except AlreadySettled as error:
             self.finish = True
-            if clicked:
-                await interaction.response.send_message(error.message, ephemeral=True)
+            await self._answer(interaction, error.message, ephemeral=True)
             return True
         self.finish = True
 
@@ -139,16 +172,7 @@ class MissionEvent(discord.ui.View):
         for name, value in await self.generate_embed_fields(outcome, applied):
             em.add_field(name=name, value=value, inline=False)
 
-        try:
-            if clicked:
-                await interaction.response.send_message(embed=em)
-            else:
-                await interaction.send(embed=em)
-        # pylint: disable=broad-except
-        except Exception as e:
-            self.ctx.bot.logger.error(
-                f"Error in mission trigger interaction {e}", exc_info=True
-            )
+        await self._answer(interaction, embed=em)
         return True
 
     def add_button(self, label, custom_id, style, disabled, row):
@@ -165,31 +189,10 @@ class MissionEvent(discord.ui.View):
                 )
                 return
 
-            # Trigger Action Event
-            if button.label in ["Attack", "Warp Out", "Cyno"]:
-                self.bonus = button.label == "Attack"
-                self.flee = button.label == "Warp Out"
-                self.cyno = button.label == "Cyno"
-
-                # Trigger Mission Event
-                if await self.mission_trigger(interaction):
-                    self.disable_all_items()
-                    await interaction.message.edit(view=self)
-                return
-
-            try:
-                await interaction.message.edit(
-                    view=MissionEvent(
-                        ctx=self.ctx,
-                        components=self.components,
-                        mission_account=self.mission_account,
-                        kind=self.kind,
-                        event=self.event,
-                    )
-                )
-            # pylint: disable=broad-exception-caught
-            except Exception:
-                pass
+            self.bonus = button.label == "Attack"
+            self.flee = button.label == "Warp Out"
+            self.cyno = button.label == "Cyno"
+            await self.mission_trigger(interaction)
 
         button.callback = button_callback
         self.add_item(button)
