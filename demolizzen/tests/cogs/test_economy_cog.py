@@ -202,18 +202,37 @@ class MissionMoneyTest(EconomyTestCase):
         )
         return await missions.get_mission(1, 10, "alice", Kind.RAIDING)
 
-    def view(self, mission, init_chance: int, event=None):
+    def view(self, mission, init_chance: int, event=None, buttons=False):
         ctx = make_ctx(guild=self.guild, author=self.alice)
+        ctx.interaction.edit_original_response = AsyncMock()
+        components = None
+        if buttons:
+            components = [
+                missionfunc.MissionComponent("Attack", discord.ButtonStyle.danger),
+                missionfunc.MissionComponent("Warp Out", discord.ButtonStyle.green),
+            ]
         with patch.object(missionfunc.random, "randint", return_value=init_chance):
             return missionfunc.MissionEvent(
-                ctx, None, mission, Kind.RAIDING, event=event
+                ctx, components, mission, Kind.RAIDING, event=event
             )
 
-    @staticmethod
-    def click():
+    def click(self):
+        """A click as Discord delivers it. The bot may have no access to the
+        channel: slash commands and their buttons work there all the same, but
+        only through the click itself, never by editing the message directly."""
         interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = self.alice
         interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
         interaction.response.send_message = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.message = MagicMock()
+        interaction.message.edit = AsyncMock(
+            side_effect=discord.Forbidden(
+                MagicMock(status=403, reason="Forbidden"), "Missing Access"
+            )
+        )
         return interaction
 
     async def trigger(self, view, roll: int):
@@ -224,7 +243,7 @@ class MissionMoneyTest(EconomyTestCase):
 
     @staticmethod
     def report(interaction) -> str:
-        call = interaction.response.send_message.await_args
+        call = interaction.followup.send.await_args
         embed = call.kwargs.get("embed")
         if embed is None:
             return call.args[0] if call.args else ""
@@ -254,34 +273,118 @@ class MissionMoneyTest(EconomyTestCase):
         interaction, _ = await self.trigger(second, roll=1)
 
         self.assertEqual(await self.wallet(self.alice), 50)
-        call = interaction.response.send_message.await_args
+        call = interaction.followup.send.await_args
         self.assertEqual(call.args[0], "This mission has already been reported.")
         self.assertTrue(call.kwargs["ephemeral"])
 
-    async def test_click_then_timeout_pays_only_once(self):
+    async def test_buttons_of_a_reported_mission_go_dark_on_the_next_click(self):
+        # Otherwise every further click says "already reported" again.
         mission = await self.make_mission(wallet=0)
-        view = self.view(mission, init_chance=100)
+        first = self.view(mission, init_chance=100, buttons=True)
+        second = self.view(mission, init_chance=100, buttons=True)
+        await self.trigger(first, roll=1)
+
+        interaction, _ = await self.trigger(second, roll=1)
+
+        shown = interaction.response.edit_message.await_args.kwargs["view"]
+        self.assertIs(shown, second)
+        self.assertTrue(all(button.disabled for button in second.children))
+        self.assertTrue(second.is_finished())
+
+    async def test_decision_is_answered_without_access_to_the_channel(self):
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
+        interaction = self.click()
+
+        with patch.object(missionfunc.random, "randint", side_effect=[1, 15]):
+            await view.children[1].callback(interaction)  # Warp Out: plain payout
+
+        # Paid, buttons dark, report shown: all through the click itself.
+        self.assertEqual(await self.wallet(self.alice), 50)
+        interaction.message.edit.assert_not_awaited()
+        shown = interaction.response.edit_message.await_args.kwargs["view"]
+        self.assertTrue(all(button.disabled for button in shown.children))
+        self.assertIn("**`", self.report(interaction))
+        self.assertTrue(view.is_finished())
+
+    async def test_each_button_carries_its_decision(self):
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
+
+        with patch.object(missionfunc.random, "randint", side_effect=[1, 15]):
+            await view.children[0].callback(self.click())
+
+        self.assertEqual((view.bonus, view.flee, view.cyno), (True, False, False))
+        # Attacking on a safe run costs a fifth of the payout.
+        self.assertEqual(await self.wallet(self.alice), 40)
+
+    async def test_report_that_cannot_be_sent_does_not_undo_the_decision(self):
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
+        interaction = self.click()
+        interaction.followup.send.side_effect = discord.HTTPException(
+            MagicMock(status=500, reason="Server Error"), "down"
+        )
+
+        with patch.object(missionfunc.random, "randint", side_effect=[1, 15]):
+            await view.children[1].callback(interaction)
+
+        self.assertEqual(await self.wallet(self.alice), 50)
+        self.assertTrue(view.is_finished())
+        view.ctx.bot.logger.error.assert_called_once()
+
+    async def test_timeout_after_the_decision_changes_nothing(self):
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
         await self.trigger(view, roll=1)
-        view.ctx.send = AsyncMock()
 
-        with patch.object(missionfunc.random, "randint", side_effect=[1, 15]):
-            with patch("discord.ui.View.on_timeout", new_callable=AsyncMock):
-                await view.on_timeout()
+        await view.on_timeout()
 
         self.assertEqual(await self.wallet(self.alice), 50)
-        view.ctx.send.assert_not_awaited()
+        view.ctx.interaction.edit_original_response.assert_not_awaited()
 
-    async def test_timeout_settles_an_unanswered_mission(self):
+    async def test_pilot_has_time_to_read_before_deciding(self):
         mission = await self.make_mission(wallet=0)
-        view = self.view(mission, init_chance=100)
+
+        self.assertGreaterEqual(self.view(mission, init_chance=100).timeout, 120)
+
+    async def test_nothing_is_decided_for_a_pilot_who_did_not_choose(self):
+        # The pilot decides how the mission ends; waiting too long must not
+        # end it for them.
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
         view.ctx.send = AsyncMock()
 
-        with patch.object(missionfunc.random, "randint", side_effect=[1, 15]):
-            with patch("discord.ui.View.on_timeout", new_callable=AsyncMock):
-                await view.on_timeout()
+        await view.on_timeout()
 
+        self.assertEqual(await self.wallet(self.alice), 0)
+        view.ctx.send.assert_not_awaited()
+        # The same mission can still be reported from a new message.
+        again = self.view(await missions.get_mission(1, 10, "alice", Kind.RAIDING), 100)
+        await self.trigger(again, roll=1)
         self.assertEqual(await self.wallet(self.alice), 50)
-        view.ctx.send.assert_awaited_once()
+
+    async def test_timed_out_message_goes_dark_and_says_how_to_continue(self):
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
+
+        await view.on_timeout()
+
+        call = view.ctx.interaction.edit_original_response.await_args
+        self.assertIs(call.kwargs["view"], view)
+        self.assertTrue(all(button.disabled for button in view.children))
+        self.assertIn("/mission start", call.kwargs["content"])
+
+    async def test_timeout_survives_a_message_that_is_gone(self):
+        mission = await self.make_mission(wallet=0)
+        view = self.view(mission, init_chance=100, buttons=True)
+        view.ctx.interaction.edit_original_response.side_effect = discord.NotFound(
+            MagicMock(status=404, reason="Not Found"), "Unknown Message"
+        )
+
+        await view.on_timeout()
+
+        self.assertEqual(await self.wallet(self.alice), 0)
 
     async def test_report_matches_booked_outcome(self):
         mission = await self.make_mission(wallet=1000, insurance=500)
@@ -318,7 +421,7 @@ class MissionMoneyTest(EconomyTestCase):
         self.assertEqual(await self.wallet(self.alice), 0)
         self.assertIn("has been canceled", self.lines(ctx))
         self.assertEqual(
-            interaction.response.send_message.await_args.args[0],
+            interaction.followup.send.await_args.args[0],
             "This mission has already been reported.",
         )
 
