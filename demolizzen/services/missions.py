@@ -10,6 +10,7 @@ the rules.
 
 # Standard Library
 import enum
+import logging
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -54,6 +55,8 @@ class Kind(enum.Enum):
     MINING = "mining"
     RAIDING = "raiding"
 
+
+logger = logging.getLogger(__name__)
 
 _MODELS = {Kind.MINING: UserMiningMission, Kind.RAIDING: UserRaidMission}
 
@@ -352,9 +355,22 @@ def _settle_sync(
 ) -> int:
     with transaction.atomic():
         mission = _locked_mission(kind, profile_id)
-        # Every message that shows this mission carries its start time. Once one
-        # of them has settled it, the stored start has moved on.
-        if not mission.active or mission.cooldown != started_at:
+        # A mission waits for its report while it has a salary; a cancelled one
+        # has none. Every message that shows the mission carries its start
+        # time: once one of them has settled it, the stored start has moved on.
+        # The ``active`` mark says nothing here: older versions of the bot left
+        # waiting missions unmarked.
+        if mission.salary is None or mission.cooldown != started_at:
+            logger.info(
+                "Report of the %s mission of profile %s refused: salary=%s, "
+                "active=%s, started %s, the report is for %s",
+                kind.value,
+                profile_id,
+                mission.salary,
+                mission.active,
+                mission.cooldown,
+                started_at,
+            )
             raise AlreadySettled("This mission has already been reported.")
         applied = bank._adjust_sync(account_id, payout) if payout else 0
         mission.salary = next_salary
@@ -397,7 +413,8 @@ async def settle(
 def _cancel_sync(profile_id: int, kind: Kind) -> None:
     with transaction.atomic():
         mission = _locked_mission(kind, profile_id)
-        if not mission.active:
+        # Under way or waiting for its report; see _settle_sync for the mark.
+        if mission.salary is None and not mission.active:
             raise NoActiveMission("You don't have an active mission to cancel.")
         mission.active = False
         mission.cooldown = None

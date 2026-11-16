@@ -419,8 +419,99 @@ class SettleTest(MissionsTestCase):
 
         self.assertEqual(applied, 40)
 
+    async def legacy_mission(self, **fields):
+        """A mission as older versions of the bot left it: back and waiting
+        for its report, but never marked active. Those versions set the mark
+        in memory only, right before the report."""
+        ship = await self.with_ship()
+        profile = await UserProfile.objects.aget(user_id=A)
+        old_start = NOW - timedelta(days=3)
+        values = {
+            "ship": ship,
+            "salary": 40,
+            "chance": 20,
+            "active": False,
+            "cooldown": old_start,
+        }
+        values.update(fields)
+        await UserRaidMission.objects.filter(user=profile).aupdate(**values)
+        return values["cooldown"]
+
+    async def test_waiting_mission_that_was_never_marked_active_can_be_settled(self):
+        old_start = await self.legacy_mission()
+
+        applied = await missions.settle(
+            *WHO, Kind.RAIDING, old_start, payout=40, next_salary=33, next_chance=44
+        )
+
+        self.assertEqual(applied, 40)
+        self.assertEqual(await self.wallet(), 40)
+        self.assertTrue((await self.mission()).active)
+
+    async def test_waiting_mission_without_a_start_time_can_be_settled(self):
+        await self.legacy_mission(cooldown=None)
+
+        applied = await missions.settle(
+            *WHO, Kind.RAIDING, None, payout=40, next_salary=33, next_chance=44
+        )
+
+        self.assertEqual(applied, 40)
+
+    async def test_unmarked_mission_is_still_settled_only_once(self):
+        old_start = await self.legacy_mission()
+        await missions.settle(
+            *WHO, Kind.RAIDING, old_start, payout=40, next_salary=33, next_chance=44
+        )
+
+        with self.assertRaises(AlreadySettled):
+            await missions.settle(
+                *WHO, Kind.RAIDING, old_start, payout=40, next_salary=33, next_chance=44
+            )
+
+        self.assertEqual(await self.wallet(), 40)
+
+    async def test_start_finds_the_unmarked_mission_waiting(self):
+        await self.legacy_mission()
+
+        started = await missions.begin(*WHO, Kind.RAIDING, 20, 15, NOW)
+
+        self.assertFalse(started)
+        self.assertEqual((await self.mission()).salary, 40)
+
+    async def test_refused_report_is_logged_with_the_state_that_refused_it(self):
+        started_at = await self.flying()
+        await missions.cancel(*WHO, Kind.RAIDING)
+
+        with self.assertLogs("demolizzen.services.missions", level="INFO") as logs:
+            with self.assertRaises(AlreadySettled):
+                await missions.settle(
+                    *WHO,
+                    Kind.RAIDING,
+                    started_at,
+                    payout=1,
+                    next_salary=33,
+                    next_chance=44,
+                )
+
+        self.assertIn("salary=None", logs.output[0])
+        self.assertIn("raiding", logs.output[0])
+
 
 class CancelTest(MissionsTestCase):
+    async def test_unmarked_waiting_mission_can_be_cancelled(self):
+        # Otherwise such a mission could neither be reported nor given up.
+        ship = await self.with_ship()
+        profile = await UserProfile.objects.aget(user_id=A)
+        await UserRaidMission.objects.filter(user=profile).aupdate(
+            ship=ship, salary=40, chance=20, active=False, cooldown=NOW
+        )
+
+        await missions.cancel(*WHO, Kind.RAIDING)
+
+        mission = await self.mission()
+        self.assertIsNone(mission.salary)
+        self.assertFalse(mission.active)
+
     async def test_cancel_resets_the_mission(self):
         await self.with_ship()
         await missions.begin(*WHO, Kind.RAIDING, 20, 15, NOW)

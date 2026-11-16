@@ -96,8 +96,15 @@ class MissionEvent(discord.ui.View):
 
     def create_views(self):
         for component in self.components:
+            # Unique per message: py-cord files the buttons of a command's
+            # answer by their id alone, so a shared id would send every click
+            # to whichever mission message the bot sent last.
             self.add_button(
-                f"{component.label}", f"label-{component.id}", component.style, False, 1
+                f"{component.label}",
+                f"mission:{self.id}:{component.id}",
+                component.style,
+                False,
+                1,
             )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:

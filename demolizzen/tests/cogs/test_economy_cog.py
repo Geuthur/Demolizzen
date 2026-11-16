@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # Discord
 import discord
+from discord.ui.view import ViewStore
 
 # Django
 from django.test import TestCase
@@ -290,6 +291,37 @@ class MissionMoneyTest(EconomyTestCase):
         self.assertIs(shown, second)
         self.assertTrue(all(button.disabled for button in second.children))
         self.assertTrue(second.is_finished())
+
+    async def test_click_reaches_the_buttons_of_its_own_message(self):
+        # py-cord files the buttons of a command's answer by their id alone.
+        # With the same ids on every mission message, a click went to whichever
+        # mission message the bot had sent last, anyone's.
+        mine = self.view(await self.make_mission(wallet=0), 100, buttons=True)
+        later = self.view(mine.mission_account, 100, buttons=True)
+        store = ViewStore(MagicMock())
+        store.add_view(mine)
+        store.add_view(later)
+        interaction = self.click()
+        interaction.message = None
+        clicked = mine.children[0]
+
+        with (
+            patch.object(mine, "_dispatch_item") as mine_got,
+            patch.object(later, "_dispatch_item") as later_got,
+        ):
+            store.dispatch(clicked.type.value, clicked.custom_id, interaction)
+
+        mine_got.assert_called_once()
+        later_got.assert_not_called()
+
+    async def test_buttons_of_two_mission_messages_never_share_an_id(self):
+        mission = await self.make_mission(wallet=0)
+        first = self.view(mission, 100, buttons=True)
+        second = self.view(mission, 100, buttons=True)
+
+        ids = [button.custom_id for button in first.children + second.children]
+
+        self.assertEqual(len(set(ids)), len(ids))
 
     async def test_decision_is_answered_without_access_to_the_channel(self):
         mission = await self.make_mission(wallet=0)
